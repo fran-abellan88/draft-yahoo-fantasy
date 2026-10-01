@@ -146,10 +146,11 @@ def test_marking_a_player_gone_raises_everyone_elses_odds() -> None:
 
 @pytest.mark.parametrize("first,last", [(11, 20), (21, 26), (31, 40), (51, 60), (21, 23)])
 def test_the_expected_number_of_players_gone_is_close_to_the_number_of_unseen_picks(first: int, last: int) -> None:
-    """Each unseen pick took one player, so over the pool the model should lose about one player per pick.
+    """Pins one pool (what an ADP-order draft leaves) at the default spread. It does not show the count stays near k.
 
-    Measured with the default model on the real pool: 5.7 for 6 unseen picks, 9.8 for 10. The check keeps the
-    independence assumption between players from drifting into a visible over- or under-count.
+    Measured there: 5.7 for 6 unseen picks, 9.8 for 10. At spread 1 / 0.1 the same check gives 0.77 times k for picks
+    21 to 23, and on drafts drawn from the model the ratio is 1.02 to 1.35, so the sum is not k (see the module notes).
+    The band only catches this pool drifting.
     """
     adp = np.sort(load_players()["adp_est"].to_numpy(dtype=float))[first - 1 :]  # the first picks before the run were seen
     unseen = list(range(first, last + 1))
@@ -164,3 +165,11 @@ def test_the_window_rule_treats_early_adp_players_as_gone_on_the_clock_only_when
     assert window.probability(adp, pick=27, picks_made=26).tolist() == [1.0, 1.0, 1.0]
     assert window.probability(adp, pick=27, picks_made=26, unseen=[25, 26]).tolist() == [0.0, 1.0, 1.0]
     assert window.probability(adp, pick=30, picks_made=26, unseen=[25, 26]).tolist() == [0.0, 0.0, 1.0]
+
+
+def test_the_window_on_the_clock_is_measured_from_the_latest_unseen_pick() -> None:
+    """One old unseen pick must not make players who fell far past it count as gone for the rest of the draft."""
+    window = AdpWindow(slack=3.0)
+    adp = np.array([1.0, 30.0, 45.0, 60.0])
+    assert window.probability(adp, pick=55, picks_made=54, unseen=[5]).tolist() == [0.0, 1.0, 1.0, 1.0]
+    assert window.probability(adp, pick=55, picks_made=54, unseen=[5, 50]).tolist() == [0.0, 0.0, 0.0, 1.0]

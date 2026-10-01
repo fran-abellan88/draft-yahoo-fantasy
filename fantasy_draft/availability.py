@@ -18,6 +18,12 @@ contributes nothing: the pool was observed, so a seen pick was somebody else. Wi
 the formula for the picks still to come, and as unseen picks are marked (a player known to be gone) they leave the
 product and the odds of everyone else rise.
 
+The sum is not k. Over the pool, the expected number of players gone in k unseen picks is only near k: measured
+0.77 to 1.43 times k on pools an ADP-order draft leaves, and 1.02 to 1.35 times k on drafts drawn from the model
+itself (more as the draft goes on, and with a tight spread). The same formula serves the picks still to come, so the
+miscount is not new with unseen picks. It is left alone on purpose: the fix is a model in which exactly one player
+leaves at each pick, which the projection of other teams' picks needs anyway.
+
 The parameters are starting points, not measurements. They should be calibrated against real drafts;
 the mock draft was mostly auto-picks, which follow ADP far more closely than people do.
 """
@@ -94,9 +100,13 @@ class AdpWindow:
     def probability(self, adp: np.ndarray, pick: int, picks_made: int, unseen: Sequence[int] = ()) -> np.ndarray:
         """Return 1.0 for players expected to last until `pick`, else 0.0.
 
-        On the clock everyone listed is available, unless some picks were unseen: then the same window applies,
-        so a player whose ADP is well before this pick is treated as gone.
+        On the clock everyone listed is available, unless some picks were unseen: then the window is measured from
+        the latest unseen pick, so a player whose ADP is well before it is treated as gone. An old unseen pick
+        therefore cannot hide players who fell far past it.
         """
-        if pick <= picks_made + 1 and not any(number < pick for number in unseen):
-            return np.ones(len(adp))
+        unseen_before = [number for number in unseen if number < pick]
+        if pick <= picks_made + 1:
+            if not unseen_before:
+                return np.ones(len(adp))
+            return (adp >= max(unseen_before) - self.slack).astype(float)
         return (adp >= pick - self.slack).astype(float)
