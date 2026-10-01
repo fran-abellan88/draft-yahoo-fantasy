@@ -22,6 +22,8 @@ VALID_POSITIONS = {"PG", "SG", "SF", "PF", "C"}
 VALID_STATUS = {"", "Q", "P", "O"}
 STAT_COLS = ["gp", "fg_pct", "ft_pct", "3ptm", "pts", "reb", "ast", "st", "blk", "to"]
 SHARED_COLS = ["player", "team", "positions", "status", "adp"]
+# Only the first 150 XRanks are kept in both datasets; the raw files keep every row that was transcribed
+MAX_XRANK = 150
 
 Range = Tuple[str, float, float]
 
@@ -176,6 +178,7 @@ def main() -> int:
     print(f"Overlap check passed: {len(raw) - raw['xrank'].nunique()} repeated rows all agree")
 
     merged = raw.drop(columns="image").drop_duplicates().sort_values("xrank").reset_index(drop=True)
+    merged = merged[merged["xrank"] <= MAX_XRANK].reset_index(drop=True)
 
     problems = find_schema_problems(merged, kind.allow_no_data)
     if args.kind == "averages":
