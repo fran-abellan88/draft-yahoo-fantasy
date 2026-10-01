@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 
 from fantasy_draft.categories import CATEGORIES
-from fantasy_draft.scoring import Bounds, category_scores, composite_score, compute_bounds
+from fantasy_draft.scoring import Bounds, category_scores, composite_score, compute_bounds, games_factor
 
 GOLDEN_PATH = Path(__file__).parent / "fixtures" / "composite_score_golden.json"
 
@@ -111,3 +111,22 @@ def test_invalid_selection_is_rejected(keys: List[str], message: str) -> None:
 def test_selected_category_without_bounds_is_rejected() -> None:
     with pytest.raises(ValueError, match="No bounds"):
         composite_score(_frame([{"pts": 10.0}]), ["pts"], {})
+
+
+def test_games_adjustment_scales_the_composite_by_the_share_of_the_season() -> None:
+    players = pd.DataFrame({"pts": [10.0, 20.0, 30.0], "gp": [82.0, 41.0, 90.0]})
+    bounds = {"pts": (10.0, 30.0)}
+    plain = composite_score(players, ["pts"], bounds)
+    adjusted = composite_score(players, ["pts"], bounds, games_adjusted=True)
+    assert list(plain) == [0.0, 50.0, 100.0]
+    assert list(adjusted) == [0.0, 25.0, 100.0]  # 41 games is half a season; more than 82 is not a bonus
+
+
+def test_games_adjustment_is_off_by_default_and_needs_games() -> None:
+    players = pd.DataFrame({"pts": [10.0, 30.0], "gp": [82.0, float("nan")]})
+    bounds = {"pts": (10.0, 30.0)}
+    assert list(composite_score(players, ["pts"], bounds)) == [0.0, 100.0]
+    with pytest.raises(ValueError, match="projected gp"):
+        composite_score(players, ["pts"], bounds, games_adjusted=True)
+    with pytest.raises(ValueError, match="projected gp"):
+        games_factor(players.drop(columns="gp"))

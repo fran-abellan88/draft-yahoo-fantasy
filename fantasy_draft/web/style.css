@@ -110,6 +110,8 @@ main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 26px; min-widt
 .categories label, .choice { display: flex; gap: 8px; align-items: center; cursor: pointer; }
 .categories input[type="checkbox"], .choice input { width: 17px; height: 17px; accent-color: var(--mine); }
 
+.choice.games { margin-top: 12px; font-weight: 600; }
+
 .rule { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
 .rule summary { cursor: pointer; font-weight: 600; }
 .rule-body { display: grid; gap: 10px; margin-top: 12px; }

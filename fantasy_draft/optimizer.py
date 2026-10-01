@@ -62,6 +62,7 @@ def recommend(
     rounds: int = 8,
     top_k: int = 50,
     max_candidates: int = 25,
+    games_adjusted: bool = False,
 ) -> List[Plan]:
     """Return the best `top_k` distinct plans, best first. Empty when no picks of mine remain."""
     _check_state(players, state, slot, rounds)
@@ -69,7 +70,7 @@ def recommend(
     if not remaining_picks:
         return []
 
-    scores = pd.Series(composite_score(players, keys, bounds).to_numpy(), index=players["player_id"])
+    scores = pd.Series(composite_score(players, keys, bounds, games_adjusted).to_numpy(), index=players["player_id"])
     positions = {player_id: tuple(pos) for player_id, pos in zip(players["player_id"], players["pos_list"])}
     unavailable = set(state.taken) | set(state.mine)
     pool = players[~players["player_id"].isin(unavailable)]

@@ -22,6 +22,7 @@ const DEFAULT_RULE = { type: 'probability', baseSd: 2, sdPerAdp: 0.2, threshold:
 const state = {
   picks: [],
   categories: [],
+  gamesAdjusted: false,
   rule: { ...DEFAULT_RULE },
   search: '',
   position: 'ALL',
@@ -73,7 +74,7 @@ const detailOf = (id) => {
 // ---------- persistence ----------
 function saveState() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ picks: state.picks, categories: state.categories, rule: state.rule }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ picks: state.picks, categories: state.categories, gamesAdjusted: state.gamesAdjusted, rule: state.rule }));
   } catch (error) {
     // Private mode or blocked storage: the draft still works, it just will not survive a refresh
   }
@@ -95,6 +96,7 @@ function restoreState() {
   if (Array.isArray(saved.categories) && saved.categories.length > 0 && saved.categories.every((key) => allKeys.includes(key))) {
     state.categories = allKeys.filter((key) => saved.categories.includes(key));
   }
+  if (typeof saved.gamesAdjusted === 'boolean') state.gamesAdjusted = saved.gamesAdjusted;
   if (saved.rule && typeof saved.rule === 'object') state.rule = { ...DEFAULT_RULE, ...saved.rule };
 }
 
@@ -123,7 +125,7 @@ async function refresh() {
     response = await fetch('/api/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ categories: state.categories, picks: state.picks, rule: ruleForRequest() }),
+      body: JSON.stringify({ categories: state.categories, picks: state.picks, rule: ruleForRequest(), gamesAdjusted: state.gamesAdjusted }),
     });
   } catch (error) {
     showError("Can't reach the draft server. Check that run_dashboard.py is still running, then reload.");
@@ -583,6 +585,12 @@ function wireControls() {
   $('search').addEventListener('keydown', (event) => {
     // Enter logs the pick only when exactly one player matches, so a slip of the keyboard cannot log the wrong one
     if (event.key === 'Enter' && visibleIds.length === 1) draft(visibleIds[0]);
+  });
+  $('games-adjusted').checked = state.gamesAdjusted;
+  $('games-adjusted').addEventListener('change', (event) => {
+    state.gamesAdjusted = event.target.checked;
+    saveState();
+    scheduleRefresh();
   });
   for (const input of document.querySelectorAll('input[name="rule"], #rule-base-sd, #rule-sd-per-adp, #rule-threshold, #rule-slack')) {
     input.addEventListener('change', onRuleChange);

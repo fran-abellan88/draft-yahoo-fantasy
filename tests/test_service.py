@@ -154,3 +154,19 @@ def test_rule_defaults_and_bounds() -> None:
 
 def test_my_picks_helper_agrees_with_the_service(service: DraftService) -> None:
     assert service.pool_payload()["myPicks"] == my_picks(2, 13)
+
+
+def test_games_adjustment_lowers_scores_of_players_projected_to_miss_games(service: DraftService) -> None:
+    plain = {row["id"]: row["score"] for row in _ask(service, [])["pool"]}
+    adjusted = {row["id"]: row["score"] for row in _ask(service, [], gamesAdjusted=True)["pool"]}
+    gp = service.players.set_index("player_id")["gp"]
+    for pid, score in plain.items():
+        expected = score * min(gp[pid], 82) / 82
+        assert adjusted[pid] == pytest.approx(expected, abs=0.1), pid
+    assert any(adjusted[pid] < plain[pid] - 5 for pid in plain)
+
+
+@pytest.mark.parametrize("value", ["yes", 1, None])
+def test_games_adjustment_must_be_a_boolean(service: DraftService, value: Any) -> None:
+    with pytest.raises(RequestError, match="gamesAdjusted"):
+        _ask(service, [], gamesAdjusted=value)

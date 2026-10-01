@@ -27,6 +27,8 @@ from fantasy_draft.categories import CATEGORIES
 
 Bounds = Dict[str, Tuple[float, float]]
 
+SEASON_GAMES = 82
+
 
 def compute_bounds(players: pd.DataFrame, keys: Sequence[str], low: float = 5.0, high: float = 95.0) -> Bounds:
     """Return the (p_low, p_high) boundary of each category over the player pool."""
@@ -60,9 +62,22 @@ def category_scores(players: pd.DataFrame, keys: Sequence[str], bounds: Bounds) 
     return pd.DataFrame(scores, index=players.index)
 
 
-def composite_score(players: pd.DataFrame, keys: Sequence[str], bounds: Bounds) -> pd.Series:
-    """Return the 0-100 composite of the selected categories for every player."""
-    return category_scores(players, keys, bounds).mean(axis=1) * 100.0
+def games_factor(players: pd.DataFrame) -> pd.Series:
+    """Share of a full season each player is projected to play (capped at 1), from the projected `gp` column."""
+    if "gp" not in players.columns or players["gp"].isna().any():
+        raise ValueError("The games-played adjustment needs a projected gp for every player")
+    return (players["gp"].astype(float) / SEASON_GAMES).clip(0.0, 1.0)
+
+
+def composite_score(players: pd.DataFrame, keys: Sequence[str], bounds: Bounds, games_adjusted: bool = False) -> pd.Series:
+    """Return the 0-100 composite of the selected categories for every player.
+
+    With `games_adjusted` the composite is scaled by the share of the season the player is projected to play.
+    The scale is anchored at 0, which is the 5th-percentile player in every category, so a missed game is
+    worth roughly a replacement-level game.
+    """
+    composite = category_scores(players, keys, bounds).mean(axis=1) * 100.0
+    return composite * games_factor(players) if games_adjusted else composite
 
 
 def _check_keys(players: pd.DataFrame, keys: Sequence[str]) -> None:

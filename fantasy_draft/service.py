@@ -118,6 +118,9 @@ class DraftService:
         picks = self._parse_picks(request.get("picks"))
         rule = parse_rule(request.get("rule"))
         top_k = int(_bounded(request, "topK", 100, 1, MAX_TOP_K))
+        games_adjusted = request.get("gamesAdjusted", False)
+        if not isinstance(games_adjusted, bool):
+            raise RequestError("gamesAdjusted must be true or false")
 
         mine_numbers = set(my_picks(self.slot, ROSTER_SIZE, self.teams))
         mine = tuple(pid for number, pid in enumerate(picks, start=1) if number in mine_numbers)
@@ -125,7 +128,7 @@ class DraftService:
         state = DraftState(taken=taken, mine=mine)
         clock = self._clock(state)
 
-        scores = composite_score(self.players, keys, self.bounds)
+        scores = composite_score(self.players, keys, self.bounds, games_adjusted)
         category = category_scores(self.players, keys, self.bounds) * 100.0
         flags = build_flags(self.players, keys, self.bounds)
         drafted = set(picks)
@@ -133,7 +136,9 @@ class DraftService:
         plans: List[Plan] = []
         if not clock["draftComplete"]:
             try:
-                plans = recommend(self.players, state, keys, self.bounds, rule, self.slot, self.rounds, top_k)
+                plans = recommend(
+                    self.players, state, keys, self.bounds, rule, self.slot, self.rounds, top_k, games_adjusted=games_adjusted
+                )
             except ValueError as error:
                 raise RequestError(str(error)) from error
 
