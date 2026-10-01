@@ -26,7 +26,10 @@ def my_picks(slot: int = MY_SLOT, rounds: int = 8, teams: int = TEAMS) -> List[i
 # What one entry of the pick log can be. Extended as each kind is built.
 #   player   a player in the pool, picked by whoever's turn it was
 #   outside  a pick I saw but whose player is not in the pool: every pool player is known to have survived it
-PICK_KINDS: Tuple[str, ...] = ("player", "outside")
+#   unseen   a pick I did not see: any player the pool still lists may have been taken at it. Never one of my own
+#   gone     an unseen pick resolved to a player known to be taken, without knowing which pick or team: he leaves the
+#            pool and the number of unseen picks falls by one. Never one of my own picks
+PICK_KINDS: Tuple[str, ...] = ("player", "outside", "unseen", "gone")
 
 
 @dataclass(frozen=True)

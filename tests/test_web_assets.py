@@ -126,3 +126,14 @@ def test_the_page_can_log_a_pick_that_is_not_in_the_list() -> None:
     assert 'id="outside"' in html
     assert "$('outside').addEventListener('click', draftOutside)" in JS
     assert "state.picks.push({ kind: 'outside' })" in JS
+
+
+def test_the_page_can_catch_up_and_mark_players_gone() -> None:
+    html = (WEB / "index.html").read_text()
+    for element in ('id="behind"', 'id="behind-form"', 'id="behind-pick"', 'id="unseen-note"'):
+        assert element in html
+    assert "$('behind-form').addEventListener('submit', submitBehind)" in JS
+    assert "planBehind(" in JS and "markGone(state.picks" in JS
+    # The Gone button must not also log the row it sits in
+    gone = JS[JS.index("function goneButton"): JS.index("function matchesFilters")]
+    assert "event.stopPropagation()" in gone and gone.count("stopPropagation") == 2

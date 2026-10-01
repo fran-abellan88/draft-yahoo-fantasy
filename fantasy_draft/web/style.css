@@ -155,6 +155,10 @@ main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 26px; min-widt
 details.others { margin-top: 10px; }
 details.others summary { cursor: pointer; color: var(--muted); }
 .other-plan { margin-top: 8px; padding: 8px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
+.behind-form { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; margin-top: 10px; }
+.behind-form label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+.behind-form input { width: 90px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); }
+button.gone { padding: 1px 8px; font-size: 12px; margin-left: 6px; }
 .search-note { margin: 0 0 10px; padding: 8px 12px; background: var(--flag-soft); color: var(--flag); border-radius: 6px; font-size: 13px; max-width: 80ch; }
 /* Shown when a reply takes longer than a moment, so a slow answer is not mistaken for a frozen page */
 main.busy .hero, main.busy #plan, main.busy #alternatives { opacity: 0.5; transition: opacity 0.15s; }

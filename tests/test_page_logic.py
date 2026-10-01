@@ -149,3 +149,90 @@ def test_a_page_pick_log_is_accepted_by_the_server() -> None:
 def test_an_outside_pick_has_no_id_and_a_player_pick_needs_one() -> None:
     assert _run(f"L.normalizePicks([{{kind: 'outside'}}, 'a'], {KNOWN})") == [{"kind": "outside"}, {"kind": "player", "id": "a"}]
     assert _run(f"L.normalizePicks([{{kind: 'outside', id: 'a'}}], {KNOWN})") is None
+
+
+def test_unseen_and_gone_picks_are_kept_and_checked_like_the_other_kinds() -> None:
+    assert _run(f"L.normalizePicks([{{kind: 'unseen'}}, {{kind: 'gone', id: 'a'}}, 'b'], {KNOWN})") == [
+        {"kind": "unseen"},
+        {"kind": "gone", "id": "a"},
+        {"kind": "player", "id": "b"},
+    ]
+    assert _run(f"L.normalizePicks([{{kind: 'unseen', id: 'a'}}], {KNOWN})") is None  # an unseen pick names nobody
+    assert _run(f"L.normalizePicks([{{kind: 'gone'}}], {KNOWN})") is None  # a gone pick must name the player
+    assert _run(f"L.normalizePicks(['a', {{kind: 'gone', id: 'a'}}], {KNOWN})") is None  # one player, once
+
+
+MY_PICKS = [2, 27, 30, 55, 58, 83, 86, 111]
+
+
+def _behind(logged: int, yahoo: Any, mine: List[int] = MY_PICKS, total: int = 182) -> Dict[str, Any]:
+    return _run(f"L.planBehind({logged}, {json.dumps(yahoo)}, {json.dumps(mine)}, {total})")
+
+
+def test_being_behind_adds_the_picks_in_between_as_unseen() -> None:
+    plan = _behind(logged=3, yahoo=9)  # picks 1 to 3 logged, Yahoo is at 9: picks 4 to 8 were missed
+    assert plan == {"error": None, "unseen": [4, 5, 6, 7, 8], "stoppedAt": None}
+    assert _behind(logged=3, yahoo="9")["unseen"] == [4, 5, 6, 7, 8]  # a typed value arrives as a string
+
+
+def test_being_behind_stops_before_one_of_my_own_picks() -> None:
+    """I always know my own pick, so it is never unseen: the user logs it and then asks again for the rest."""
+    plan = _behind(logged=24, yahoo=31)  # 25 to 30 missed, but 27 and 30 are mine
+    assert plan == {"error": None, "unseen": [25, 26], "stoppedAt": 27}
+    assert _behind(logged=26, yahoo=31) == {"error": None, "unseen": [], "stoppedAt": 27}  # the first missed pick is mine
+    assert _behind(logged=27, yahoo=31) == {"error": None, "unseen": [28, 29], "stoppedAt": 30}
+
+
+@pytest.mark.parametrize(
+    "logged,yahoo,message",
+    [
+        (24, 25, "not ahead of the next pick"),  # nothing missing: the next pick to log is 25
+        (24, 20, "not ahead of the next pick"),
+        (24, "", "Type the pick number"),
+        (24, "abc", "Type the pick number"),
+        (24, 28.5, "Type the pick number"),
+        (24, None, "Type the pick number"),
+        (24, 200, "The draft has 182 picks"),
+    ],
+)
+def test_a_pick_that_is_not_ahead_of_the_log_is_refused(logged: int, yahoo: Any, message: str) -> None:
+    plan = _behind(logged, yahoo)
+    assert message in plan["error"] and plan["unseen"] == []
+
+
+def test_marking_a_player_gone_resolves_the_unseen_pick_closest_to_his_adp_and_logs_nothing_new() -> None:
+    picks = json.dumps([{"kind": "player", "id": "a"}] + [{"kind": "unseen"}] * 5)  # pick 1 seen; picks 2 to 6 unseen
+    assert _run(f"L.markGone({picks}, 'b', 5.2)")[1:] == [{"kind": "unseen"}] * 3 + [{"kind": "gone", "id": "b"}, {"kind": "unseen"}]
+    assert _run(f"L.markGone({picks}, 'b', 1)")[1:3] == [{"kind": "gone", "id": "b"}, {"kind": "unseen"}]  # nearest to the first
+    assert _run(f"L.markGone({picks}, 'b', 90)")[5] == {"kind": "gone", "id": "b"}  # nearest to the last
+    assert len(_run(f"L.markGone({picks}, 'b', 4)")) == 6, "the list is the same length: no pick is logged"
+
+
+def test_with_no_usable_adp_the_first_unseen_pick_is_resolved() -> None:
+    picks = json.dumps([{"kind": "player", "id": "a"}] + [{"kind": "unseen"}] * 3)
+    for adp in ("undefined", "null", "NaN"):
+        assert _run(f"L.markGone({picks}, 'b', {adp})")[1] == {"kind": "gone", "id": "b"}
+
+
+def test_marking_gone_needs_an_unseen_pick_and_a_player_not_already_logged() -> None:
+    assert _run("L.markGone([{kind: 'player', id: 'a'}], 'b', 5)") is None  # nothing unseen to resolve
+    assert _run("L.markGone([{kind: 'unseen'}, {kind: 'player', id: 'a'}], 'a', 5)") is None  # already in the log
+    picks = [{"kind": "unseen"}]
+    before = json.dumps(picks)
+    _run(f"L.markGone({before}, 'b', 3)")
+    assert picks == [{"kind": "unseen"}], "the list given is not changed"
+
+
+def test_what_the_page_builds_for_a_gap_is_accepted_by_the_server() -> None:
+    """Page and server must agree on the shapes: build a log the way the page does and parse it."""
+    from fantasy_draft.data import load_players
+    from fantasy_draft.service import DraftService
+
+    service = DraftService(load_players())
+    ids = service.players.sort_values("adp_est")["player_id"].tolist()
+    log = _run(f"L.normalizePicks({json.dumps(ids[:20])}, new Set({json.dumps(ids)}))")
+    plan = _behind(logged=len(log), yahoo=27)
+    log += [{"kind": "unseen"}] * len(plan["unseen"])
+    log = _run(f"L.markGone({json.dumps(log)}, {json.dumps(ids[20])}, 21)")
+    assert len(plan["unseen"]) == 6  # picks 21 to 26; pick 27 is mine, so the page stops there
+    assert [pick.kind for pick in service._parse_picks(log)[18:]] == ["player", "player", "gone"] + ["unseen"] * 5

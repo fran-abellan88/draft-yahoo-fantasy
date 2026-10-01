@@ -319,3 +319,85 @@ def test_my_outside_pick_costs_a_slot_and_replacement_value(service: DraftServic
 def test_an_outside_pick_carries_no_player_id(service: DraftService) -> None:
     with pytest.raises(RequestError, match="no player id"):
         _ask(service, [{"kind": "outside", "id": "nikola-jokic"}])
+
+
+# ---------- unseen and gone picks ----------
+
+UNSEEN = {"kind": "unseen"}
+
+
+def _by_adp(service: DraftService) -> List[str]:
+    return service.players.sort_values("adp_est")["player_id"].tolist()
+
+
+def _availability(answer: Dict[str, Any]) -> Dict[str, float]:
+    return {row["id"]: row["availability"] for row in answer["pool"]}
+
+
+def test_unseen_picks_advance_the_clock_and_show_in_the_log(service: DraftService) -> None:
+    ids = _by_adp(service)
+    answer = _ask(service, ids[:20] + [UNSEEN] * 6)
+    assert answer["clock"]["pick"] == 27 and answer["clock"]["isMine"] is True
+    assert [entry["kind"] for entry in answer["log"][-7:-5]] == ["player", "unseen"]
+    assert answer["log"][-1] == {"pick": 26, "kind": "unseen", "id": None, "mine": False}
+    assert {row["id"] for row in answer["pool"]} == set(ids[20:]), "an unseen pick removes nobody from the pool"
+
+
+def test_with_unseen_picks_on_the_clock_is_no_longer_100_percent_for_everyone(service: DraftService) -> None:
+    ids = _by_adp(service)
+    seen = _availability(_ask(service, ids[:26]))
+    unseen = _availability(_ask(service, ids[:20] + [UNSEEN] * 6))
+    assert set(seen.values()) == {1.0}, "no unseen picks: everyone listed is there by definition"
+    early, late = ids[20], ids[120]
+    assert unseen[early] < 0.6 and unseen[late] > 0.95
+    assert all(unseen[pid] <= seen[pid] for pid in seen)  # every player listed in both is no more likely to be there
+
+
+def test_marking_a_player_gone_removes_him_and_one_unseen_pick(service: DraftService) -> None:
+    ids = _by_adp(service)
+    unseen = _ask(service, ids[:20] + [UNSEEN] * 6)
+    gone_id = ids[20]
+    marked = _ask(service, ids[:20] + [{"kind": "gone", "id": gone_id}] + [UNSEEN] * 5)
+    assert marked["clock"]["pick"] == unseen["clock"]["pick"] == 27
+    assert gone_id not in {row["id"] for row in marked["pool"]}
+    assert [entry["kind"] for entry in marked["log"][20:22]] == ["gone", "unseen"]
+    before, after = _availability(unseen), _availability(marked)
+    assert all(after[pid] >= before[pid] - 1e-9 for pid in after), "fewer unseen picks can only raise everyone's odds"
+    assert any(after[pid] > before[pid] + 0.01 for pid in after)
+
+
+def test_a_player_marked_gone_never_appears_in_a_plan(service: DraftService) -> None:
+    ids = _by_adp(service)
+    marked = _ask(service, ids[:20] + [{"kind": "gone", "id": ids[21]}] + [UNSEEN] * 5)
+    assert all(ids[21] not in [step["id"] for step in plan["steps"]] for plan in marked["plans"])
+
+
+@pytest.mark.parametrize("kind", ["unseen", "gone"])
+def test_an_unseen_or_gone_pick_cannot_be_one_of_my_own(service: DraftService, kind: str) -> None:
+    ids = _by_adp(service)
+    entry = {"kind": kind, **({"id": ids[100]} if kind == "gone" else {})}  # a player not already logged
+    with pytest.raises(RequestError, match="Pick 2 is yours"):
+        _ask(service, [ids[0], entry])  # pick 2 is mine
+    with pytest.raises(RequestError, match="Pick 27 is yours"):
+        _ask(service, ids[:26] + [entry])  # pick 27 is mine
+
+
+@pytest.mark.parametrize(
+    "picks, message",
+    [
+        ([{"kind": "unseen", "id": "nikola-jokic"}], "no player id"),
+        ([{"kind": "gone"}], "needs the player's id"),
+        ([{"kind": "gone", "id": "nobody"}], "Unknown players"),
+        (["nikola-jokic", {"kind": "gone", "id": "nikola-jokic"}], "picked twice"),
+    ],
+)
+def test_malformed_unseen_and_gone_picks_are_refused(service: DraftService, picks: Any, message: str) -> None:
+    with pytest.raises(RequestError, match=message):
+        _ask(service, picks)
+
+
+def test_unseen_picks_count_towards_the_picks_made_for_ownership(service: DraftService) -> None:
+    ids = _by_adp(service)
+    answer = _ask(service, [ids[0], ids[1]] + [UNSEEN] * 24)  # picks 3 to 26 unseen; pick 27 is mine
+    assert answer["clock"]["pick"] == 27 and answer["clock"]["isMine"] is True
+    assert [entry["id"] for entry in answer["roster"]] == [ids[1]]

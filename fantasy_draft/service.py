@@ -148,6 +148,7 @@ class DraftService:
             mine=mine,
             mine_outside=sum(1 for number, pick in numbered if number in mine_numbers and pick.kind == "outside"),
             other_outside=sum(1 for number, pick in numbered if number not in mine_numbers and pick.kind == "outside"),
+            unseen=tuple(number for number, pick in numbered if pick.kind == "unseen"),
         )
         clock = self._clock(state)
 
@@ -224,6 +225,11 @@ class DraftService:
             raise RequestError("A player was picked twice")
         if len(picks) > self.teams * ROSTER_SIZE:
             raise RequestError("More picks than the draft has")
+        mine_numbers = set(my_picks(self.slot, ROSTER_SIZE, self.teams))
+        for number, pick in enumerate(picks, start=1):
+            # I always know my own picks, so one of them cannot be a pick I did not see
+            if pick.kind in ("unseen", "gone") and number in mine_numbers:
+                raise RequestError(f"Pick {number} is yours, so it cannot be {pick.kind}: log your own pick")
         return picks
 
     def _parse_pick(self, entry: Any, number: int) -> Pick:
@@ -236,11 +242,11 @@ class DraftService:
         if extra or kind not in PICK_KINDS:
             raise RequestError(f"Pick {number}: a pick has a kind ({', '.join(PICK_KINDS)}) and, for a player, an id")
         player_id = entry.get("id")
-        if kind == "outside" and player_id is not None:
-            raise RequestError(f"Pick {number}: a pick outside the list has no player id")
-        if kind == "player":
+        if kind in ("outside", "unseen") and player_id is not None:
+            raise RequestError(f"Pick {number}: a pick that is {kind} has no player id")
+        if kind in ("player", "gone"):
             if not isinstance(player_id, str):
-                raise RequestError(f"Pick {number}: a player pick needs the player's id")
+                raise RequestError(f"Pick {number}: a {kind} pick needs the player's id")
             if player_id not in self._by_id.index:
                 raise RequestError(f"Unknown players: {[player_id]}")
         return Pick(kind, player_id)

@@ -226,6 +226,50 @@ function draftOutside() {
   refresh();
 }
 
+// "I am behind": the picks between my log and the pick Yahoo is at become unseen picks, up to one of my own picks
+function submitBehind(event) {
+  event.preventDefault();
+  if (!analysis || analysis.clock.draftComplete) return;
+  const plan = planBehind(state.picks.length, $('behind-pick').value, pool.myPicks, pool.league.teams * pool.league.rosterSize);
+  const note = $('behind-note');
+  if (plan.error) {
+    note.textContent = plan.error;
+    return;
+  }
+  for (const number of plan.unseen) state.picks.push({ kind: 'unseen' });
+  note.textContent = plan.stoppedAt === null
+    ? `${plan.unseen.length} unseen picks added.`
+    : `${plan.unseen.length ? `${plan.unseen.length} unseen picks added. ` : ''}Pick ${plan.stoppedAt} is yours: log it now, then press I am behind again for the rest.`;
+  if (plan.stoppedAt === null) {
+    $('behind-form').hidden = true;
+    $('behind').setAttribute('aria-expanded', 'false');
+    $('behind-pick').value = '';
+  }
+  saveState();
+  refresh();
+}
+
+function toggleBehind() {
+  const form = $('behind-form');
+  form.hidden = !form.hidden;
+  $('behind').setAttribute('aria-expanded', String(!form.hidden));
+  $('behind-note').textContent = '';
+  if (!form.hidden) $('behind-pick').focus();
+}
+
+// Marking a player as gone logs no pick; it resolves the unseen pick closest to his ADP to him
+function markPlayerGone(id) {
+  const next = markGone(state.picks, id, playerById.get(id).adp);
+  if (!next) return;
+  state.picks = next;
+  saveState();
+  refresh();
+}
+
+function hasUnseenPicks() {
+  return state.picks.some((pick) => pick.kind === 'unseen');
+}
+
 function undo() {
   if (state.picks.length === 0) return;
   state.picks.pop();
@@ -257,6 +301,7 @@ function render() {
   renderHero();
   renderPlan();
   renderSearchNote();
+  renderUnseenNote();
   renderPool();
   renderRoster();
   renderProfile();
@@ -462,6 +507,24 @@ function notesFor(row, player) {
   return notes;
 }
 
+// Only offered while picks are unseen; it must not also log the row, so its clicks and keys stop here
+function goneButton(player) {
+  return h(
+    'button',
+    {
+      type: 'button',
+      class: 'gone',
+      title: `${player.name} was taken at one of the unseen picks`,
+      onclick: (event) => {
+        event.stopPropagation();
+        markPlayerGone(player.id);
+      },
+      onkeydown: (event) => event.stopPropagation(),
+    },
+    'Gone',
+  );
+}
+
 function matchesFilters(player) {
   if (state.position !== 'ALL' && !player.positions.includes(state.position)) return false;
   const needle = state.search.trim().toLowerCase();
@@ -495,6 +558,7 @@ function renderPool() {
         ...(unconfirmed ? [badge('Logged, not confirmed. Click to retry', 'injury', 'The server has not confirmed this pick yet')] : []),
         ...(pending ? [badge('Logging the pick', 'info', 'Waiting for the server to confirm this pick')] : []),
         ...notesFor(row, player),
+        ...(hasUnseenPicks() ? [goneButton(player)] : []),
       ])),
       h('td', { class: 'score' }, oneDecimal(row.score)),
       h('td', {}, row.availability === null ? '-' : pct(row.availability)),
@@ -534,6 +598,19 @@ function renderPool() {
 
 // --- right rail ---
 // What an incomplete search gives back: the best plan found, which usually starts with the highest-scoring player
+// Said whenever picks are unseen: the odds in the table already allow for them
+function renderUnseenNote() {
+  const note = $('unseen-note');
+  const numbers = analysis.log.filter((entry) => entry.kind === 'unseen').map((entry) => entry.pick);
+  if (numbers.length === 0) {
+    note.hidden = true;
+    return;
+  }
+  const range = numbers.length === 1 ? `pick ${numbers[0]}` : `picks ${numbers[0]} to ${numbers[numbers.length - 1]}`;
+  note.textContent = `${plural(numbers.length, 'unseen pick')} (${range}). The odds in the table allow for players taken there. Press Gone on a player you know was taken to remove one.`;
+  note.hidden = false;
+}
+
 function renderSearchNote() {
   const note = $('search-note');
   if (!analysis.search.truncated) {
@@ -599,6 +676,13 @@ function renderProfile() {
   put(container, legend, ...rows, h('p', { class: 'note' }, '0 to 100 against the pool. The number is the team average per category.'));
 }
 
+function logLabel(entry) {
+  if (entry.kind === 'outside') return 'Not in the list';
+  if (entry.kind === 'unseen') return 'Unseen pick';
+  if (entry.kind === 'gone') return `${nameOf(entry.id)} (gone, pick unknown)`;
+  return nameOf(entry.id);
+}
+
 function renderLog() {
   const list = $('log');
   if (analysis.log.length === 0) {
@@ -606,7 +690,7 @@ function renderLog() {
     return;
   }
   put(list, 
-    ...[...analysis.log].reverse().map((entry) => h('li', { class: entry.mine ? 'mine' : '' }, h('span', {}, `#${entry.pick}`), h('span', {}, entry.kind === 'outside' ? 'Not in the list' : nameOf(entry.id)))),
+    ...[...analysis.log].reverse().map((entry) => h('li', { class: entry.mine ? 'mine' : '' }, h('span', {}, `#${entry.pick}`), h('span', {}, logLabel(entry)))),
   );
 }
 
@@ -697,6 +781,8 @@ function wireControls() {
   $('error-retry').addEventListener('click', refresh);
   $('undo').addEventListener('click', undo);
   $('outside').addEventListener('click', draftOutside);
+  $('behind').addEventListener('click', toggleBehind);
+  $('behind-form').addEventListener('submit', submitBehind);
   $('reset').addEventListener('click', reset);
   $('search').addEventListener('input', (event) => {
     state.search = event.target.value;
