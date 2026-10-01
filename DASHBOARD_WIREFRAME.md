@@ -77,8 +77,9 @@ the **800 px case is part of the design** (below). Budget for the two-column rai
 | Tab strip | 40 | 40 |
 | **Left for the tab panel** | **about 480** | **about 370** |
 
-At **800 px** the tab panel has about 380 px waiting and about 270 on the clock, PLAN already shows four steps with
-"+3 more" on the clock, and the snake strip is in the CLOCK tooltip. The REC block is unchanged.
+At **800 px**, waiting, the tab panel has about 380 px. On the clock PLAN folds to four steps with "+3 more" (about 145
+px instead of 230), which leaves the tab panel about 360 px; the snake strip is in the CLOCK tooltip. The REC block is
+unchanged.
 
 The tab panel scrolls inside itself. What gives way, in order, when the window is shorter: the tab panel gets less
 height (it scrolls more); then PLAN shows its first four steps with "+3 more"; then the snake strip folds into the CLOCK
