@@ -137,3 +137,12 @@ def test_the_page_can_catch_up_and_mark_players_gone() -> None:
     # The Gone button must not also log the row it sits in
     gone = JS[JS.index("function goneButton"): JS.index("function matchesFilters")]
     assert "event.stopPropagation()" in gone and gone.count("stopPropagation") == 2
+
+
+def test_on_my_turn_with_unseen_picks_the_page_shows_the_doubt_the_better_players_and_a_gone_button() -> None:
+    hero = JS[JS.index("function renderHero"): JS.index("function meter")]
+    assert "hasUnseenPicks()" in hero and "Check Yahoo" in hero
+    assert "analysis.lookFirst" in hero and "look first at" in hero
+    assert "markPlayerGone(recommendation.id)" in hero and "He is gone" in hero
+    plan = JS[JS.index("function renderPlan"):]
+    assert "!hasUnseenPicks()" in plan[: plan.index("\nfunction ", 10)]

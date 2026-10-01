@@ -26,6 +26,8 @@ MAX_TOP_K = 50
 DEFAULT_TOP_K = 10
 PLANS_SHOWN = 5
 ALTERNATIVES_SHOWN = 4
+LOOK_FIRST_SHOWN = 3
+LOOK_FIRST_FLOOR = 0.10  # below this chance a player is treated as gone and not suggested
 DISPLAY_STATS = ["pts", "reb", "ast", "3ptm", "st", "blk", "to", "fg_pct", "ft_pct", "fga", "fta"]
 
 
@@ -195,6 +197,7 @@ class DraftService:
                 "maxOptionNodes": recommendation_result.max_option_nodes,
             },
             "recommendation": self._recommendation(best, next_mine),
+            "lookFirst": self._look_first(pool, best, rule, clock, state),
             "roster": [{"id": pick.player_id, "kind": pick.kind, "pick": number} for number, pick in numbered if number in mine_numbers],
             "log": [{"pick": number, "kind": pick.kind, "id": pick.player_id, "mine": number in mine_numbers} for number, pick in numbered],
             "profile": {
@@ -327,6 +330,31 @@ class DraftService:
             gap = best.total_score - option.plan.total_score
             shown.append({"id": option.player_id, "behind": 0.0 if abs(gap) < 1e-9 else _num(gap, 1)})
         return shown
+
+    def _look_first(
+        self, pool: List[Dict[str, Any]], best: Optional[Plan], rule: AvailabilityRule, clock: Dict[str, Any], state: DraftState
+    ) -> List[Dict[str, Any]]:
+        """On my turn with unseen picks: better-scoring players left out for their odds, who may still be on the board.
+
+        The user can see the draft room, so a player under the threshold but not long gone is worth a look before
+        taking the recommendation. Empty when nothing is unseen (the pool is then exactly what is left) or it is not
+        my turn.
+        """
+        if best is None or not clock["isMine"] or not state.unseen:
+            return []
+        scores = {row["id"]: row for row in pool}
+        recommended = scores.get(best.player_ids[0])
+        if recommended is None:
+            return []
+        found = [
+            row
+            for row in pool
+            if row["score"] > recommended["score"]
+            and row["availability"] is not None
+            and LOOK_FIRST_FLOOR <= row["availability"] < rule.threshold
+        ]
+        found.sort(key=lambda row: -row["score"])
+        return [{"id": row["id"], "availability": row["availability"]} for row in found[:LOOK_FIRST_SHOWN]]
 
     def _recommendation(self, best: Optional[Plan], next_mine: Optional[int]) -> Optional[Dict[str, Any]]:
         if best is None or next_mine is None:

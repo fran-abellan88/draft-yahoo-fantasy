@@ -401,3 +401,25 @@ def test_unseen_picks_count_towards_the_picks_made_for_ownership(service: DraftS
     answer = _ask(service, [ids[0], ids[1]] + [UNSEEN] * 24)  # picks 3 to 26 unseen; pick 27 is mine
     assert answer["clock"]["pick"] == 27 and answer["clock"]["isMine"] is True
     assert [entry["id"] for entry in answer["roster"]] == [ids[1]]
+
+
+def test_look_first_lists_better_scoring_players_the_odds_left_out_and_nobody_long_gone(service: DraftService) -> None:
+    ids = _by_adp(service)
+    answer = _ask(service, ids[:20] + [UNSEEN] * 6, method="uncapped", gamesAdjusted=True)  # the page defaults
+    rows = {row["id"]: row for row in answer["pool"]}
+    recommended = rows[answer["recommendation"]["id"]]
+    look = answer["lookFirst"]
+    assert [entry["id"] for entry in look] == ["amen-thompson"], "the reviewer's case: 48.7 against 46.1, odds 49%"
+    scores = [rows[entry["id"]]["score"] for entry in look]
+    assert scores == sorted(scores, reverse=True)
+    for entry in look:
+        assert rows[entry["id"]]["score"] > recommended["score"], "better than the recommendation"
+        assert 0.10 <= entry["availability"] < 0.5, "possible, but under the threshold that kept him out of the plan"
+        assert entry["id"] != recommended["id"]
+
+
+def test_look_first_is_empty_when_nothing_is_unseen_or_it_is_not_my_turn(service: DraftService) -> None:
+    ids = _by_adp(service)
+    assert _ask(service, ids[:26], method="uncapped", gamesAdjusted=True)["lookFirst"] == [], "my turn but the pool is exactly what is left"
+    assert _ask(service, ids[:10] + [UNSEEN] * 3)["lookFirst"] == [], "pick 14 is not mine"
+    assert _ask(service, [])["lookFirst"] == []

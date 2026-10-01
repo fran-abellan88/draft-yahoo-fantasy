@@ -378,15 +378,28 @@ function renderHero() {
   const heading = mine
     ? `Pick ${recommendation.pick} is yours. Take`
     : `You pick at ${recommendation.pick}, after ${plural(clock.picksUntilMine, 'more pick')}. Today's plan says`;
-  const odds = !mine && row.availability !== null ? `${pct(row.availability)} chance he is still there.` : '';
+  // On my turn the player is on the board unless picks were missed: then the doubt is shown and the user checks Yahoo
+  const doubt = mine && hasUnseenPicks() && row.availability !== null;
+  const odds = doubt
+    ? `${pct(row.availability)} chance he is still on the board. Check Yahoo.`
+    : !mine && row.availability !== null ? `${pct(row.availability)} chance he is still there.` : '';
+  const lookFirst = doubt ? analysis.lookFirst : [];
   put(hero, 
     h('h2', {}, heading),
     h('p', { class: 'name' }, nameOf(recommendation.id)),
     h('p', { class: 'facts' }, `${detailOf(recommendation.id)}, score ${oneDecimal(row.score)}${odds ? `. ${odds}` : ''}`),
     analysis.search.truncated ? h('p', { class: 'facts' }, 'Approximate: the search was cut short. See the note under Plan.') : null,
     laterSteps.length ? h('p', { class: 'then' }, `Then ${laterSteps.join(', ')}.`) : null,
+    lookFirst.length
+      ? h('p', { class: 'facts' }, `If still on the board, look first at: ${lookFirst.map((entry) => `${nameOf(entry.id)} (${pct(entry.availability)})`).join(', ')}.`)
+      : null,
     mine
-      ? h('div', { class: 'cta' }, h('button', { type: 'button', class: 'primary', onclick: () => draft(recommendation.id) }, `Draft ${nameOf(recommendation.id)}`))
+      ? h(
+          'div',
+          { class: 'cta' },
+          h('button', { type: 'button', class: 'primary', onclick: () => draft(recommendation.id) }, `Draft ${nameOf(recommendation.id)}`),
+          doubt ? h('button', { type: 'button', onclick: () => markPlayerGone(recommendation.id) }, 'He is gone') : null,
+        )
       : null,
   );
 }
@@ -426,7 +439,7 @@ function renderPlan() {
       h('div', { class: 'pick' }, `Pick ${step.pick}`),
       h('div', { class: 'who' }, h('strong', {}, nameOf(step.id)), h('div', { class: 'meta' }, detailOf(step.id))),
       h('div', { class: 'score-col' }, h('strong', {}, oneDecimal(row.score)), h('div', { class: 'meta' }, 'score')),
-      meter(step.availability, step.pick === analysis.clock.pick),
+      meter(step.availability, step.pick === analysis.clock.pick && !hasUnseenPicks()),
     );
   });
   const foot = h(
