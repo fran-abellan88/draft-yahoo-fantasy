@@ -69,9 +69,13 @@ The screenshots are transcribed into `data/*/…_raw.csv` and merged and checked
 
 ## Tests
 
+`pytest` and `flake8` are in `requirements-dev.txt`, which also holds `beautifulsoup4` for the Yahoo parser tests. Without
+it those two test files do not run. From the virtual environment of the first step:
+
 ```bash
-pytest
-flake8
+pip install -r requirements-dev.txt
+python -m pytest
+python -m flake8
 ```
 
 ## Layout
