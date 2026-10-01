@@ -79,3 +79,18 @@ def test_the_sorted_column_is_marked_on_its_header_cell_with_an_arrow() -> None:
     assert "header.setAttribute('aria-sort'" in JS and "button.setAttribute('aria-sort'" not in JS
     assert re.search(r'th\[aria-sort="ascending"\] button::after', CSS)
     assert re.search(r'th\[aria-sort="descending"\] button::after', CSS)
+
+
+def test_the_error_banner_stays_on_screen_and_offers_a_retry() -> None:
+    banner = re.search(r"\.banner\s*\{(.*?)\}", CSS, re.S)
+    assert banner and "position: fixed" in banner.group(1), "a banner in the page flow is off-screen when the table is scrolled"
+    html = (WEB / "index.html").read_text()
+    assert re.search(r'id="error"[^>]*>.*?id="error-retry"', html, re.S)
+    assert "$('error-retry').addEventListener('click', refresh)" in JS
+
+
+def test_only_network_failures_are_retried_automatically() -> None:
+    # A rejected request (4xx) fails the same way again, so it must not be in the retry loop
+    assert "NETWORK_RETRIES" in JS and "response.status >= 500" in JS
+    loop = JS[JS.index("for (let attempt"): JS.index("if (response === null)")]
+    assert "response.ok" not in loop

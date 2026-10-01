@@ -110,27 +110,46 @@ function ruleForRequest() {
     : { type: 'probability', baseSd: rule.baseSd, sdPerAdp: rule.sdPerAdp, threshold: rule.threshold };
 }
 
-function showError(message) {
-  const banner = $('error');
-  banner.textContent = message;
-  banner.hidden = false;
+function showError(message, retryable = false) {
+  $('error-text').textContent = message;
+  $('error-retry').hidden = !retryable;
+  $('error').hidden = false;
 }
 
 function hideError() {
   $('error').hidden = true;
 }
 
+// A failed request leaves the page showing the last answer it had, so picks logged since then are marked until
+// a request succeeds. Only a network failure is retried on its own; a rejected request would fail the same way again.
+const NETWORK_RETRIES = 2;
+const RETRY_DELAY_MS = 700;
+let refreshFailed = false;
+
+function markRefreshFailed() {
+  refreshFailed = true;
+  if (analysis) renderPool();
+}
+
 async function refresh() {
   const requestId = ++latestRequest;
-  let response;
-  try {
-    response = await fetch('/api/analyze', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ categories: state.categories, picks: state.picks, rule: ruleForRequest(), gamesAdjusted: state.gamesAdjusted, method: state.method }),
-    });
-  } catch (error) {
-    showError("Can't reach the draft server. Check that run_dashboard.py is still running, then reload.");
+  const body = JSON.stringify({ categories: state.categories, picks: state.picks, rule: ruleForRequest(), gamesAdjusted: state.gamesAdjusted, method: state.method });
+  let response = null;
+  for (let attempt = 0; attempt <= NETWORK_RETRIES && response === null; attempt += 1) {
+    if (attempt > 0) {
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+      if (requestId !== latestRequest) return;
+    }
+    try {
+      response = await fetch('/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+    } catch (error) {
+      response = null;
+    }
+  }
+  if (response === null) {
+    if (requestId !== latestRequest) return;
+    markRefreshFailed();
+    showError("Can't reach the draft server. Your picks are saved in this browser. Check that run_dashboard.py is still running.", true);
     return;
   }
   let data;
@@ -141,10 +160,12 @@ async function refresh() {
   }
   if (requestId !== latestRequest) return; // a newer request has already replaced this one
   if (!response.ok) {
-    showError(data.error || 'The server could not handle that request.');
+    markRefreshFailed();
+    showError(data.error || 'The server could not handle that request.', response.status >= 500);
     return;
   }
   hideError();
+  refreshFailed = false;
   analysis = data;
   poolRowById = new Map(data.pool.map((row) => [row.id, row]));
   render();
@@ -157,7 +178,11 @@ function scheduleRefresh() {
 
 // ---------- actions ----------
 function draft(id) {
-  if (!analysis || analysis.clock.draftComplete || state.picks.includes(id)) return;
+  if (!analysis || analysis.clock.draftComplete) return;
+  if (state.picks.includes(id)) {
+    if (refreshFailed) refresh(); // clicking a pick the server has not confirmed tries again
+    return;
+  }
   state.picks.push(id);
   state.search = '';
   $('search').value = '';
@@ -412,9 +437,10 @@ function renderPool() {
   visibleIds = rows.map(({ player }) => player.id);
 
   const body = rows.map(({ row, player }) => {
+    const unconfirmed = refreshFailed && state.picks.includes(player.id);
     const cells = [
       h('td', {}, row.rank),
-      h('td', { class: 'left player' }, h('strong', {}, player.name), h('div', { class: 'meta' }, `${player.team}, ${player.positions.join('/')}`), h('div', { class: 'notes' }, notesFor(row, player))),
+      h('td', { class: 'left player' }, h('strong', {}, player.name), h('div', { class: 'meta' }, `${player.team}, ${player.positions.join('/')}`), h('div', { class: 'notes' }, [...(unconfirmed ? [badge('Logged, not confirmed. Click to retry', 'injury', 'The server has not confirmed this pick yet')] : []), ...notesFor(row, player)])),
       h('td', { class: 'score' }, oneDecimal(row.score)),
       h('td', {}, row.availability === null ? '-' : pct(row.availability)),
       h('td', { title: player.adpEstimated ? 'Yahoo shows no ADP for him; estimated from nearby ranks' : '' }, `${player.adpEstimated ? '~' : ''}${player.adp.toFixed(1)}`),
@@ -426,6 +452,7 @@ function renderPool() {
       'tr',
       {
         tabindex: '0',
+        class: unconfirmed ? 'unconfirmed' : '',
         'data-id': player.id,
         title: `Log ${player.name} as the pick on the clock`,
         onclick: () => draft(player.id),
@@ -586,6 +613,7 @@ function onRuleChange() {
 }
 
 function wireControls() {
+  $('error-retry').addEventListener('click', refresh);
   $('undo').addEventListener('click', undo);
   $('reset').addEventListener('click', reset);
   $('search').addEventListener('input', (event) => {

@@ -73,7 +73,15 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 button.quiet { color: var(--muted); }
 button.primary { background: var(--mine); border-color: var(--mine); color: var(--on-mine); font-weight: 650; padding: 10px 18px; }
 
-.banner { padding: 10px 16px; background: var(--danger-soft); color: var(--danger); font-weight: 600; }
+/* Fixed, so it is seen wherever the page is scrolled and does not push the layout down */
+.banner {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 20;
+  display: flex; gap: 12px; align-items: center; justify-content: center;
+  padding: 10px 16px; background: var(--danger-soft); color: var(--danger); font-weight: 600;
+  border-bottom: 1px solid var(--danger);
+}
+.banner button { color: var(--danger); border-color: var(--danger); background: transparent; }
+tr.unconfirmed { opacity: 0.6; }
 
 /* Page structure */
 .layout {
