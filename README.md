@@ -21,6 +21,12 @@ Your picks are kept in the browser, so reloading the page mid-draft loses nothin
 
 - **Click a player** to log the pick that is on the clock. Picks are logged in order and the snake order decides
   which ones are yours, so the state cannot disagree with the draft. **Undo last pick** removes the latest one.
+- **Pick not in the list** logs a pick of a player who is not among the 150. It counts as a pick, nobody leaves the
+  pool, and if it is yours it fills one starting slot at any position, at replacement-level value.
+- **I am behind**: type the pick Yahoo is at and the picks you missed become *unseen*. A player the table lists may have
+  been taken at one of them, so every availability number allows for that. Press **Gone** on a player you know was taken
+  and one unseen pick is resolved to him (the one closest to his ADP), which raises the odds of the players near it. Your
+  own picks are never unseen: the page stops before one and asks you to log it first.
 - **Scoring categories**: untick one to leave it out of every score and plan. The score is the average of the ticked
   categories, so ticking fewer does not lower anyone's score.
 - **Reward big numbers / Cap at the top 5%**: the uncapped score (default) lets a 32-point scorer outrank a 26-point one.
