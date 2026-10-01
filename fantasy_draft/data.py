@@ -9,6 +9,7 @@ import re
 from pathlib import Path
 from typing import List
 
+import numpy as np
 import pandas as pd
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -56,4 +57,12 @@ def load_players(projections_path: Path = PROJECTIONS_PATH, averages_path: Path 
     if players["player_id"].duplicated().any():
         raise ValueError("Two players share the same id")
     players["pos_list"] = players["positions"].str.split(",")
-    return players.sort_values("xrank").reset_index(drop=True)
+    players = players.sort_values("xrank").reset_index(drop=True)
+
+    # Yahoo shows no ADP for a few players (nobody drafts them early). Estimate it from the neighbouring
+    # XRanks so availability can still be modelled, and keep the original column untouched.
+    known = players["adp"].notna()
+    players["adp_estimated"] = ~known
+    players["adp_est"] = players["adp"]
+    players.loc[~known, "adp_est"] = np.interp(players.loc[~known, "xrank"], players.loc[known, "xrank"], players.loc[known, "adp"])
+    return players
