@@ -73,7 +73,8 @@ The screenshots are transcribed into `data/*/…_raw.csv` and merged and checked
 
 `pytest` and `flake8` are in `requirements-dev.txt`, which also holds `beautifulsoup4` for the Yahoo parser tests. Without
 it those two test files do not run. The tests of the page's own JavaScript (`fantasy_draft/web/logic.js`) run under Node
-and are skipped when Node is not installed. From the virtual environment of the first step:
+and are skipped when Node is not installed; `pytest` then lists them as skipped with the reason, so check that line
+before trusting a green run. From the virtual environment of the first step:
 
 ```bash
 pip install -r requirements-dev.txt
