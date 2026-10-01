@@ -443,8 +443,10 @@ function renderPool() {
   if (rows.length === 0) $('pool-body').append(h('tr', {}, h('td', { colspan: POOL_COLUMNS.length, class: 'left' }, 'No available player matches. Clear the search or choose another position.')));
 
   for (const button of $('pool-head').querySelectorAll('button[data-key]')) {
-    if (button.dataset.key === key) button.setAttribute('aria-sort', direction === 1 ? 'ascending' : 'descending');
-    else button.removeAttribute('aria-sort');
+    // aria-sort belongs on the column header cell, and the stylesheet draws the arrow from it
+    const header = button.parentElement;
+    if (button.dataset.key === key) header.setAttribute('aria-sort', direction === 1 ? 'ascending' : 'descending');
+    else header.removeAttribute('aria-sort');
   }
 }
 

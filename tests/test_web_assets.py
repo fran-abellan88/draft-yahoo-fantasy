@@ -73,3 +73,9 @@ def test_table_labels_use_the_same_names_as_the_categories() -> None:
     assert labels, "the stat columns moved; update this test"
     for key, label in labels.items():
         assert label == CATEGORIES[key].label, f"{key}: the table says {label}, the category list says {CATEGORIES[key].label}"
+
+
+def test_the_sorted_column_is_marked_on_its_header_cell_with_an_arrow() -> None:
+    assert "header.setAttribute('aria-sort'" in JS and "button.setAttribute('aria-sort'" not in JS
+    assert re.search(r'th\[aria-sort="ascending"\] button::after', CSS)
+    assert re.search(r'th\[aria-sort="descending"\] button::after', CSS)
