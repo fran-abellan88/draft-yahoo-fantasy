@@ -31,7 +31,9 @@ Your picks are kept in the browser, so reloading the page mid-draft loses nothin
   category bars. Every column of the table sorts, including XRank and projected GP.
 - **Who will still be there?** has two ways to judge availability. *Odds from ADP* treats a player's draft position as
   a bell curve around his ADP that widens for later picks. *ADP window* is a plain cut-off. Both are starting guesses
-  that should be tuned on a draft with real managers.
+  that should be tuned on a draft with real managers. If the settings let almost everyone through, checking every plan
+  would take too long, so the search stops at a fixed amount of work and the page says so: the plan is then the best one
+  found, not proven the best. With the default settings the search always finishes.
 - **Worth knowing** badges under a name: the injury tag, no or few games last season, a projection that differs a lot
   from last season, or a projection of few games played. They never change the score; they tell you when to look twice.
 
