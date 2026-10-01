@@ -74,12 +74,13 @@ class FirstPickOption:
 
 @dataclass(frozen=True)
 class Recommendation:
-    """Plans for the rest of the draft, how the best first picks compare, and whether the search was cut short."""
+    """Plans for the rest of the draft, how the other first picks compare, and whether the search was cut short."""
 
     plans: List[Plan]
-    options: List[FirstPickOption]  # best first; the first is the best plan's own first pick
+    options: List[FirstPickOption]  # the other first picks, best first; never the recommended player
     truncated: bool
     nodes: int
+    assumed_gone: Optional[str] = None  # the recommended player, when the options plan as if he will be taken first
 
 
 def recommend(
@@ -124,6 +125,11 @@ def plan_picks(
 
     The alternatives are searched directly, one search per first pick with that player fixed, so `top_k` only has
     to cover the plans shown and does not decide which alternatives can appear.
+
+    There are two questions, and the options answer the one that applies. While I am waiting for my pick, the
+    recommended player may be taken before it, so the options plan without him at any of my picks (`assumed_gone`):
+    what losing him really costs. On the clock he is on the board, so the options leave him in: what choosing
+    someone else costs. Without this, "if he is gone" would be priced on plans that take him one pick later.
     """
     _check_state(players, state, slot, rounds)
     remaining_picks = [pick for pick in my_picks(slot, rounds) if pick >= state.next_pick]
@@ -143,17 +149,23 @@ def plan_picks(
     plans, truncated, nodes = _search(candidates, remaining_picks, mine_masks, base_score, top_k, node_budget)
 
     options: List[FirstPickOption] = []
+    assumed_gone: Optional[str] = None
     if option_count and plans:
-        by_id = {candidate.player_id: candidate for candidate in candidates[0]}
-        wanted = [plans[0].player_ids[0]] + [c.player_id for c in candidates[0][:option_count]]
-        for player_id in dict.fromkeys(wanted):  # in order, once each
+        recommended = plans[0].player_ids[0]
+        waiting = remaining_picks[0] > state.next_pick
+        assumed_gone = recommended if waiting else None
+        later = candidates[1:]
+        if assumed_gone is not None:
+            later = [[c for c in candidate_list if c.player_id != assumed_gone] for candidate_list in later]
+        wanted = [c for c in candidates[0] if c.player_id != recommended][:option_count]
+        for first in wanted:
             budget = None if node_budget is None else min(node_budget, OPTION_NODE_BUDGET)
-            found, cut, used = _search([[by_id[player_id]]] + candidates[1:], remaining_picks, mine_masks, base_score, 1, budget)
+            found, cut, used = _search([[first]] + later, remaining_picks, mine_masks, base_score, 1, budget)
             truncated, nodes = truncated or cut, nodes + used
             if found:
-                options.append(FirstPickOption(player_id, found[0]))
+                options.append(FirstPickOption(first.player_id, found[0]))
         options.sort(key=lambda option: (option.plan.total_score, option.plan.survival), reverse=True)
-    return Recommendation(plans, options, truncated, nodes)
+    return Recommendation(plans, options, truncated, nodes, assumed_gone)
 
 
 def pick_frequency(plans: Sequence[Plan], pick_index: int = 0) -> pd.DataFrame:
@@ -223,6 +235,8 @@ def _search(
     Returns the plans, whether the `node_budget` ran out before the search finished, and the nodes visited.
     """
     n_picks = len(candidates)
+    if any(not candidate_list for candidate_list in candidates):
+        return [], False, 0  # a pick nobody can fill leaves no plan (possible once a player is assumed gone)
     suffix_best = [0.0] * (n_picks + 1)
     for k in range(n_picks - 1, -1, -1):
         suffix_best[k] = suffix_best[k + 1] + candidates[k][0].score

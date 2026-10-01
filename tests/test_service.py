@@ -227,3 +227,16 @@ def test_the_work_budget_never_binds_with_default_rules_over_a_whole_draft(servi
         assert answer["search"]["truncated"] is False, f"cut short with {made} picks made"
         busiest = max(busiest, answer["search"]["nodes"])
     assert busiest < NODE_BUDGET / 2, f"the busiest state used {busiest:,} nodes; the budget is {NODE_BUDGET:,}"
+
+
+def test_alternatives_say_whether_they_assume_the_recommended_player_is_gone(service: DraftService) -> None:
+    ids = _ids_by_xrank(service)
+    waiting = _ask(service, [])  # pick 1 is still to be made, so he may be taken before my pick 2
+    on_the_clock = _ask(service, ids[:1])  # pick 2 is mine and the board is in front of me
+    assert waiting["alternativesMode"] == "gone" and on_the_clock["alternativesMode"] == "instead"
+
+
+def test_alternatives_are_never_ahead_of_the_best_plan(service: DraftService) -> None:
+    for made in (0, 1, 10, 26, 40):
+        answer = _ask(service, _ids_by_xrank(service)[:made])
+        assert all(alt["behind"] >= 0 for alt in answer["alternatives"]), f"{made} picks made"

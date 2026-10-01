@@ -323,6 +323,13 @@ function meter(availability, isCurrent) {
   );
 }
 
+// Shown only when it says something: a cut-short search prices its alternatives approximately, and when every
+// alternative ties with the best plan there is nothing to choose between.
+const TIE_POINTS = 0.05;
+function alternativesWorthShowing() {
+  return !analysis.search.truncated && analysis.alternatives.some((alt) => alt.behind >= TIE_POINTS);
+}
+
 function renderPlan() {
   const container = $('plan');
   const alternatives = $('alternatives');
@@ -360,14 +367,12 @@ function renderPlan() {
     : null;
   put(container, h('div', { class: 'plan' }, rows, foot), otherPlans);
 
-  if (analysis.alternatives.length && analysis.recommendation) {
-    const text = analysis.alternatives.map((alt) => `${nameOf(alt.id)} (${alt.behind > 0 ? `${oneDecimal(alt.behind)} lower` : 'same'})`).join(', ');
-    put(
-      alternatives,
-      h('span', {}, `If ${nameOf(analysis.recommendation.id)} is gone, take instead: `),
-      h('strong', {}, text),
-      h('span', {}, '. In brackets: how far the whole plan falls behind the best one.'),
-    );
+  if (alternativesWorthShowing() && analysis.recommendation) {
+    const text = analysis.alternatives.map((alt) => `${nameOf(alt.id)} (${alt.behind >= TIE_POINTS ? `${oneDecimal(alt.behind)} lower` : 'same'})`).join(', ');
+    const lead = analysis.alternativesMode === 'gone'
+      ? `If ${nameOf(analysis.recommendation.id)} is gone by pick ${analysis.recommendation.pick}, take instead: `
+      : 'Or take instead: ';
+    put(alternatives, h('span', {}, lead), h('strong', {}, text), h('span', {}, '. In brackets: how far the whole plan falls behind the best one.'));
   } else {
     put(alternatives, );
   }

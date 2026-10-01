@@ -105,3 +105,10 @@ def test_the_page_shows_a_busy_state_and_the_search_note() -> None:
 
 def test_the_page_prices_alternatives_with_the_gap_the_server_sends() -> None:
     assert "alt.behind" in JS and "alt.share" not in JS
+
+
+def test_the_alternatives_line_is_hidden_when_it_says_nothing() -> None:
+    # A cut-short search prices them approximately, and all-equal alternatives leave nothing to choose between
+    worth_showing = re.search(r"function alternativesWorthShowing\(\)\s*\{\s*return (.*?);", JS, re.S)
+    assert worth_showing and "!analysis.search.truncated" in worth_showing.group(1) and "alternatives.some" in worth_showing.group(1)
+    assert "analysis.alternativesMode === 'gone'" in JS

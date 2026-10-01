@@ -1,7 +1,7 @@
 """Tests for the draft optimizer, including an exhaustive cross-check on small pools."""
 
 import itertools
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -188,8 +188,13 @@ def test_removing_a_category_changes_the_best_team() -> None:
     assert set(with_to.player_ids) != set(without_to.player_ids)
 
 
-def _best_total_by_first_pick(pool: pd.DataFrame, rule: AvailabilityRule, state: DraftState, bounds: dict) -> Dict[str, float]:
-    """Best total of any valid team that starts with each player, by trying every assignment."""
+def _best_total_by_first_pick(
+    pool: pd.DataFrame, rule: AvailabilityRule, state: DraftState, bounds: dict, exclude_later: Optional[str] = None
+) -> Dict[str, float]:
+    """Best total of any valid team that starts with each player, by trying every assignment.
+
+    With `exclude_later`, that player may not be chosen at any pick after the first.
+    """
     scores = dict(zip(pool["player_id"], composite_score(pool, ["pts"], bounds)))
     positions = dict(zip(pool["player_id"], pool["pos_list"]))
     picks = [p for p in my_picks(rounds=ROUNDS) if p >= state.next_pick]
@@ -197,6 +202,7 @@ def _best_total_by_first_pick(pool: pd.DataFrame, rule: AvailabilityRule, state:
     adp = remaining["adp_est"].to_numpy()
     ids = remaining["player_id"].to_numpy()
     eligible = [list(ids[rule.probability(adp, pick, state.picks_made) >= rule.threshold]) for pick in picks]
+    eligible = eligible[:1] + [[p for p in later if p != exclude_later] for later in eligible[1:]]
     base = sum(scores[p] for p in state.mine)
     best: Dict[str, float] = {}
     for combo in itertools.product(*eligible):
@@ -209,27 +215,78 @@ def _best_total_by_first_pick(pool: pd.DataFrame, rule: AvailabilityRule, state:
 
 @pytest.mark.parametrize("seed", range(4))
 @pytest.mark.parametrize("rule", [NormalAdpModel(), AdpWindow(slack=4.0)], ids=["normal", "window"])
-def test_first_pick_options_are_the_best_plan_for_each_first_pick(seed: int, rule: AvailabilityRule) -> None:
+def test_waiting_options_price_losing_the_recommended_player(seed: int, rule: AvailabilityRule) -> None:
+    """Pick 1 is not made yet, so the recommended player may be gone by pick 2: the options plan without him."""
     pool = _pool(seed)
     bounds = compute_bounds(pool, ["pts"])
-    expected = _best_total_by_first_pick(pool, rule, DraftState(), bounds)
     result = plan_picks(
         pool, DraftState(), ["pts"], bounds, rule, rounds=ROUNDS, max_candidates=len(pool), node_budget=None, option_count=len(pool)
     )
+    recommended = result.plans[0].player_ids[0]
+    assert result.assumed_gone == recommended
+    expected = _best_total_by_first_pick(pool, rule, DraftState(), bounds, exclude_later=recommended)
+    expected.pop(recommended, None)
     assert {option.player_id: option.plan.total_score for option in result.options} == pytest.approx(expected)
     assert not result.truncated
-    assert result.options[0].plan.total_score == pytest.approx(result.plans[0].total_score)
-    assert all(option.plan.player_ids[0] == option.player_id for option in result.options)
+    assert all(recommended not in option.plan.player_ids for option in result.options)
+    assert all(option.plan.total_score <= result.plans[0].total_score + 1e-9 for option in result.options)
 
 
-def test_options_are_sorted_best_first_and_cover_the_recommended_pick() -> None:
+@pytest.mark.parametrize("seed", range(4))
+@pytest.mark.parametrize("rule", [NormalAdpModel(), AdpWindow(slack=4.0)], ids=["normal", "window"])
+def test_on_the_clock_options_leave_the_recommended_player_available(seed: int, rule: AvailabilityRule) -> None:
+    """Pick 2 is mine and the board is in front of me, so the options ask what another choice costs."""
+    pool = _pool(seed)
+    bounds = compute_bounds(pool, ["pts"])
+    state = DraftState(taken=frozenset({"p0"}))
+    result = plan_picks(
+        pool, state, ["pts"], bounds, rule, rounds=ROUNDS, max_candidates=len(pool), node_budget=None, option_count=len(pool)
+    )
+    recommended = result.plans[0].player_ids[0]
+    assert result.assumed_gone is None
+    expected = _best_total_by_first_pick(pool, rule, state, bounds)
+    expected.pop(recommended, None)
+    assert {option.player_id: option.plan.total_score for option in result.options} == pytest.approx(expected)
+    assert all(option.player_id != recommended for option in result.options)
+
+
+def test_options_are_sorted_best_first_never_the_recommended_player_and_capped() -> None:
     players = load_players()
     keys = categories_in(players.columns)
     result = plan_picks(players, DraftState(), keys, compute_bounds(players, keys), NormalAdpModel())
     totals = [option.plan.total_score for option in result.options]
     assert totals == sorted(totals, reverse=True)
-    assert result.plans[0].player_ids[0] in [option.player_id for option in result.options]
-    assert len({option.player_id for option in result.options}) == len(result.options) <= FIRST_PICK_OPTIONS + 1
+    assert result.plans[0].player_ids[0] not in [option.player_id for option in result.options]
+    assert len({option.player_id for option in result.options}) == len(result.options) <= FIRST_PICK_OPTIONS
+
+
+def test_the_recommended_player_never_comes_back_in_a_waiting_alternative_on_real_data() -> None:
+    """The bug this guards: 'if Holmgren is gone' priced on a plan that takes Holmgren one pick later (18% of cases)."""
+    players = load_players()
+    keys = categories_in(players.columns)
+    bounds = compute_bounds(players, keys, method="uncapped")
+    by_adp = players.sort_values("adp_est")["player_id"].tolist()
+    mine_numbers = set(my_picks(rounds=13))
+    waiting_states = on_the_clock_states = 0
+    for made in range(0, 112):
+        picks = by_adp[:made]
+        state = DraftState(
+            taken=frozenset(p for n, p in enumerate(picks, 1) if n not in mine_numbers),
+            mine=tuple(p for n, p in enumerate(picks, 1) if n in mine_numbers),
+        )
+        result = plan_picks(players, state, keys, bounds, NormalAdpModel(), games_adjusted=True, method="uncapped")
+        if not result.plans:
+            continue
+        recommended = result.plans[0].player_ids[0]
+        assert not result.truncated
+        assert all(option.plan.total_score <= result.plans[0].total_score + 1e-9 for option in result.options)
+        if result.assumed_gone:
+            waiting_states += 1
+            assert result.assumed_gone == recommended
+            assert all(recommended not in option.plan.player_ids for option in result.options), f"{made} picks made"
+        else:
+            on_the_clock_states += 1
+    assert waiting_states > 50 and on_the_clock_states >= 8, "the walk must cover both modes"
 
 
 def _wide_open_search(node_budget: int) -> Recommendation:
@@ -246,7 +303,7 @@ def _wide_open_search(node_budget: int) -> Recommendation:
 def test_a_search_that_runs_out_of_budget_says_so_and_stops_near_the_budget() -> None:
     result = _wide_open_search(node_budget=2_000)
     assert result.truncated
-    searches = 1 + FIRST_PICK_OPTIONS + 1  # the main search and one per first-pick option, each stopping one node past its budget
+    searches = 1 + FIRST_PICK_OPTIONS  # the main search and one per first-pick option, each stopping one node past its budget
     assert result.nodes <= searches * (2_000 + 1)
     assert result.plans, "a depth-first search reaches a first plan long before it runs out of budget"
 

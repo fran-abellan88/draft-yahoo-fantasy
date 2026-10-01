@@ -169,6 +169,7 @@ class DraftService:
             "pool": pool,
             "plans": [self._plan_payload(plan, rule, state) for plan in plans[:PLANS_SHOWN]],
             "alternatives": self._alternatives(recommendation_result.options, best),
+            "alternativesMode": "gone" if recommendation_result.assumed_gone else "instead",
             "search": {"truncated": recommendation_result.truncated, "nodes": recommendation_result.nodes},
             "recommendation": self._recommendation(best, next_mine),
             "roster": [{"id": pid, "pick": number} for number, pid in enumerate(picks, start=1) if number in mine_numbers],
@@ -268,14 +269,16 @@ class DraftService:
         return {"steps": steps, "totalScore": _num(plan.total_score, 1), "survival": _num(plan.survival, 3)}
 
     def _alternatives(self, options: List[FirstPickOption], best: Optional[Plan]) -> List[Dict[str, Any]]:
-        """What to take if the recommended first pick is gone: the best plan for each other player and how far behind it is."""
+        """The best plan for each other first pick and how far behind the best plan it is (see `plan_picks` for the two modes)."""
         if best is None:
             return []
-        others = [option for option in options if option.player_id != best.player_ids[0]]
-        return [
-            {"id": option.player_id, "behind": _num(max(0.0, best.total_score - option.plan.total_score), 1)}
-            for option in others[:ALTERNATIVES_SHOWN]
-        ]
+        # Not clamped at 0: an option can only beat the best plan if the search was cut short, and then the page
+        # does not show the line. Float noise around zero is rounded away.
+        shown: List[Dict[str, Any]] = []
+        for option in options[:ALTERNATIVES_SHOWN]:
+            gap = best.total_score - option.plan.total_score
+            shown.append({"id": option.player_id, "behind": 0.0 if abs(gap) < 1e-9 else _num(gap, 1)})
+        return shown
 
     def _recommendation(self, best: Optional[Plan], next_mine: Optional[int]) -> Optional[Dict[str, Any]]:
         if best is None or next_mine is None:
