@@ -66,8 +66,8 @@ layout. 1720 is three columns.
 
 ## The height budget
 
-Designed to hold at **900 px high** (a half-screen window on a 1080-line desktop is about 950). Budget for the two-column
-rail, which is the tightest:
+900 px high is the middle of the range, not the floor: a window on a 1080-line desktop is roughly 830 to 950 px high, so
+the **800 px case is part of the design** (below). Budget for the two-column rail at 900, which is the tightest:
 
 | Part | Waiting | On the clock |
 |---|---|---|
@@ -76,6 +76,9 @@ rail, which is the tightest:
 | PLAN, 7 steps and header | 230 | 230 |
 | Tab strip | 40 | 40 |
 | **Left for the tab panel** | **about 480** | **about 370** |
+
+At **800 px** the tab panel has about 380 px waiting and about 270 on the clock, PLAN already shows four steps with
+"+3 more" on the clock, and the snake strip is in the CLOCK tooltip. The REC block is unchanged.
 
 The tab panel scrolls inside itself. What gives way, in order, when the window is shorter: the tab panel gets less
 height (it scrolls more); then PLAN shows its first four steps with "+3 more"; then the snake strip folds into the CLOCK
@@ -171,7 +174,8 @@ Waiting:
 ```
 
 **On the clock the strip grows to carry the whole decision without a tab switch**, because that is when a timer is
-running: the recommendation, the reason, the "or take instead" line and one line of standing ("contested: 3PM, ST, BLK").
+running: the recommendation, the reason, the "or take instead" line and one line of standing in three groups:
+"Winning: REB, AST. Close: 3PM, ST, BLK. Behind: FT%".
 
 ## What drops out, by width
 
@@ -228,6 +232,27 @@ until then the row "taken by unseen picks, not counted" shows how many.
 |  [ Swap ]   [ I do not know what 47 was ]   [ Cancel ]               |
 +----------------------------------------------------------------------+
 ```
+
+## Notes carried to step 6 (the reviewer's fourth reply)
+
+None of these changes the drawing; they are conditions on building it.
+
+1. **Build and measure the table first (C2, C3), then set the grid minimums.** The 860 px table and the 320 px panel
+   are today's sizes; the new table (one line per player, Rank vs ADP) may need about 1,000, so all four thresholds above
+   are provisional. Whenever the table is narrower than its natural width, at any window width, `#` and `Player` stay
+   fixed and the rest scroll sideways. The columns that give way first are XRank, then GP.
+2. **The decision gap also exists from 1240 to 1580 px**, where MY TEAM and STANDING share one tab panel and 1280 is a
+   likely width. Wherever STANDING has no space of its own, the on-the-clock REC carries the one-line standing
+   ("Winning / Close / Behind"). The tab panel remembers the last tab.
+3. **The 14-team panel does not fit 320 px as nine columns of totals** (it needs about 370 to 400). Either a larger
+   minimum for that panel, or cells show ranks with the totals on hover.
+4. **The error banner gets its own row under the top bar**: it is fixed to the top of the window, which is now the top
+   bar.
+5. **These are breakpoints, so each is checked one pixel either side in a real window** (B2 lived on such an edge).
+   Every panel is a child of the same grid at all widths, and the tabbed panels share one grid area, so the layout holds
+   by construction instead of by a script swapping elements.
+6. **[I am behind]** refuses a pick that is not ahead of the log. **[mark as gone]** works only while unseen picks are
+   outstanding, and must not also log the row.
 
 ## What this drawing does not decide
 
