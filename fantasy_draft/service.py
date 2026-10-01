@@ -170,7 +170,12 @@ class DraftService:
             "plans": [self._plan_payload(plan, rule, state) for plan in plans[:PLANS_SHOWN]],
             "alternatives": self._alternatives(recommendation_result.options, best),
             "alternativesMode": "gone" if recommendation_result.assumed_gone else "instead",
-            "search": {"truncated": recommendation_result.truncated, "nodes": recommendation_result.nodes},
+            "search": {
+                "truncated": recommendation_result.truncated,
+                "nodes": recommendation_result.nodes,
+                "mainNodes": recommendation_result.main_nodes,
+                "maxOptionNodes": recommendation_result.max_option_nodes,
+            },
             "recommendation": self._recommendation(best, next_mine),
             "roster": [{"id": pid, "pick": number} for number, pid in enumerate(picks, start=1) if number in mine_numbers],
             "log": [{"pick": number, "id": pid, "mine": number in mine_numbers} for number, pid in enumerate(picks, start=1)],

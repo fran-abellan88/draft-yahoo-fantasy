@@ -79,8 +79,10 @@ class Recommendation:
     plans: List[Plan]
     options: List[FirstPickOption]  # the other first picks, best first; never the recommended player
     truncated: bool
-    nodes: int
+    nodes: int  # all searches together
     assumed_gone: Optional[str] = None  # the recommended player, when the options plan as if he will be taken first
+    main_nodes: int = 0  # the search for the plans alone, to compare with NODE_BUDGET
+    max_option_nodes: int = 0  # the busiest single first-pick search, to compare with OPTION_NODE_BUDGET
 
 
 def recommend(
@@ -147,6 +149,7 @@ def plan_picks(
     mine_masks = [position_mask(positions[player_id]) for player_id in state.mine]
     base_score = float(sum(scores[player_id] for player_id in state.mine))
     plans, truncated, nodes = _search(candidates, remaining_picks, mine_masks, base_score, top_k, node_budget)
+    main_nodes, max_option_nodes = nodes, 0
 
     options: List[FirstPickOption] = []
     assumed_gone: Optional[str] = None
@@ -162,10 +165,11 @@ def plan_picks(
             budget = None if node_budget is None else min(node_budget, OPTION_NODE_BUDGET)
             found, cut, used = _search([[first]] + later, remaining_picks, mine_masks, base_score, 1, budget)
             truncated, nodes = truncated or cut, nodes + used
+            max_option_nodes = max(max_option_nodes, used)
             if found:
                 options.append(FirstPickOption(first.player_id, found[0]))
         options.sort(key=lambda option: (option.plan.total_score, option.plan.survival), reverse=True)
-    return Recommendation(plans, options, truncated, nodes, assumed_gone)
+    return Recommendation(plans, options, truncated, nodes, assumed_gone, main_nodes, max_option_nodes)
 
 
 def pick_frequency(plans: Sequence[Plan], pick_index: int = 0) -> pd.DataFrame:

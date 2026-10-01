@@ -6,7 +6,7 @@ import pytest
 
 from fantasy_draft.data import load_players
 from fantasy_draft.draft import DraftState, my_picks
-from fantasy_draft.optimizer import FIRST_PICK_OPTIONS, NODE_BUDGET
+from fantasy_draft.optimizer import FIRST_PICK_OPTIONS, NODE_BUDGET, OPTION_NODE_BUDGET
 from fantasy_draft.service import DraftService, RequestError, parse_rule
 
 ALL = ["fg_pct", "ft_pct", "3ptm", "pts", "reb", "ast", "st", "blk", "to"]
@@ -220,13 +220,16 @@ def test_a_rule_that_lets_everyone_through_is_cut_short_and_flagged(service: Dra
 def test_the_work_budget_never_binds_with_default_rules_over_a_whole_draft(service: DraftService, settings: Dict[str, Any]) -> None:
     """If this fails, default results have silently become approximate: more candidates or rounds were added without a rethink."""
     ids = service.players.sort_values("adp_est")["player_id"].tolist()
-    busiest = 0
+    busiest_main = busiest_option = 0
     # Every third state, plus the one just before each of my picks, which is where the search is busiest
     for made in sorted(set(range(0, 112, 3)) | {pick - 1 for pick in my_picks(rounds=8)}):
         answer = service.analyze({"categories": ALL, "picks": ids[:made], **settings})
         assert answer["search"]["truncated"] is False, f"cut short with {made} picks made"
-        busiest = max(busiest, answer["search"]["nodes"])
-    assert busiest < NODE_BUDGET / 2, f"the busiest state used {busiest:,} nodes; the budget is {NODE_BUDGET:,}"
+        busiest_main = max(busiest_main, answer["search"]["mainNodes"])
+        busiest_option = max(busiest_option, answer["search"]["maxOptionNodes"])
+    # The first-pick searches have the tighter cap, so they are the first to bind
+    assert busiest_option < OPTION_NODE_BUDGET / 2, f"a first-pick search used {busiest_option:,}; its budget is {OPTION_NODE_BUDGET:,}"
+    assert busiest_main < NODE_BUDGET / 2, f"the main search used {busiest_main:,} nodes; its budget is {NODE_BUDGET:,}"
 
 
 def test_alternatives_say_whether_they_assume_the_recommended_player_is_gone(service: DraftService) -> None:
@@ -240,3 +243,9 @@ def test_alternatives_are_never_ahead_of_the_best_plan(service: DraftService) ->
     for made in (0, 1, 10, 26, 40):
         answer = _ask(service, _ids_by_xrank(service)[:made])
         assert all(alt["behind"] >= 0 for alt in answer["alternatives"]), f"{made} picks made"
+
+
+def test_the_answer_reports_the_main_and_the_busiest_option_search(service: DraftService) -> None:
+    search = _ask(service, [])["search"]
+    assert 0 < search["mainNodes"] < NODE_BUDGET and 0 < search["maxOptionNodes"] < OPTION_NODE_BUDGET
+    assert search["nodes"] >= search["mainNodes"] + search["maxOptionNodes"]
