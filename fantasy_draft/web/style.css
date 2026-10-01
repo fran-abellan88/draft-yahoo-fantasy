@@ -9,6 +9,7 @@
   --line: #d8dee6;
   --mine: #0f7b55;
   --mine-soft: #dff3ea;
+  --on-mine: #ffffff; /* text on a --mine background */
   --flag: #9a4a05;
   --flag-soft: #fdf0dc;
   --danger: #b42318;
@@ -27,6 +28,7 @@
     --line: #2b3949;
     --mine: #3ecf9b;
     --mine-soft: #143a2e;
+    --on-mine: #06281d;
     --flag: #f0a95a;
     --flag-soft: #3a2a14;
     --danger: #ff8a80;
@@ -69,8 +71,7 @@ button {
 button:hover:not(:disabled) { border-color: var(--muted); }
 button:disabled { opacity: 0.45; cursor: not-allowed; }
 button.quiet { color: var(--muted); }
-button.primary { background: var(--mine); border-color: var(--mine); color: #fff; font-weight: 650; padding: 10px 18px; }
-@media (prefers-color-scheme: dark) { button.primary { color: #06281d; } }
+button.primary { background: var(--mine); border-color: var(--mine); color: var(--on-mine); font-weight: 650; padding: 10px 18px; }
 
 .banner { padding: 10px 16px; background: var(--danger-soft); color: var(--danger); font-weight: 600; }
 
@@ -103,11 +104,11 @@ main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 26px; min-widt
   border: 1px solid var(--line);
   color: var(--muted);
 }
-.snake .cell.done { background: var(--line); color: var(--muted); border-color: var(--line); }
+.snake .cell.done { background: var(--line); color: var(--ink); border-color: var(--line); }
 .snake .cell.me { border-color: var(--mine); color: var(--mine); font-weight: 700; }
 .snake .cell.done.me { background: var(--mine-soft); }
 .snake .cell.now { background: var(--ink); color: var(--paper); border-color: var(--ink); font-weight: 700; }
-.snake .cell.now.me { background: var(--mine); color: #fff; border-color: var(--mine); }
+.snake .cell.now.me { background: var(--mine); color: var(--on-mine); border-color: var(--mine); }
 
 /* Controls */
 .categories { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; }
