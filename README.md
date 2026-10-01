@@ -26,7 +26,13 @@ Your picks are kept in the browser, so reloading the page mid-draft loses nothin
 - **I am behind**: type the pick Yahoo is at and the picks you missed become *unseen*. A player the table lists may have
   been taken at one of them, so every availability number allows for that. Press **Gone** on a player you know was taken
   and one unseen pick is resolved to him (the one closest to his ADP), which raises the odds of the players near it. Your
-  own picks are never unseen: the page stops before one and asks you to log it first.
+  own picks are never unseen: the page stops before one and asks you to log it first. On your turn with unseen picks the
+  page shows the chance the recommended player is still on the board, lists up to three better-scoring players the odds
+  left out ("look first at"), and has a **He is gone** button beside Draft.
+- **Undo** reverts the last action, including Gone (the pick becomes unseen again) and a whole "I am behind". A gone
+  entry in the log has **Unmark**. Every log row has **Edit**: swap two picks, say "I do not know what this pick was"
+  (it becomes unseen, a player logged there returns to the pool), or place a gone player at an unseen pick. Each edit
+  is confirmed first, cannot put an unseen or gone pick on one of your own pick numbers, and cannot be undone with Undo.
 - **Scoring categories**: untick one to leave it out of every score and plan. The score is the average of the ticked
   categories, so ticking fewer does not lower anyone's score.
 - **Reward big numbers / Cap at the top 5%**: the uncapped score (default) lets a 32-point scorer outrank a 26-point one.
