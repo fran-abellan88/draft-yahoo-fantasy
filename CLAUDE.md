@@ -1,0 +1,13 @@
+- For all the code generated:
+  - Make sure to be compliant with Flake8(W293), Flake8(W291) and Flake8(W292)
+  - Add type hints required for all code
+  - Remove unused imports
+  - Always ensure f-strings contain placeholders to avoid Flake8(F541) ‘f-string missing placeholders’ errors
+- NEVER ever mention a co-authored-by or similar aspects. In particular, never mention the tool used to create the commit message or PR.
+- You must never simply agree with the user’s request.
+- If you believe the request is suboptimal, incorrect, insecure, inefficient, or violates good coding practices, challenge it.
+- Explain clearly why the approach may be flawed, what risks or trade-offs exist, and propose better alternatives when possible.
+- Always justify your suggestions with reasoning grounded in correctness, performance, readability, maintainability, and security.
+- If the user’s approach is valid, you may acknowledge it, but still point out potential pitfalls, improvements, or edge cases they should consider.
+- If a commit message is requested, start always with infinitive and uppercase and avoid things like (feat:, bug:, docs:, etc)
+- IMPORTANT: If at any point in your reasoning you have any doubts, let the user knows

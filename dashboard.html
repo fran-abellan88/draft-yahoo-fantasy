@@ -1,0 +1,1093 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NBA Fantasy Draft Assistant</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 400px;
+            background: white;
+            border-right: 1px solid #e1e4e8;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            background: #24292e;
+            color: white;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .sidebar-header h1 {
+            font-size: 20px;
+            margin-bottom: 10px;
+        }
+
+        .round-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 15px;
+            padding: 10px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 5px;
+        }
+
+        .round-control label {
+            font-size: 14px;
+        }
+
+        .round-control span {
+            font-size: 24px;
+            font-weight: bold;
+            color: #fbbf24;
+        }
+
+        .round-control button {
+            margin-left: auto;
+            padding: 8px 16px;
+            background: #10b981;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .round-control button:hover {
+            background: #059669;
+        }
+
+        .round-control button:disabled {
+            background: #6b7280;
+            cursor: not-allowed;
+        }
+
+        .position-counters {
+            margin-top: 15px;
+            padding: 12px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 5px;
+        }
+
+        .position-counters h4 {
+            font-size: 12px;
+            margin-bottom: 8px;
+            opacity: 0.8;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .position-badges {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .position-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .position-badge .label {
+            opacity: 0.9;
+        }
+
+        .position-badge .count {
+            background: #10b981;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            min-width: 20px;
+            text-align: center;
+        }
+
+        .position-badge .count.zero {
+            background: #6b7280;
+        }
+
+        .search-box {
+            padding: 15px 20px;
+            border-bottom: 1px solid #e1e4e8;
+            position: sticky;
+            top: 100px;
+            background: white;
+            z-index: 9;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .search-box input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .players-list {
+            padding: 20px;
+            flex: 1;
+        }
+
+        .round-group {
+            margin-bottom: 30px;
+            padding-bottom: 25px;
+            border-bottom: 2px solid #e5e7eb;
+            position: relative;
+            transition: opacity 0.3s, background 0.3s;
+        }
+
+        .round-group:last-child {
+            border-bottom: none;
+        }
+
+        .round-group.inactive {
+            background: linear-gradient(135deg, #e5e7eb 0%, #d1d5db 100%);
+            padding: 15px;
+            border-radius: 8px;
+            margin-left: -15px;
+            margin-right: -15px;
+            border: 2px solid #9ca3af;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .round-group.inactive .position-group h4 {
+            color: #6b7280;
+        }
+
+        .round-group.inactive .player-btn {
+            background: #f3f4f6;
+            color: #6b7280;
+            border-color: #9ca3af;
+            opacity: 0.7;
+        }
+
+        .round-group.inactive .player-btn:hover {
+            opacity: 1;
+        }
+
+        .round-group h3 {
+            font-size: 16px;
+            margin-bottom: 12px;
+            padding: 8px 12px;
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            color: white;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-radius: 6px;
+            display: inline-block;
+            box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
+        }
+
+        .round-group.inactive h3 {
+            background: #6b7280;
+            color: #d1d5db;
+            box-shadow: none;
+        }
+
+        .round-group.current-round h3 {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
+            animation: pulse 2s infinite;
+        }
+
+        .round-header-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .next-round-btn {
+            padding: 8px 16px;
+            background: #10b981;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
+            transition: all 0.2s;
+        }
+
+        .next-round-btn:hover {
+            background: #059669;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(16, 185, 129, 0.4);
+        }
+
+        .next-round-btn:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
+            }
+            50% {
+                box-shadow: 0 4px 12px rgba(16, 185, 129, 0.6);
+            }
+        }
+
+        .position-group {
+            margin-bottom: 15px;
+        }
+
+        .position-group h4 {
+            font-size: 13px;
+            margin-bottom: 8px;
+            color: #9ca3af;
+            font-weight: 600;
+        }
+
+        .player-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .player-btn {
+            padding: 8px 12px;
+            border: 2px solid #e5e7eb;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .player-btn:hover {
+            border-color: #3b82f6;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .player-btn.selected {
+            background: #10b981;
+            border-color: #10b981;
+            color: white;
+            font-weight: 600;
+        }
+
+        .player-btn.unavailable {
+            background: #ef4444;
+            border-color: #ef4444;
+            color: white;
+            opacity: 0.7;
+        }
+
+        .player-btn.disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        .player-btn .icon {
+            font-size: 12px;
+        }
+
+        /* Main Panel */
+        .main-panel {
+            flex: 1;
+            overflow-y: auto;
+            padding: 30px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .stat-card h3 {
+            font-size: 14px;
+            color: #6b7280;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-card .value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #1f2937;
+        }
+
+        .best-team-card {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+
+        .best-team-card h2 {
+            font-size: 24px;
+            margin-bottom: 20px;
+            color: #1f2937;
+        }
+
+        .team-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+            padding: 20px;
+            background: #f9fafb;
+            border-radius: 8px;
+        }
+
+        .team-stat {
+            text-align: center;
+        }
+
+        .team-stat .label {
+            font-size: 12px;
+            color: #6b7280;
+            margin-bottom: 4px;
+        }
+
+        .team-stat .value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #1f2937;
+        }
+
+        .team-players {
+            margin-top: 20px;
+        }
+
+        .team-players h3 {
+            font-size: 16px;
+            margin-bottom: 12px;
+            color: #6b7280;
+        }
+
+        .player-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 10px;
+        }
+
+        .player-item {
+            padding: 12px;
+            background: #f9fafb;
+            border-radius: 6px;
+            border-left: 3px solid #3b82f6;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+
+        .player-item.selected {
+            background: #d1fae5;
+            border-left-color: #10b981;
+        }
+
+        .player-item .icon {
+            font-size: 14px;
+            color: #10b981;
+        }
+
+        .player-item .name {
+            font-weight: 600;
+            color: #1f2937;
+            flex: 1;
+        }
+
+        .player-item .position {
+            font-size: 12px;
+            color: #6b7280;
+        }
+
+        .player-item .badge {
+            background: #10b981;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        .recommendation-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .recommendation-card h2 {
+            font-size: 20px;
+            margin-bottom: 15px;
+            opacity: 0.9;
+        }
+
+        .recommendation-card .player-name {
+            font-size: 32px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .recommendation-card .details {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-size: 24px;
+            color: #6b7280;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .reset-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            padding: 15px 25px;
+            background: #ef4444;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+            transition: all 0.2s;
+        }
+
+        .reset-btn:hover {
+            background: #dc2626;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(239, 68, 68, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <div class="loading" id="loading">
+        <div>Loading data... Please wait.</div>
+    </div>
+
+    <div class="container hidden" id="dashboard">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h1>🏀 Fantasy Draft Assistant</h1>
+                <div class="round-control">
+                    <label>Current Round:</label>
+                    <span id="currentRound">1</span>
+                </div>
+                <div class="position-counters">
+                    <h4>Positions Drafted</h4>
+                    <div class="position-badges">
+                        <div class="position-badge">
+                            <span class="label">PG</span>
+                            <span class="count zero" id="countPG">0</span>
+                        </div>
+                        <div class="position-badge">
+                            <span class="label">SG</span>
+                            <span class="count zero" id="countSG">0</span>
+                        </div>
+                        <div class="position-badge">
+                            <span class="label">SF</span>
+                            <span class="count zero" id="countSF">0</span>
+                        </div>
+                        <div class="position-badge">
+                            <span class="label">PF</span>
+                            <span class="count zero" id="countPF">0</span>
+                        </div>
+                        <div class="position-badge">
+                            <span class="label">C</span>
+                            <span class="count zero" id="countC">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="Search players..." oninput="filterPlayers()">
+            </div>
+
+            <div class="players-list" id="playersList">
+                <!-- Players will be dynamically generated here -->
+            </div>
+        </div>
+
+        <!-- Main Panel -->
+        <div class="main-panel">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Remaining Teams</h3>
+                    <div class="value" id="remainingTeams">100,000</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Players Selected</h3>
+                    <div class="value" id="playersSelected">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Players Unavailable</h3>
+                    <div class="value" id="playersUnavailable">0</div>
+                </div>
+            </div>
+
+            <div class="recommendation-card" id="recommendationCard">
+                <h2>💡 Best Team Pick for Round <span id="recRound">1</span></h2>
+                <div class="player-name" id="bestTeamPlayerName">-</div>
+                <div class="details">Best team rank: #<span id="bestTeamRankInRec">-</span></div>
+                <div class="details" id="bestTeamPlayer" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.3);">
+                    <small>Most appearing player: <strong id="recommendedPlayer">-</strong> (<span id="recommendedDetails">-</span>)</small>
+                </div>
+            </div>
+
+            <div class="best-team-card">
+                <h2>🏆 Best Remaining Team (Rank #<span id="bestTeamRank">1</span>)</h2>
+
+                <div class="team-stats">
+                    <div class="team-stat">
+                        <div class="label">Score</div>
+                        <div class="value" id="teamScore">-</div>
+                    </div>
+                    <div class="team-stat">
+                        <div class="label">FG%</div>
+                        <div class="value" id="teamFG">-</div>
+                    </div>
+                    <div class="team-stat">
+                        <div class="label">FT%</div>
+                        <div class="value" id="teamFT">-</div>
+                    </div>
+                    <div class="team-stat">
+                        <div class="label">3PTM</div>
+                        <div class="value" id="team3PTM">-</div>
+                    </div>
+                    <div class="team-stat">
+                        <div class="label">PTS</div>
+                        <div class="value" id="teamPTS">-</div>
+                    </div>
+                    <div class="team-stat">
+                        <div class="label">REB</div>
+                        <div class="value" id="teamREB">-</div>
+                    </div>
+                    <div class="team-stat">
+                        <div class="label">AST</div>
+                        <div class="value" id="teamAST">-</div>
+                    </div>
+                    <div class="team-stat">
+                        <div class="label">ST</div>
+                        <div class="value" id="teamST">-</div>
+                    </div>
+                    <div class="team-stat">
+                        <div class="label">BLK</div>
+                        <div class="value" id="teamBLK">-</div>
+                    </div>
+                </div>
+
+                <div class="team-players">
+                    <h3>Team Roster</h3>
+                    <div class="player-list" id="bestTeamPlayers">
+                        <!-- Players will be dynamically added here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button class="reset-btn hidden" id="resetBtn" onclick="resetDraft()">🔄 Reset Draft</button>
+
+    <script>
+        // Global state
+        let allTeamsData = null;
+        let playersData = null;
+        let remainingTeams = [];
+        let selectedPlayers = new Set();
+        let unavailablePlayers = new Set();
+        let currentRound = 1;
+
+        // Performance optimization: indexed lookups
+        let teamsById = new Map();
+        let playerToTeams = new Map();  // player name -> Set of team IDs
+
+        // Build performance indexes
+        function buildIndexes() {
+            // Build team ID -> team object map
+            allTeamsData.teams.forEach(team => {
+                teamsById.set(team.id, team);
+            });
+
+            // Build player name -> Set of team IDs map
+            allTeamsData.teams.forEach(team => {
+                team.players.forEach(playerInfo => {
+                    if (!playerToTeams.has(playerInfo.name)) {
+                        playerToTeams.set(playerInfo.name, new Set());
+                    }
+                    playerToTeams.get(playerInfo.name).add(team.id);
+                });
+            });
+        }
+
+        // Load data
+        async function loadData() {
+            try {
+                console.log('Loading teams data...');
+                const teamsResponse = await fetch('teams_data.json');
+                allTeamsData = await teamsResponse.json();
+
+                console.log('Loading players data...');
+                const playersResponse = await fetch('players_data.json');
+                playersData = await playersResponse.json();
+
+                console.log(`Loaded ${allTeamsData.teams.length} teams and ${playersData.length} players`);
+
+                // Build performance indexes
+                console.log('Building indexes for fast lookups...');
+                buildIndexes();
+                console.log('Indexes built!');
+
+                // Initialize remaining teams
+                remainingTeams = allTeamsData.teams.map(t => t.id);
+
+                // Initialize UI
+                renderPlayers();
+                updateDisplay();
+
+                // Show dashboard
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('dashboard').classList.remove('hidden');
+                document.getElementById('resetBtn').classList.remove('hidden');
+
+            } catch (error) {
+                console.error('Error loading data:', error);
+                alert('Error loading data. Please make sure teams_data.json and players_data.json are in the same directory.');
+            }
+        }
+
+        // Render players list
+        function renderPlayers() {
+            const container = document.getElementById('playersList');
+            container.innerHTML = '';
+
+            // Group players by round
+            const playersByRound = {};
+            playersData.forEach(player => {
+                if (!playersByRound[player.pick]) {
+                    playersByRound[player.pick] = [];
+                }
+                playersByRound[player.pick].push(player);
+            });
+
+            // Render each round
+            Object.keys(playersByRound).sort((a, b) => parseInt(a) - parseInt(b)).forEach(round => {
+                const roundDiv = document.createElement('div');
+                roundDiv.className = 'round-group';
+
+                // Highlight current round, dim others
+                const isCurrentRound = parseInt(round) === currentRound;
+                if (isCurrentRound) {
+                    roundDiv.classList.add('current-round');
+                } else {
+                    roundDiv.classList.add('inactive');
+                }
+
+                // Create header container
+                const headerContainer = document.createElement('div');
+                headerContainer.className = 'round-header-container';
+
+                const roundHeader = document.createElement('h3');
+                roundHeader.textContent = `Round ${round}`;
+                headerContainer.appendChild(roundHeader);
+
+                // Add "Next Round" button only to current round
+                if (isCurrentRound && currentRound < 9) {
+                    const nextBtn = document.createElement('button');
+                    nextBtn.className = 'next-round-btn';
+                    nextBtn.textContent = 'Next Round →';
+                    nextBtn.onclick = nextRound;
+                    headerContainer.appendChild(nextBtn);
+                }
+
+                roundDiv.appendChild(headerContainer);
+
+                // Group by position
+                const playersByPosition = {};
+                playersByRound[round].forEach(player => {
+                    const positions = player.position.split(',').map(p => p.trim());
+                    positions.forEach(pos => {
+                        if (!playersByPosition[pos]) {
+                            playersByPosition[pos] = [];
+                        }
+                        if (!playersByPosition[pos].includes(player)) {
+                            playersByPosition[pos].push(player);
+                        }
+                    });
+                });
+
+                // Render each position group
+                ['PG', 'SG', 'SF', 'PF', 'C'].forEach(position => {
+                    if (playersByPosition[position] && playersByPosition[position].length > 0) {
+                        const posDiv = document.createElement('div');
+                        posDiv.className = 'position-group';
+
+                        const posHeader = document.createElement('h4');
+                        posHeader.textContent = position;
+                        posDiv.appendChild(posHeader);
+
+                        const buttonsDiv = document.createElement('div');
+                        buttonsDiv.className = 'player-buttons';
+
+                        playersByPosition[position].forEach(player => {
+                            const btn = document.createElement('button');
+                            btn.className = 'player-btn';
+                            btn.dataset.player = player.name;
+                            btn.dataset.round = round;
+
+                            // Set initial state
+                            if (selectedPlayers.has(player.name)) {
+                                btn.classList.add('selected');
+                                btn.innerHTML = `<span class="icon">✓</span>${player.name}`;
+                            } else if (unavailablePlayers.has(player.name)) {
+                                btn.classList.add('unavailable');
+                                btn.innerHTML = `<span class="icon">✗</span>${player.name}`;
+                            } else {
+                                btn.innerHTML = player.name;
+                            }
+
+                            // Disable if not current round
+                            if (parseInt(round) !== currentRound) {
+                                btn.classList.add('disabled');
+                            }
+
+                            btn.onclick = () => togglePlayer(player.name);
+                            buttonsDiv.appendChild(btn);
+                        });
+
+                        posDiv.appendChild(buttonsDiv);
+                        roundDiv.appendChild(posDiv);
+                    }
+                });
+
+                container.appendChild(roundDiv);
+            });
+        }
+
+        // Toggle player selection (cycles through states)
+        function togglePlayer(playerName) {
+            // State cycle: available -> selected -> unavailable -> available
+            if (selectedPlayers.has(playerName)) {
+                // From selected to unavailable
+                selectedPlayers.delete(playerName);
+                unavailablePlayers.add(playerName);
+            } else if (unavailablePlayers.has(playerName)) {
+                // From unavailable back to available
+                unavailablePlayers.delete(playerName);
+            } else {
+                // From available to selected
+                selectedPlayers.add(playerName);
+            }
+
+            filterTeams();
+            renderPlayers();
+            updateDisplay();
+        }
+
+        // Filter teams based on selections (OPTIMIZED with set operations)
+        function filterTeams() {
+            let candidateTeamIds = null;
+
+            // Step 1: Start with teams that have all selected players (set intersection)
+            if (selectedPlayers.size > 0) {
+                const selectedArray = Array.from(selectedPlayers);
+                // Start with teams containing first selected player
+                candidateTeamIds = new Set(playerToTeams.get(selectedArray[0]) || []);
+
+                // Intersect with teams containing each additional selected player
+                for (let i = 1; i < selectedArray.length; i++) {
+                    const teamsWithPlayer = playerToTeams.get(selectedArray[i]) || new Set();
+                    candidateTeamIds = new Set([...candidateTeamIds].filter(id => teamsWithPlayer.has(id)));
+                }
+            } else {
+                // No selections yet - all teams are candidates
+                candidateTeamIds = new Set(allTeamsData.teams.map(t => t.id));
+            }
+
+            // Step 2: Remove teams with unavailable players (set subtraction)
+            if (unavailablePlayers.size > 0) {
+                for (const unavailablePlayer of unavailablePlayers) {
+                    const teamsWithUnavailable = playerToTeams.get(unavailablePlayer) || new Set();
+                    candidateTeamIds = new Set([...candidateTeamIds].filter(id => !teamsWithUnavailable.has(id)));
+                }
+            }
+
+            // Step 3: Get team objects and sort by rank
+            const validTeams = Array.from(candidateTeamIds)
+                .map(id => teamsById.get(id))
+                .sort((a, b) => a.rank - b.rank);
+
+            // Store IDs
+            remainingTeams = validTeams.map(t => t.id);
+        }
+
+        // Update position counters
+        function updatePositionCounters() {
+            const positionCounts = { PG: 0, SG: 0, SF: 0, PF: 0, C: 0 };
+
+            // Count positions from selected players
+            selectedPlayers.forEach(playerName => {
+                const player = playersData.find(p => p.name === playerName);
+                if (player) {
+                    const positions = player.position.split(',').map(p => p.trim());
+                    positions.forEach(pos => {
+                        if (positionCounts.hasOwnProperty(pos)) {
+                            positionCounts[pos]++;
+                        }
+                    });
+                }
+            });
+
+            // Update UI
+            ['PG', 'SG', 'SF', 'PF', 'C'].forEach(pos => {
+                const countElem = document.getElementById(`count${pos}`);
+                countElem.textContent = positionCounts[pos];
+
+                // Update styling
+                if (positionCounts[pos] > 0) {
+                    countElem.classList.remove('zero');
+                } else {
+                    countElem.classList.add('zero');
+                }
+            });
+        }
+
+        // Update display
+        function updateDisplay() {
+            // Update stats
+            document.getElementById('remainingTeams').textContent = remainingTeams.length.toLocaleString();
+            document.getElementById('playersSelected').textContent = selectedPlayers.size;
+            document.getElementById('playersUnavailable').textContent = unavailablePlayers.size;
+
+            // Update position counters
+            updatePositionCounters();
+
+            // Get best remaining team (using cached lookup)
+            let bestTeam = null;
+            if (remainingTeams.length > 0) {
+                bestTeam = teamsById.get(remainingTeams[0]);
+                displayBestTeam(bestTeam);
+            }
+
+            // Show best team's player for this round (large display)
+            if (bestTeam) {
+                const bestTeamPlayerForRound = bestTeam.players.find(p => p.pick === currentRound);
+                if (bestTeamPlayerForRound) {
+                    document.getElementById('recRound').textContent = currentRound;
+                    document.getElementById('bestTeamPlayerName').textContent = bestTeamPlayerForRound.name;
+                    document.getElementById('bestTeamRankInRec').textContent = bestTeam.rank;
+                } else {
+                    document.getElementById('bestTeamPlayerName').textContent = '-';
+                    document.getElementById('bestTeamRankInRec').textContent = '-';
+                }
+            } else {
+                document.getElementById('bestTeamPlayerName').textContent = '-';
+                document.getElementById('bestTeamRankInRec').textContent = '-';
+            }
+
+            // Get most appearing player (small display)
+            const recommendation = getRecommendation();
+            if (recommendation) {
+                document.getElementById('recommendedPlayer').textContent = recommendation.name;
+                document.getElementById('recommendedDetails').textContent =
+                    `${recommendation.frequency.toLocaleString()} of ${remainingTeams.length.toLocaleString()} teams, ${recommendation.percentage}%`;
+            } else {
+                document.getElementById('recommendedPlayer').textContent = '-';
+                document.getElementById('recommendedDetails').textContent = '-';
+            }
+        }
+
+        // Display best team
+        function displayBestTeam(team) {
+            document.getElementById('bestTeamRank').textContent = team.rank;
+            document.getElementById('teamScore').textContent = team.score;
+            document.getElementById('teamFG').textContent = team.stats['fg%'];
+            document.getElementById('teamFT').textContent = team.stats['ft%'];
+            document.getElementById('team3PTM').textContent = team.stats['3ptm'];
+            document.getElementById('teamPTS').textContent = team.stats['pts'];
+            document.getElementById('teamREB').textContent = team.stats['reb'];
+            document.getElementById('teamAST').textContent = team.stats['ast'];
+            document.getElementById('teamST').textContent = team.stats['st'];
+            document.getElementById('teamBLK').textContent = team.stats['blk'];
+
+            // Display players
+            const playersContainer = document.getElementById('bestTeamPlayers');
+            playersContainer.innerHTML = '';
+            team.players.forEach(player => {
+                const div = document.createElement('div');
+                div.className = 'player-item';
+
+                // Check if player is already selected
+                if (selectedPlayers.has(player.name)) {
+                    div.classList.add('selected');
+                    div.innerHTML = `
+                        <span class="icon">✓</span>
+                        <span class="name">${player.name}</span>
+                        <span class="position">${player.position}</span>
+                        <span class="badge">DRAFTED</span>
+                    `;
+                } else {
+                    div.innerHTML = `
+                        <span class="name">${player.name}</span>
+                        <span class="position">${player.position}</span>
+                    `;
+                }
+
+                playersContainer.appendChild(div);
+            });
+        }
+
+        // Get recommendation for current round (OPTIMIZED)
+        function getRecommendation() {
+            if (remainingTeams.length === 0) return null;
+
+            // Count player frequency in remaining teams for current round
+            const playerFrequency = new Map();
+
+            remainingTeams.forEach(teamId => {
+                const team = teamsById.get(teamId);  // Cached lookup
+                const playerForRound = team.players.find(p => p.pick === currentRound);
+
+                if (playerForRound &&
+                    !selectedPlayers.has(playerForRound.name) &&
+                    !unavailablePlayers.has(playerForRound.name)) {
+                    playerFrequency.set(
+                        playerForRound.name,
+                        (playerFrequency.get(playerForRound.name) || 0) + 1
+                    );
+                }
+            });
+
+            // Find most frequent
+            let maxFreq = 0;
+            let recommendedPlayer = null;
+
+            for (const [playerName, freq] of playerFrequency.entries()) {
+                if (freq > maxFreq) {
+                    maxFreq = freq;
+                    recommendedPlayer = playerName;
+                }
+            }
+
+            if (recommendedPlayer) {
+                return {
+                    name: recommendedPlayer,
+                    frequency: maxFreq,
+                    percentage: ((maxFreq / remainingTeams.length) * 100).toFixed(1)
+                };
+            }
+
+            return null;
+        }
+
+        // Next round
+        function nextRound() {
+            if (currentRound < 9) {
+                currentRound++;
+                document.getElementById('currentRound').textContent = currentRound;
+                renderPlayers();
+                updateDisplay();
+            }
+        }
+
+        // Filter players by search
+        function filterPlayers() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const buttons = document.querySelectorAll('.player-btn');
+
+            buttons.forEach(btn => {
+                const playerName = btn.dataset.player.toLowerCase();
+                if (playerName.includes(searchTerm)) {
+                    btn.style.display = 'flex';
+                } else {
+                    btn.style.display = 'none';
+                }
+            });
+        }
+
+        // Reset draft
+        function resetDraft() {
+            if (confirm('Are you sure you want to reset the entire draft?')) {
+                selectedPlayers.clear();
+                unavailablePlayers.clear();
+                currentRound = 1;
+                remainingTeams = allTeamsData.teams.map(t => t.id);
+
+                document.getElementById('currentRound').textContent = 1;
+
+                renderPlayers();
+                updateDisplay();
+            }
+        }
+
+        // Initialize on page load
+        window.addEventListener('DOMContentLoaded', loadData);
+    </script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+[flake8]
+ignore = E203, E266, W503, F403, F401, E126
+max-line-length = 140
+max-complexity = 18
+select = B,C,E,F,W,T4,B9
+
+
+# -- IGNORE GLOSSARY --
+# E203 -> Whitespace before ':'
+# E266 -> Too many leading '#' for block comment
+# W503 -> Line break occurred before a binary operator
+# F403 -> 'from module import *' used; unable to detect undefined names
+# F401 -> 'module' imported but unused
+# E126 -> continuation line over-indented for hanging indent
