@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 
 from fantasy_draft.availability import AdpWindow, AvailabilityRule, NormalAdpModel
-from fantasy_draft.categories import selectable_categories
+from fantasy_draft.categories import categories_in
 from fantasy_draft.data import load_players
 from fantasy_draft.draft import DraftState, my_picks
 from fantasy_draft.lineup import all_can_start
@@ -150,7 +150,7 @@ def test_no_remaining_picks_returns_nothing() -> None:
 
 def test_plans_are_sorted_distinct_and_lineup_valid() -> None:
     players = load_players()
-    keys = selectable_categories()
+    keys = categories_in(players.columns)
     bounds = compute_bounds(players, keys)
     plans = recommend(players, DraftState(), keys, bounds, NormalAdpModel(), top_k=25)
     assert len(plans) == 25
@@ -167,7 +167,7 @@ def test_plans_are_sorted_distinct_and_lineup_valid() -> None:
 
 def test_pick_frequency_and_profile_on_real_data() -> None:
     players = load_players()
-    keys = selectable_categories()
+    keys = categories_in(players.columns)
     bounds = compute_bounds(players, keys)
     plans = recommend(players, DraftState(), keys, bounds, NormalAdpModel(), top_k=25)
     frequency = pick_frequency(plans)
@@ -180,7 +180,7 @@ def test_pick_frequency_and_profile_on_real_data() -> None:
 
 def test_removing_a_category_changes_the_best_team() -> None:
     players = load_players()
-    keys = selectable_categories()
+    keys = categories_in(players.columns)
     bounds = compute_bounds(players, keys)
     with_to = recommend(players, DraftState(), keys, bounds, NormalAdpModel(), top_k=1)[0]
     no_to_keys = [key for key in keys if key != "to"]

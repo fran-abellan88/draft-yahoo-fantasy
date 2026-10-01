@@ -3,7 +3,7 @@
 import pandas as pd
 import pytest
 
-from fantasy_draft.categories import selectable_categories
+from fantasy_draft.categories import categories_in
 from fantasy_draft.data import load_players
 from fantasy_draft.flags import build_flags
 from fantasy_draft.scoring import compute_bounds
@@ -62,7 +62,8 @@ def test_low_projected_games_is_flagged() -> None:
 
 def test_flags_on_the_real_pool_are_a_usable_minority() -> None:
     players = load_players()
-    keys = selectable_categories()
+    keys = categories_in(players.columns)
+    assert len(keys) == 9
     flags = build_flags(players, keys, compute_bounds(players, keys))
     assert flags["flag_ly_missing"].sum() == 8
     named = players.assign(**flags.to_dict("series")).set_index("player")

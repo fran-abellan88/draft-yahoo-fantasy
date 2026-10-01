@@ -1,7 +1,7 @@
 """The scoring categories of the league and how each one is scored."""
 
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Dict, Iterable, List
 
 
 @dataclass(frozen=True)
@@ -11,16 +11,22 @@ class Category:
     key: str
     label: str
     lower_is_better: bool = False
-    # Percentages cannot be aggregated across players without attempts, so they are only
-    # selectable once the data carries them.
+    # Percentages cannot be averaged across players, so they are scored on a volume-weighted value
+    # (makes above the pool's baseline, per game) held in `column`. That needs attempts.
     needs_attempts: bool = False
+    # Column of the player table that is actually scored; defaults to the key.
+    column: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.column:
+            object.__setattr__(self, "column", self.key)
 
 
 CATEGORIES: Dict[str, Category] = {
     category.key: category
     for category in (
-        Category("fg_pct", "FG%", needs_attempts=True),
-        Category("ft_pct", "FT%", needs_attempts=True),
+        Category("fg_pct", "FG%", needs_attempts=True, column="fg_impact"),
+        Category("ft_pct", "FT%", needs_attempts=True, column="ft_impact"),
         Category("3ptm", "3PTM"),
         Category("pts", "PTS"),
         Category("reb", "REB"),
@@ -32,6 +38,7 @@ CATEGORIES: Dict[str, Category] = {
 }
 
 
-def selectable_categories(has_attempts: bool = False) -> List[str]:
-    """Return the category keys a user can score on, in display order."""
-    return [key for key, category in CATEGORIES.items() if has_attempts or not category.needs_attempts]
+def categories_in(columns: Iterable[str]) -> List[str]:
+    """Return the category keys whose scored column exists, in display order."""
+    available = set(columns)
+    return [key for key, category in CATEGORIES.items() if category.column in available]

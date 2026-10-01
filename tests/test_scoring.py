@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 import pandas as pd
 import pytest
 
+from fantasy_draft.categories import CATEGORIES
 from fantasy_draft.scoring import Bounds, category_scores, composite_score, compute_bounds
 
 GOLDEN_PATH = Path(__file__).parent / "fixtures" / "composite_score_golden.json"
@@ -41,7 +42,8 @@ def _frame(rows: List[Dict[str, float]]) -> pd.DataFrame:
 
 @pytest.mark.parametrize("case", _golden()["cases"], ids=lambda case: case["name"])
 def test_matches_daily_dose_golden_cases(case: Dict[str, Any]) -> None:
-    stats = {GOLDEN_TO_KEY[name]: value for name, value in case["stats"].items()}
+    # The formula does not care what the number is, so the golden percentages go in the impact columns here
+    stats = {CATEGORIES[GOLDEN_TO_KEY[name]].column: value for name, value in case["stats"].items()}
     keys = list(GOLDEN_TO_KEY.values())
     score = composite_score(_frame([stats]), keys, _golden_bounds())
     assert score.iloc[0] == pytest.approx(case["expected"], abs=1e-6)

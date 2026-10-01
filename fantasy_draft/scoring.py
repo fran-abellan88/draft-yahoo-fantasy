@@ -33,7 +33,7 @@ def compute_bounds(players: pd.DataFrame, keys: Sequence[str], low: float = 5.0,
     _check_keys(players, keys)
     bounds: Bounds = {}
     for key in keys:
-        values = players[key].dropna().astype(float)
+        values = players[CATEGORIES[key].column].dropna().astype(float)
         bounds[key] = (float(np.percentile(values, low)), float(np.percentile(values, high)))
     return bounds
 
@@ -54,7 +54,7 @@ def category_scores(players: pd.DataFrame, keys: Sequence[str], bounds: Bounds) 
             # A degenerate boundary carries no information, so nobody is advantaged or penalised.
             scores[key] = pd.Series(0.5, index=players.index)
             continue
-        values = players[key].astype(float)
+        values = players[CATEGORIES[key].column].astype(float)
         raw = (high - values) / span if CATEGORIES[key].lower_is_better else (values - low) / span
         scores[key] = raw.clip(0.0, 1.0)
     return pd.DataFrame(scores, index=players.index)
@@ -74,14 +74,14 @@ def _check_keys(players: pd.DataFrame, keys: Sequence[str]) -> None:
     unknown = [key for key in keys if key not in CATEGORIES]
     if unknown:
         raise ValueError(f"Unknown categories: {unknown}")
-    absent = [key for key in keys if key not in players.columns]
+    absent = [key for key in keys if CATEGORIES[key].column not in players.columns]
     if absent:
         raise ValueError(f"The player table has no column for: {absent}")
 
 
 def _check_no_missing_values(players: pd.DataFrame, keys: Sequence[str]) -> None:
     """Fail loudly when a selected category has missing values."""
-    missing = players[list(keys)].isna().any(axis=1)
+    missing = players[[CATEGORIES[key].column for key in keys]].isna().any(axis=1)
     if missing.any():
         names = players.loc[missing, "player"].tolist() if "player" in players.columns else players.index[missing].tolist()
         raise ValueError(f"Missing values in the selected categories for: {names}")

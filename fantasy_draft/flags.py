@@ -10,6 +10,7 @@ from typing import Sequence
 import numpy as np
 import pandas as pd
 
+from fantasy_draft.categories import CATEGORIES
 from fantasy_draft.data import LAST_SEASON_SUFFIX
 from fantasy_draft.scoring import Bounds, composite_score
 
@@ -28,9 +29,10 @@ def last_season_composite(players: pd.DataFrame, keys: Sequence[str], bounds: Bo
     Players with no data last season get NaN. The bounds come from the projection pool, so the two
     scores are directly comparable.
     """
-    last_season = pd.DataFrame({key: players[f"{key}{LAST_SEASON_SUFFIX}"] for key in keys}, index=players.index)
+    columns = [CATEGORIES[key].column for key in keys]
+    last_season = pd.DataFrame({column: players[f"{column}{LAST_SEASON_SUFFIX}"] for column in columns}, index=players.index)
     last_season["player"] = players["player"]
-    has_data = last_season[list(keys)].notna().all(axis=1)
+    has_data = last_season[columns].notna().all(axis=1)
     scores = pd.Series(np.nan, index=players.index)
     if has_data.any():
         scores.loc[has_data] = composite_score(last_season[has_data], keys, bounds)
