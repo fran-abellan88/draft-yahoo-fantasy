@@ -71,7 +71,7 @@ def test_when_it_is_my_turn_every_remaining_player_is_available(service: DraftSe
 def test_my_picks_are_identified_by_the_snake_order(service: DraftService) -> None:
     ids = _ids_by_xrank(service)
     result = _ask(service, ids[:3])  # pick 1 other, pick 2 mine, pick 3 other
-    assert result["roster"] == [{"id": ids[1], "pick": 2}]
+    assert result["roster"] == [{"id": ids[1], "kind": "player", "pick": 2}]
     assert [entry["mine"] for entry in result["log"]] == [False, True, False]
     assert result["profile"]["roster"] is not None
 
@@ -258,3 +258,32 @@ def test_the_pool_tells_the_page_the_allowed_availability_settings(service: Draf
     for key, limit in limits.items():  # the values the page may send are exactly the ones the server accepts
         assert parse_rule({"type": "window" if key == "slack" else "probability", key: limit["min"]})
         assert parse_rule({"type": "window" if key == "slack" else "probability", key: limit["max"]})
+
+
+def test_a_pick_can_be_a_plain_id_or_an_object_and_the_answer_is_the_same(service: DraftService) -> None:
+    ids = _ids_by_xrank(service)[:5]
+    plain = _ask(service, ids)
+    objects = _ask(service, [{"kind": "player", "id": pid} for pid in ids])
+    no_kind = _ask(service, [{"id": pid} for pid in ids])
+    mixed = _ask(service, [ids[0], {"kind": "player", "id": ids[1]}, *ids[2:]])
+    assert plain["plans"] == objects["plans"] == no_kind["plans"] == mixed["plans"]
+    assert plain["log"] == objects["log"] == mixed["log"]
+    assert [entry["kind"] for entry in plain["log"]] == ["player"] * 5
+
+
+@pytest.mark.parametrize(
+    "picks, message",
+    [
+        ([{"kind": "player"}], "needs the player's id"),
+        ([{"kind": "player", "id": 7}], "needs the player's id"),
+        ([{"kind": "dunk", "id": "nikola-jokic"}], "has a kind"),
+        ([{"kind": "player", "id": "nikola-jokic", "team": 3}], "has a kind"),
+        ([{"kind": "player", "id": "nobody"}], "Unknown players"),
+        ([["nikola-jokic"]], "list of player ids or pick objects"),
+        ([None], "list of player ids or pick objects"),
+        (["nikola-jokic", {"kind": "player", "id": "nikola-jokic"}], "picked twice"),
+    ],
+)
+def test_a_malformed_pick_is_refused_with_its_number(service: DraftService, picks: Any, message: str) -> None:
+    with pytest.raises(RequestError, match=message):
+        _ask(service, picks)

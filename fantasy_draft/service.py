@@ -17,7 +17,7 @@ import pandas as pd
 
 from fantasy_draft.availability import AdpWindow, AvailabilityRule, NormalAdpModel
 from fantasy_draft.categories import CATEGORIES, categories_in
-from fantasy_draft.draft import MY_SLOT, ROSTER_SIZE, TEAMS, DraftState, my_picks
+from fantasy_draft.draft import MY_SLOT, PICK_KINDS, ROSTER_SIZE, TEAMS, DraftState, Pick, my_picks
 from fantasy_draft.flags import build_flags
 from fantasy_draft.optimizer import FirstPickOption, Plan, Recommendation, plan_picks, team_profile
 from fantasy_draft.scoring import METHODS, Bounds, category_scores, composite_score, compute_bounds
@@ -140,15 +140,16 @@ class DraftService:
             raise RequestError("gamesAdjusted must be true or false")
 
         mine_numbers = set(my_picks(self.slot, ROSTER_SIZE, self.teams))
-        mine = tuple(pid for number, pid in enumerate(picks, start=1) if number in mine_numbers)
-        taken = frozenset(pid for number, pid in enumerate(picks, start=1) if number not in mine_numbers)
+        numbered = list(enumerate(picks, start=1))
+        mine = tuple(pick.player_id for number, pick in numbered if number in mine_numbers and pick.player_id is not None)
+        taken = frozenset(pick.player_id for number, pick in numbered if number not in mine_numbers and pick.player_id is not None)
         state = DraftState(taken=taken, mine=mine)
         clock = self._clock(state)
 
         scores = composite_score(self.players, keys, self.method_bounds[method], games_adjusted, method)
         category = category_scores(self.players, keys, self.bounds) * 100.0  # bars stay on the 0-100 capped scale
         flags = build_flags(self.players, keys, self.bounds)
-        drafted = set(picks)
+        drafted = {pick.player_id for pick in picks if pick.player_id is not None}
 
         recommendation_result = Recommendation([], [], False, 0)
         if not clock["draftComplete"]:
@@ -188,8 +189,8 @@ class DraftService:
                 "maxOptionNodes": recommendation_result.max_option_nodes,
             },
             "recommendation": self._recommendation(best, next_mine),
-            "roster": [{"id": pid, "pick": number} for number, pid in enumerate(picks, start=1) if number in mine_numbers],
-            "log": [{"pick": number, "id": pid, "mine": number in mine_numbers} for number, pid in enumerate(picks, start=1)],
+            "roster": [{"id": pick.player_id, "kind": pick.kind, "pick": number} for number, pick in numbered if number in mine_numbers],
+            "log": [{"pick": number, "kind": pick.kind, "id": pick.player_id, "mine": number in mine_numbers} for number, pick in numbered],
             "profile": {
                 "roster": self._profile(list(mine), keys),
                 "plan": self._profile(list(mine) + list(best.player_ids), keys) if best else None,
@@ -207,18 +208,35 @@ class DraftService:
             raise RequestError("A category was selected twice")
         return [key for key in self.keys if key in raw]  # display order, whatever order the request used
 
-    def _parse_picks(self, raw: Any) -> List[str]:
-        picks = raw if raw is not None else []
-        if not isinstance(picks, list) or not all(isinstance(pick, str) for pick in picks):
-            raise RequestError("picks must be a list of player ids")
-        unknown = [pick for pick in picks if pick not in self._by_id.index]
-        if unknown:
-            raise RequestError(f"Unknown players: {unknown}")
-        if len(set(picks)) != len(picks):
+    def _parse_picks(self, raw: Any) -> List[Pick]:
+        """Read the pick log. An entry is a plain player id (the first format) or an object like {"kind": "player", "id": ...}."""
+        entries = raw if raw is not None else []
+        if not isinstance(entries, list):
+            raise RequestError("picks must be a list of player ids or pick objects")
+        picks = [self._parse_pick(entry, number) for number, entry in enumerate(entries, start=1)]
+        ids = [pick.player_id for pick in picks if pick.player_id is not None]
+        if len(set(ids)) != len(ids):
             raise RequestError("A player was picked twice")
         if len(picks) > self.teams * ROSTER_SIZE:
             raise RequestError("More picks than the draft has")
         return picks
+
+    def _parse_pick(self, entry: Any, number: int) -> Pick:
+        if isinstance(entry, str):
+            entry = {"kind": "player", "id": entry}
+        if not isinstance(entry, dict):
+            raise RequestError("picks must be a list of player ids or pick objects")
+        extra = set(entry) - {"kind", "id"}
+        kind = entry.get("kind", "player")
+        if extra or kind not in PICK_KINDS:
+            raise RequestError(f"Pick {number}: a pick has a kind ({', '.join(PICK_KINDS)}) and, for a player, an id")
+        player_id = entry.get("id")
+        if kind == "player":
+            if not isinstance(player_id, str):
+                raise RequestError(f"Pick {number}: a player pick needs the player's id")
+            if player_id not in self._by_id.index:
+                raise RequestError(f"Unknown players: {[player_id]}")
+        return Pick(kind, player_id)
 
     def _horizon_last(self) -> int:
         return my_picks(self.slot, self.rounds, self.teams)[-1]

@@ -24,4 +24,36 @@ function sanitizeRule(rule, limits) {
   return clean;
 }
 
-if (typeof module !== 'undefined' && module.exports) module.exports = { clampRuleValue, sanitizeRule };
+// ---------- the saved draft ----------
+// The pick log is a list of objects, {kind: 'player', id}. The first version of the page saved a bare list of player
+// ids under another storage key. Both are read here, so a draft saved by an older page is not lost. Other kinds of
+// pick are added to PICK_KINDS as they are built.
+const PICK_KINDS = ['player'];
+
+// A pick log in either shape, as a list of objects; null when any entry is unusable (so nothing half-valid is kept).
+function normalizePicks(raw, knownIds) {
+  if (!Array.isArray(raw)) return null;
+  const seen = new Set();
+  const picks = [];
+  for (const entry of raw) {
+    const pick = typeof entry === 'string' ? { kind: 'player', id: entry } : entry;
+    if (!pick || typeof pick !== 'object') return null;
+    const kind = pick.kind === undefined ? 'player' : pick.kind;
+    if (!PICK_KINDS.includes(kind)) return null;
+    if (kind === 'player') {
+      if (typeof pick.id !== 'string' || !knownIds.has(pick.id) || seen.has(pick.id)) return null;
+      seen.add(pick.id);
+      picks.push({ kind, id: pick.id });
+    }
+  }
+  return picks;
+}
+
+// The saved state to use: the current version's if there is one, otherwise the first version's.
+function pickSavedState(current, legacy) {
+  if (current && typeof current === 'object') return current;
+  if (legacy && typeof legacy === 'object') return legacy;
+  return null;
+}
+
+if (typeof module !== 'undefined' && module.exports) module.exports = { clampRuleValue, sanitizeRule, normalizePicks, pickSavedState, PICK_KINDS };

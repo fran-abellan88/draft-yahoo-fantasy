@@ -1,7 +1,7 @@
 """Snake draft order and the state of a draft in progress."""
 
 from dataclasses import dataclass
-from typing import FrozenSet, List, Tuple
+from typing import FrozenSet, List, Optional, Tuple
 
 TEAMS = 14
 MY_SLOT = 2
@@ -21,6 +21,18 @@ def snake_pick(slot: int, round_number: int, teams: int = TEAMS) -> int:
 def my_picks(slot: int = MY_SLOT, rounds: int = 8, teams: int = TEAMS) -> List[int]:
     """Return the overall pick numbers of one slot over the first `rounds` rounds."""
     return [snake_pick(slot, round_number, teams) for round_number in range(1, rounds + 1)]
+
+
+# What one entry of the pick log can be. Extended as each kind is built.
+PICK_KINDS: Tuple[str, ...] = ("player",)
+
+
+@dataclass(frozen=True)
+class Pick:
+    """One entry of the pick log. The log is in the order the picks happened; who made a pick follows from its position."""
+
+    kind: str = "player"
+    player_id: Optional[str] = None
 
 
 @dataclass(frozen=True)

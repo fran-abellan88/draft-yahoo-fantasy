@@ -3,7 +3,8 @@
 // Draft assistant front end. The server holds no state: this page keeps the ordered list of picks
 // (also in localStorage, so a refresh mid-draft loses nothing) and asks the server what to do next.
 
-const STORAGE_KEY = 'draft-assistant-v1';
+const STORAGE_KEY = 'draft-assistant-v2';
+const LEGACY_STORAGE_KEY = 'draft-assistant-v1'; // read once if v2 is absent, never rewritten, so a rollback has data
 const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'];
 const STAT_COLUMNS = [
   { key: 'pts', label: 'PTS', kind: 'number' },
@@ -75,7 +76,7 @@ const detailOf = (id) => {
 // ---------- persistence ----------
 function saveState() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ picks: state.picks, categories: state.categories, gamesAdjusted: state.gamesAdjusted, method: state.method, rule: state.rule }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 2, picks: state.picks, categories: state.categories, gamesAdjusted: state.gamesAdjusted, method: state.method, rule: state.rule }));
   } catch (error) {
     // Private mode or blocked storage: the draft still works, it just will not survive a refresh
   }
@@ -84,16 +85,14 @@ function saveState() {
 function restoreState() {
   let saved = null;
   try {
-    saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    saved = pickSavedState(JSON.parse(localStorage.getItem(STORAGE_KEY)), JSON.parse(localStorage.getItem(LEGACY_STORAGE_KEY)));
   } catch (error) {
     saved = null;
   }
   const allKeys = pool.categories.map((category) => category.key);
   state.categories = allKeys;
   if (!saved || typeof saved !== 'object') return;
-  if (Array.isArray(saved.picks) && saved.picks.every((id) => playerById.has(id)) && new Set(saved.picks).size === saved.picks.length) {
-    state.picks = saved.picks;
-  }
+  state.picks = normalizePicks(saved.picks, new Set(playerById.keys())) || [];
   if (Array.isArray(saved.categories) && saved.categories.length > 0 && saved.categories.every((key) => allKeys.includes(key))) {
     state.categories = allKeys.filter((key) => saved.categories.includes(key));
   }
@@ -202,13 +201,17 @@ function scheduleRefresh() {
 }
 
 // ---------- actions ----------
+function pickedIds() {
+  return new Set(state.picks.filter((pick) => pick.id !== undefined).map((pick) => pick.id));
+}
+
 function draft(id) {
   if (!analysis || analysis.clock.draftComplete) return;
-  if (state.picks.includes(id)) {
+  if (pickedIds().has(id)) {
     if (refreshFailed) refresh(); // clicking a pick the server has not confirmed tries again
     return;
   }
-  state.picks.push(id);
+  state.picks.push({ kind: 'player', id });
   state.search = '';
   $('search').value = '';
   saveState();
@@ -474,7 +477,7 @@ function renderPool() {
   visibleIds = rows.map(({ player }) => player.id);
 
   const body = rows.map(({ row, player }) => {
-    const logged = state.picks.includes(player.id); // still in the table because the server has not answered yet
+    const logged = pickedIds().has(player.id); // still in the table because the server has not answered yet
     const unconfirmed = refreshFailed && logged;
     const pending = busyShown && logged && !unconfirmed;
     const cells = [

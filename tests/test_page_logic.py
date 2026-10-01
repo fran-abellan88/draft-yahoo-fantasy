@@ -102,3 +102,45 @@ def test_the_page_defaults_and_input_ranges_match_the_server_limits() -> None:
         low = float(re.search(r'min="([\d.]+)"', tag.group(0)).group(1))
         high = float(re.search(r'max="([\d.]+)"', tag.group(0)).group(1))
         assert (low, high) == (RULE_LIMITS[key][1], RULE_LIMITS[key][2]), f"{element} in index.html disagrees with the server"
+
+
+KNOWN = "new Set(['a', 'b', 'c'])"
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("['a', 'b']", [{"kind": "player", "id": "a"}, {"kind": "player", "id": "b"}]),  # the first version's shape
+        ("[{kind: 'player', id: 'a'}, 'b']", [{"kind": "player", "id": "a"}, {"kind": "player", "id": "b"}]),
+        ("[{id: 'a'}]", [{"kind": "player", "id": "a"}]),  # no kind means a player
+        ("[]", []),
+    ],
+)
+def test_a_saved_pick_log_in_either_shape_becomes_a_list_of_objects(raw: str, expected: List[Dict[str, Any]]) -> None:
+    assert _run(f"L.normalizePicks({raw}, {KNOWN})") == expected
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ["['a', 'a']", "['nobody']", "[{kind: 'player'}]", "[{kind: 'dunk', id: 'a'}]", "[null]", "[['a']]", "'a'", "null", "undefined", "[7]"],
+)
+def test_a_pick_log_with_any_unusable_entry_is_refused_as_a_whole(raw: str) -> None:
+    assert _run(f"L.normalizePicks({raw}, {KNOWN})") is None
+
+
+def test_the_current_saved_state_wins_and_the_first_version_is_the_fallback() -> None:
+    assert _run("L.pickSavedState({version: 2, picks: []}, {picks: ['a']})") == {"version": 2, "picks": []}
+    assert _run("L.pickSavedState(null, {picks: ['a']})") == {"picks": ["a"]}
+    assert _run("L.pickSavedState(null, null)") is None
+    assert _run("L.pickSavedState('junk', 5)") is None
+
+
+def test_a_page_pick_log_is_accepted_by_the_server() -> None:
+    """What the page saves must be what the server reads: run the page's normaliser and parse the result."""
+    from fantasy_draft.data import load_players
+    from fantasy_draft.service import DraftService
+
+    service = DraftService(load_players())
+    ids = service.players["player_id"].tolist()[:4]
+    picks = _run(f"L.normalizePicks({json.dumps(ids)}, new Set({json.dumps(ids)}))")
+    assert len(service._parse_picks(picks)) == 4
