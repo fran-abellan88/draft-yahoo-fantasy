@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Draft assistant</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="error" class="banner" role="alert" hidden></div>
+
+  <div class="layout">
+    <aside class="rail" aria-label="Draft controls">
+      <section class="clock">
+        <h2>On the clock</h2>
+        <p id="clock-line" class="clock-line">Loading</p>
+        <div id="snake" class="snake" role="img" aria-label="Pick order for the current round"></div>
+        <p id="snake-note" class="note"></p>
+        <div class="actions">
+          <button id="undo" type="button">Undo last pick</button>
+          <button id="reset" type="button" class="quiet">Reset draft</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Scoring categories</h2>
+        <div id="categories" class="categories"></div>
+        <p class="note">Untick a category to leave it out of every score and plan.</p>
+      </section>
+
+      <details class="rule">
+        <summary>Who will still be there?</summary>
+        <div class="rule-body">
+          <label class="choice"><input type="radio" name="rule" value="probability" checked> Odds from ADP</label>
+          <label class="choice"><input type="radio" name="rule" value="window"> ADP window</label>
+          <div id="rule-probability" class="fields">
+            <label>Early-round spread <input id="rule-base-sd" type="number" min="0.1" max="20" step="0.1" value="2"></label>
+            <label>Spread added per ADP place <input id="rule-sd-per-adp" type="number" min="0" max="1" step="0.05" value="0.2"></label>
+            <label>Plan on a player when his odds are at least <input id="rule-threshold" type="number" min="0.05" max="0.95" step="0.05" value="0.5"></label>
+          </div>
+          <div id="rule-window" class="fields" hidden>
+            <label>Plan on a player whose ADP is no more than this many picks earlier <input id="rule-slack" type="number" min="0" max="60" step="1" value="3"></label>
+          </div>
+          <p class="note">Spreads are starting guesses. Real drafts will tell us better values.</p>
+        </div>
+      </details>
+    </aside>
+
+    <main>
+      <section id="hero" class="hero" aria-live="polite"></section>
+
+      <section>
+        <h2>Plan for your remaining picks</h2>
+        <div id="plan"></div>
+        <div id="alternatives" class="alternatives"></div>
+      </section>
+
+      <section>
+        <h2>Available players</h2>
+        <div class="filters">
+          <input id="search" type="search" placeholder="Search by name or team" aria-label="Search players">
+          <div id="positions" class="chips" role="group" aria-label="Filter by position"></div>
+        </div>
+        <div class="table-wrap">
+          <table id="pool">
+            <thead id="pool-head"></thead>
+            <tbody id="pool-body"></tbody>
+          </table>
+        </div>
+        <p class="note">Click a player to log the pick that is on the clock. Picks log in order, and the snake order decides which ones are yours.</p>
+      </section>
+    </main>
+
+    <aside class="rail" aria-label="Your team">
+      <section>
+        <h2>Your roster</h2>
+        <ol id="roster" class="roster"></ol>
+        <p id="roster-positions" class="note"></p>
+      </section>
+      <section>
+        <h2>Category strength</h2>
+        <div id="profile"></div>
+      </section>
+      <section>
+        <h2>Draft log</h2>
+        <ol id="log" class="log"></ol>
+      </section>
+    </aside>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -26,7 +26,7 @@ import numpy as np
 import pandas as pd
 
 from fantasy_draft.availability import AvailabilityRule
-from fantasy_draft.draft import MY_SLOT, DraftState, my_picks
+from fantasy_draft.draft import MY_SLOT, ROSTER_SIZE, DraftState, my_picks
 from fantasy_draft.lineup import all_can_start
 from fantasy_draft.scoring import Bounds, category_scores, composite_score
 
@@ -105,7 +105,8 @@ def _check_state(players: pd.DataFrame, state: DraftState, slot: int, rounds: in
         raise ValueError(f"Unknown players in the draft state: {sorted(unknown)}")
     if set(state.taken) & set(state.mine):
         raise ValueError("A player cannot be both mine and taken by someone else")
-    expected_mine = sum(1 for pick in my_picks(slot, rounds) if pick < state.next_pick)
+    # Count across the whole roster, not just the planning horizon: later picks may already be made
+    expected_mine = sum(1 for pick in my_picks(slot, ROSTER_SIZE) if pick < state.next_pick)
     if len(state.mine) != expected_mine:
         raise ValueError(
             f"{state.picks_made} picks are done, so slot {slot} should own {expected_mine} of them, "
