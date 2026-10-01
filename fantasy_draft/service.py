@@ -20,7 +20,7 @@ from fantasy_draft.categories import CATEGORIES, categories_in
 from fantasy_draft.draft import MY_SLOT, ROSTER_SIZE, TEAMS, DraftState, my_picks
 from fantasy_draft.flags import build_flags
 from fantasy_draft.optimizer import Plan, pick_frequency, recommend, team_profile
-from fantasy_draft.scoring import Bounds, category_scores, composite_score, compute_bounds
+from fantasy_draft.scoring import METHODS, Bounds, category_scores, composite_score, compute_bounds
 
 MAX_TOP_K = 200
 PLANS_SHOWN = 5
@@ -71,11 +71,13 @@ class DraftService:
     teams: int = TEAMS
     keys: List[str] = field(init=False)
     bounds: Bounds = field(init=False)
+    method_bounds: Dict[str, Bounds] = field(init=False)
 
     def __post_init__(self) -> None:
         self.keys = categories_in(self.players.columns)
         # Bounds cover every category so toggling one never moves the scores of the others
         self.bounds = compute_bounds(self.players, self.keys)
+        self.method_bounds = {method: compute_bounds(self.players, self.keys, method=method) for method in METHODS}
         self._by_id = self.players.set_index("player_id")
 
     def pool_payload(self) -> Dict[str, Any]:
@@ -118,6 +120,9 @@ class DraftService:
         picks = self._parse_picks(request.get("picks"))
         rule = parse_rule(request.get("rule"))
         top_k = int(_bounded(request, "topK", 100, 1, MAX_TOP_K))
+        method = request.get("method", "capped")
+        if method not in METHODS:
+            raise RequestError(f"method must be one of {list(METHODS)}")
         games_adjusted = request.get("gamesAdjusted", False)
         if not isinstance(games_adjusted, bool):
             raise RequestError("gamesAdjusted must be true or false")
@@ -128,8 +133,8 @@ class DraftService:
         state = DraftState(taken=taken, mine=mine)
         clock = self._clock(state)
 
-        scores = composite_score(self.players, keys, self.bounds, games_adjusted)
-        category = category_scores(self.players, keys, self.bounds) * 100.0
+        scores = composite_score(self.players, keys, self.method_bounds[method], games_adjusted, method)
+        category = category_scores(self.players, keys, self.bounds) * 100.0  # bars stay on the 0-100 capped scale
         flags = build_flags(self.players, keys, self.bounds)
         drafted = set(picks)
 
@@ -137,7 +142,16 @@ class DraftService:
         if not clock["draftComplete"]:
             try:
                 plans = recommend(
-                    self.players, state, keys, self.bounds, rule, self.slot, self.rounds, top_k, games_adjusted=games_adjusted
+                    self.players,
+                    state,
+                    keys,
+                    self.method_bounds[method],
+                    rule,
+                    self.slot,
+                    self.rounds,
+                    top_k,
+                    games_adjusted=games_adjusted,
+                    method=method,
                 )
             except ValueError as error:
                 raise RequestError(str(error)) from error

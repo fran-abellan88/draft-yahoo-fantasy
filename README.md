@@ -23,8 +23,12 @@ Your picks are kept in the browser, so reloading the page mid-draft loses nothin
   which ones are yours, so the state cannot disagree with the draft. **Undo last pick** removes the latest one.
 - **Scoring categories**: untick one to leave it out of every score and plan. The score is the average of the ticked
   categories, so ticking fewer does not lower anyone's score.
-- **Count games missed** (off by default): scales every score by projected games played out of 82, so a player projected
-  for 59 games counts as 72%. It changes the ranking and the plan, not the category bars.
+- **Reward big numbers / Cap at the top 5%**: the uncapped score (default) lets a 32-point scorer outrank a 26-point one.
+  The capped score is the `nba-yahoo-fantasy-daily-dose` formula, where everyone past the 95th percentile in a category
+  scores the same. A z-score method also exists in `fantasy_draft/scoring.py`; it ranks almost the same as uncapped.
+- **Count games missed** (on by default): the distance above a replacement-level player is scaled by projected games
+  played out of 82, so a player projected for 59 games counts as 72%. It changes the ranking and the plan, not the
+  category bars. Every column of the table sorts, including XRank and projected GP.
 - **Who will still be there?** has two ways to judge availability. *Odds from ADP* treats a player's draft position as
   a bell curve around his ADP that widens for later picks. *ADP window* is a plain cut-off. Both are starting guesses
   that should be tuned on a draft with real managers.

@@ -22,7 +22,8 @@ const DEFAULT_RULE = { type: 'probability', baseSd: 2, sdPerAdp: 0.2, threshold:
 const state = {
   picks: [],
   categories: [],
-  gamesAdjusted: false,
+  gamesAdjusted: true,
+  method: 'uncapped',
   rule: { ...DEFAULT_RULE },
   search: '',
   position: 'ALL',
@@ -74,7 +75,7 @@ const detailOf = (id) => {
 // ---------- persistence ----------
 function saveState() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ picks: state.picks, categories: state.categories, gamesAdjusted: state.gamesAdjusted, rule: state.rule }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ picks: state.picks, categories: state.categories, gamesAdjusted: state.gamesAdjusted, method: state.method, rule: state.rule }));
   } catch (error) {
     // Private mode or blocked storage: the draft still works, it just will not survive a refresh
   }
@@ -97,6 +98,7 @@ function restoreState() {
     state.categories = allKeys.filter((key) => saved.categories.includes(key));
   }
   if (typeof saved.gamesAdjusted === 'boolean') state.gamesAdjusted = saved.gamesAdjusted;
+  if (saved.method === 'capped' || saved.method === 'uncapped') state.method = saved.method;
   if (saved.rule && typeof saved.rule === 'object') state.rule = { ...DEFAULT_RULE, ...saved.rule };
 }
 
@@ -125,7 +127,7 @@ async function refresh() {
     response = await fetch('/api/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ categories: state.categories, picks: state.picks, rule: ruleForRequest(), gamesAdjusted: state.gamesAdjusted }),
+      body: JSON.stringify({ categories: state.categories, picks: state.picks, rule: ruleForRequest(), gamesAdjusted: state.gamesAdjusted, method: state.method }),
     });
   } catch (error) {
     showError("Can't reach the draft server. Check that run_dashboard.py is still running, then reload.");
@@ -333,6 +335,8 @@ const POOL_COLUMNS = [
   { key: 'score', label: 'Score', left: false, defaultDirection: -1 },
   { key: 'availability', label: 'At your pick', left: false, defaultDirection: -1, title: 'Chance he is still available when you next pick' },
   { key: 'adp', label: 'ADP', left: false, defaultDirection: 1 },
+  { key: 'xrank', label: 'XRank', left: false, defaultDirection: 1, title: "Yahoo's own expert ranking" },
+  { key: 'gp', label: 'GP', left: false, defaultDirection: -1, title: 'Games projected for 2026-27' },
   ...STAT_COLUMNS.map((column) => ({ key: column.key, label: column.label, left: false, defaultDirection: column.key === 'to' ? 1 : -1 })),
 ];
 
@@ -362,6 +366,8 @@ function sortValue(row, player, key) {
   if (key === 'score') return row.score;
   if (key === 'availability') return row.availability;
   if (key === 'adp') return player.adp;
+  if (key === 'xrank') return player.xrank;
+  if (key === 'gp') return player.gp;
   return player.stats[key];
 }
 
@@ -412,6 +418,8 @@ function renderPool() {
       h('td', { class: 'score' }, oneDecimal(row.score)),
       h('td', {}, row.availability === null ? '-' : pct(row.availability)),
       h('td', { title: player.adpEstimated ? 'Yahoo shows no ADP for him; estimated from nearby ranks' : '' }, `${player.adpEstimated ? '~' : ''}${player.adp.toFixed(1)}`),
+      h('td', {}, player.xrank),
+      h('td', {}, player.gp),
       ...STAT_COLUMNS.map((column) => h('td', {}, column.kind === 'rate' ? formatRate(player.stats[column.key]) : oneDecimal(player.stats[column.key]))),
     ];
     return h(
@@ -586,6 +594,14 @@ function wireControls() {
     // Enter logs the pick only when exactly one player matches, so a slip of the keyboard cannot log the wrong one
     if (event.key === 'Enter' && visibleIds.length === 1) draft(visibleIds[0]);
   });
+  document.querySelector(`input[name="method"][value="${state.method}"]`).checked = true;
+  for (const input of document.querySelectorAll('input[name="method"]')) {
+    input.addEventListener('change', () => {
+      state.method = document.querySelector('input[name="method"]:checked').value;
+      saveState();
+      scheduleRefresh();
+    });
+  }
   $('games-adjusted').checked = state.gamesAdjusted;
   $('games-adjusted').addEventListener('change', (event) => {
     state.gamesAdjusted = event.target.checked;

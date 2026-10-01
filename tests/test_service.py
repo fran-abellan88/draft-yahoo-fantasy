@@ -170,3 +170,22 @@ def test_games_adjustment_lowers_scores_of_players_projected_to_miss_games(servi
 def test_games_adjustment_must_be_a_boolean(service: DraftService, value: Any) -> None:
     with pytest.raises(RequestError, match="gamesAdjusted"):
         _ask(service, [], gamesAdjusted=value)
+
+
+def test_uncapped_method_ranks_differently_from_capped_and_can_exceed_100(service: DraftService) -> None:
+    capped = {row["id"]: row["score"] for row in _ask(service, [])["pool"]}
+    uncapped = {row["id"]: row["score"] for row in _ask(service, [], method="uncapped")["pool"]}
+    assert max(capped.values()) <= 100 and capped != uncapped
+    assert uncapped["nikola-jokic"] > capped["nikola-jokic"]  # nothing is clamped away for the best player
+
+
+def test_method_plans_use_the_chosen_scale(service: DraftService) -> None:
+    capped = _ask(service, [])["plans"][0]["totalScore"]
+    uncapped = _ask(service, [], method="uncapped")["plans"][0]["totalScore"]
+    assert uncapped != capped
+
+
+@pytest.mark.parametrize("value", ["rank", 1, None])
+def test_method_must_be_a_known_one(service: DraftService, value: Any) -> None:
+    with pytest.raises(RequestError, match="method"):
+        _ask(service, [], method=value)

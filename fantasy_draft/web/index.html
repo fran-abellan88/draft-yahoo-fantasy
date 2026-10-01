@@ -26,6 +26,9 @@
         <h2>Scoring categories</h2>
         <div id="categories" class="categories"></div>
         <p class="note">Untick a category to leave it out of every score and plan.</p>
+        <label class="choice method"><input type="radio" name="method" value="uncapped"> Reward big numbers</label>
+        <label class="choice method"><input type="radio" name="method" value="capped"> Cap at the top 5%</label>
+        <p class="note">Uncapped counts a 32-point scorer as better than a 26-point one. Capped treats everyone past the top 5% in a category as equal.</p>
         <label class="choice games"><input id="games-adjusted" type="checkbox"> Count games missed</label>
         <p class="note">Scales each score by the share of an 82-game season the player is projected to play, so a player projected for 59 games counts as 72%.</p>
       </section>
