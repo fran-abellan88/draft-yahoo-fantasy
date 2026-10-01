@@ -130,3 +130,48 @@ def test_games_adjustment_is_off_by_default_and_needs_games() -> None:
         composite_score(players, ["pts"], bounds, games_adjusted=True)
     with pytest.raises(ValueError, match="projected gp"):
         games_factor(players.drop(columns="gp"))
+
+
+def test_uncapped_scores_exceed_the_unit_interval_instead_of_clamping() -> None:
+    players = pd.DataFrame({"pts": [5.0, 10.0, 20.0, 30.0, 40.0]})
+    bounds = {"pts": (10.0, 30.0)}
+    capped = category_scores(players, ["pts"], bounds)["pts"].tolist()
+    uncapped = category_scores(players, ["pts"], bounds, method="uncapped")["pts"].tolist()
+    assert capped == [0.0, 0.0, 0.5, 1.0, 1.0]
+    assert uncapped == [-0.25, 0.0, 0.5, 1.0, 1.5]
+
+
+def test_uncapped_matches_capped_inside_the_bounds() -> None:
+    players = pd.DataFrame({"pts": [12.0, 20.0, 28.0], "to": [1.5, 2.0, 2.5]})
+    bounds = compute_bounds(pd.DataFrame({"pts": [10.0, 20.0, 30.0], "to": [1.0, 2.0, 3.0]}), ["pts", "to"], 0, 100)
+    assert composite_score(players, ["pts", "to"], bounds, method="uncapped").tolist() == pytest.approx(
+        composite_score(players, ["pts", "to"], bounds).tolist()
+    )
+
+
+def test_zscore_is_distance_from_the_mean_in_standard_deviations_with_turnovers_reversed() -> None:
+    pool = pd.DataFrame({"pts": [10.0, 20.0, 30.0], "to": [1.0, 2.0, 3.0]})
+    bounds = compute_bounds(pool, ["pts", "to"], method="zscore")
+    assert bounds["pts"][0] == pytest.approx(20.0) and bounds["pts"][1] == pytest.approx((200 / 3) ** 0.5)
+    scores = category_scores(pool, ["pts", "to"], bounds, method="zscore")
+    assert scores["pts"].tolist() == pytest.approx([-1.2247, 0.0, 1.2247], abs=1e-4)
+    assert scores["to"].tolist() == pytest.approx([1.2247, 0.0, -1.2247], abs=1e-4)
+    assert composite_score(pool, ["pts", "to"], bounds, method="zscore").tolist() == pytest.approx([0.0, 0.0, 0.0], abs=1e-9)
+
+
+def test_zscore_games_adjustment_pulls_towards_replacement_level_not_towards_average() -> None:
+    pool = pd.DataFrame({"pts": [10.0, 20.0, 30.0, 40.0], "gp": [41.0, 41.0, 82.0, 82.0]})
+    bounds = compute_bounds(pool, ["pts"], method="zscore")
+    plain = composite_score(pool, ["pts"], bounds, method="zscore")
+    adjusted = composite_score(pool, ["pts"], bounds, games_adjusted=True, method="zscore")
+    assert adjusted[1] < plain[1]  # an average-ish scorer who misses half the season is worth less
+    # Replacement level is the 5th percentile (11.5 points): z = (11.5 - 25) / sqrt(125), x10
+    replacement = (11.5 - 25.0) / 125.0 ** 0.5 * 10.0
+    assert adjusted[0] == pytest.approx(replacement + (plain[0] - replacement) * 0.5)
+    assert adjusted[2] == plain[2] and adjusted[3] == plain[3]
+
+
+def test_unknown_method_is_rejected() -> None:
+    pool = pd.DataFrame({"pts": [10.0, 20.0, 30.0]})
+    with pytest.raises(ValueError, match="scoring method"):
+        compute_bounds(pool, ["pts"], method="rank")
