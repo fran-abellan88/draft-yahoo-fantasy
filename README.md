@@ -1,0 +1,78 @@
+# Draft assistant for a Yahoo head-to-head 9-category league
+
+A local tool for the fantasy basketball draft: 14 teams, snake order, pick 2, 13-man roster (PG, SG, G, SF, PF, F, C, C,
+Util, Util and 3 bench). It scores every player on the categories you choose, plans your remaining picks and recommends
+the pick in front of you. You log each pick as it happens and the plan updates.
+
+## Run it
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python run_dashboard.py
+```
+
+The page opens at `http://127.0.0.1:8001/`. The server listens on your computer only and the page loads nothing from
+the internet, so it keeps working if the connection drops during the draft.
+
+Your picks are kept in the browser, so reloading the page mid-draft loses nothing. **Reset draft** clears them.
+
+## Using the page
+
+- **Click a player** to log the pick that is on the clock. Picks are logged in order and the snake order decides
+  which ones are yours, so the state cannot disagree with the draft. **Undo last pick** removes the latest one.
+- **Scoring categories**: untick one to leave it out of every score and plan. The score is the average of the ticked
+  categories, so ticking fewer does not lower anyone's score.
+- **Who will still be there?** has two ways to judge availability. *Odds from ADP* treats a player's draft position as
+  a bell curve around his ADP that widens for later picks. *ADP window* is a plain cut-off. Both are starting guesses
+  that should be tuned on a draft with real managers.
+- **Worth knowing** badges under a name: the injury tag, no or few games last season, a projection that differs a lot
+  from last season, or a projection of few games played. They never change the score; they tell you when to look twice.
+
+## How a score is built
+
+For each category, a player's per-game projection is placed between the 5th and 95th percentile of the 150-player pool
+(0 to 1, clamped; turnovers are reversed so fewer is better). The score is the mean of the selected categories times 100.
+This is the composite from `nba-yahoo-fantasy-daily-dose`, checked against that project's golden test cases.
+
+FG% and FT% cannot be averaged across players, so they are scored as *impact*: makes above what a baseline shooter would
+have made on the same attempts, per game. That adds up across a roster, which is what a matchup compares.
+
+The plan is the best set of players for your remaining picks, one per pick, where each is likely to still be there, nobody
+repeats and everyone can start at once. The search is exact, and is tested against brute force.
+
+## Data
+
+| File | Source | Used for |
+|---|---|---|
+| `data/2026-27/projections.csv` | draft-room screenshots, read by hand | XRank, Rank, ADP (only the draft room has them) |
+| `data/2026-27/yahoo_projections.csv` | Yahoo player list | projected season totals with attempts |
+| `data/2025-26/yahoo_totals.csv` | Yahoo player list | last season's totals with attempts and minutes |
+| `data/2025-26/averages.csv`, `yahoo_averages.csv` | screenshots, Yahoo | cross-check only |
+
+Refresh the Yahoo data (pages are cached in `data/cache/`, which is not committed):
+
+```bash
+pip install -r requirements-dev.txt
+python fetch_yahoo_players.py --refresh
+python verify_snapshots.py        # every snapshot number against Yahoo's page
+```
+
+The screenshots are transcribed into `data/*/…_raw.csv` and merged and checked by `python ingest_snapshots.py projections`
+(or `averages`). Rows that two screenshots show must agree, and gaps or implausible values are reported.
+
+## Tests
+
+```bash
+pytest
+flake8
+```
+
+## Layout
+
+```
+fantasy_draft/   scoring, flags, lineup rules, availability, optimizer, data loading, Yahoo parser, server
+  web/           the page (plain HTML, CSS and JavaScript)
+tests/           pytest suite, with a golden fixture copied from nba-yahoo-fantasy-daily-dose
+legacy/2025/     last year's scripts and notebook, kept for reference only
+```

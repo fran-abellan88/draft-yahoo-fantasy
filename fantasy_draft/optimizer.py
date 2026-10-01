@@ -27,7 +27,7 @@ import pandas as pd
 
 from fantasy_draft.availability import AvailabilityRule
 from fantasy_draft.draft import MY_SLOT, ROSTER_SIZE, DraftState, my_picks
-from fantasy_draft.lineup import all_can_start
+from fantasy_draft.lineup import all_masks_can_start, position_mask
 from fantasy_draft.scoring import Bounds, category_scores, composite_score
 
 # When nobody clears the availability threshold for a pick, fall back to the likeliest few.
@@ -49,7 +49,7 @@ class _Candidate:
     player_id: str
     score: float
     probability: float
-    positions: Tuple[str, ...]
+    mask: int  # positions he can fill, as a bit mask (see lineup.py)
 
 
 def recommend(
@@ -77,9 +77,9 @@ def recommend(
     candidates = [
         _candidates_for_pick(pool, scores, positions, rule, pick, state.picks_made, max_candidates) for pick in remaining_picks
     ]
-    mine_positions = [positions[player_id] for player_id in state.mine]
+    mine_masks = [position_mask(positions[player_id]) for player_id in state.mine]
     base_score = float(sum(scores[player_id] for player_id in state.mine))
-    return _search(candidates, remaining_picks, mine_positions, base_score, top_k)
+    return _search(candidates, remaining_picks, mine_masks, base_score, top_k)
 
 
 def pick_frequency(plans: Sequence[Plan], pick_index: int = 0) -> pd.DataFrame:
@@ -129,7 +129,9 @@ def _candidates_for_pick(
     if len(chosen) == 0:
         chosen = np.argsort(-probabilities, kind="stable")[:FALLBACK_CANDIDATES]
     ids = pool["player_id"].to_numpy()[chosen]
-    candidates = [_Candidate(pid, float(scores[pid]), float(probabilities[i]), positions[pid]) for pid, i in zip(ids, chosen)]
+    candidates = [
+        _Candidate(pid, float(scores[pid]), float(probabilities[i]), position_mask(positions[pid])) for pid, i in zip(ids, chosen)
+    ]
     candidates.sort(key=lambda candidate: candidate.score, reverse=True)
     return candidates[:max_candidates]
 
@@ -137,7 +139,7 @@ def _candidates_for_pick(
 def _search(
     candidates: List[List[_Candidate]],
     picks: List[int],
-    mine_positions: List[Tuple[str, ...]],
+    mine_masks: List[int],
     base_score: float,
     top_k: int,
 ) -> List[Plan]:
@@ -176,8 +178,7 @@ def _search(
                 break  # candidates are sorted by score, so none of the rest can do better
             if candidate.player_id in chosen_ids:
                 continue
-            roster = mine_positions + [c.positions for c in chosen] + [candidate.positions]
-            if not all_can_start(roster):
+            if not all_masks_can_start(mine_masks + [c.mask for c in chosen] + [candidate.mask]):
                 continue
             chosen.append(candidate)
             chosen_ids.add(candidate.player_id)

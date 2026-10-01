@@ -53,6 +53,11 @@ function h(tag, props = {}, ...children) {
   return node;
 }
 
+// Replace a node's children, skipping null/false entries (replaceChildren would write the word "null")
+function put(node, ...children) {
+  node.replaceChildren(...children.flat().filter((child) => child !== null && child !== undefined && child !== false));
+}
+
 // ---------- formatting ----------
 const pct = (value) => `${Math.round(value * 100)}%`;
 const oneDecimal = (value) => (value === null || value === undefined ? '-' : value.toFixed(1));
@@ -214,7 +219,7 @@ function renderClock() {
     if (!clock.draftComplete && position === clock.pickInRound) classes.push('now');
     return h('div', { class: classes.join(' ') }, slot);
   });
-  $('snake').replaceChildren(...cells);
+  put($('snake'), ...cells);
   $('snake-note').textContent = clock.reversed
     ? `Round ${clock.round}: picks run right to left. Slot numbers shown, yours is outlined.`
     : `Round ${clock.round}: picks run left to right. Slot numbers shown, yours is outlined.`;
@@ -228,13 +233,13 @@ function renderHero() {
 
   if (clock.draftComplete) {
     hero.className = 'hero';
-    hero.replaceChildren(h('h2', {}, 'Draft complete'), h('p', { class: 'name' }, 'Good luck this season.'));
+    put(hero, h('h2', {}, 'Draft complete'), h('p', { class: 'name' }, 'Good luck this season.'));
     return;
   }
   if (!recommendation) {
     const best = analysis.pool[0];
     hero.className = 'hero';
-    hero.replaceChildren(
+    put(hero, 
       h('h2', {}, 'Your planned picks are made'),
       best ? h('p', { class: 'name' }, nameOf(best.id)) : null,
       best ? h('p', { class: 'facts' }, `Best available by score: ${detailOf(best.id)}, score ${oneDecimal(best.score)}`) : null,
@@ -252,7 +257,7 @@ function renderHero() {
     ? `Pick ${recommendation.pick} is yours. Take`
     : `You pick at ${recommendation.pick}, after ${plural(clock.picksUntilMine, 'more pick')}. Today's plan says`;
   const odds = !mine && row.availability !== null ? `${pct(row.availability)} chance he is still there.` : '';
-  hero.replaceChildren(
+  put(hero, 
     h('h2', {}, heading),
     h('p', { class: 'name' }, nameOf(recommendation.id)),
     h('p', { class: 'facts' }, `${detailOf(recommendation.id)}, score ${oneDecimal(row.score)}${odds ? `. ${odds}` : ''}`),
@@ -278,8 +283,8 @@ function renderPlan() {
   const container = $('plan');
   const alternatives = $('alternatives');
   if (analysis.plans.length === 0) {
-    container.replaceChildren(h('p', { class: 'note' }, 'No plan to show.'));
-    alternatives.replaceChildren();
+    put(container, h('p', { class: 'note' }, 'No plan to show.'));
+    put(alternatives, );
     return;
   }
   const [best, ...others] = analysis.plans;
@@ -309,13 +314,13 @@ function renderPlan() {
         ),
       )
     : null;
-  container.replaceChildren(h('div', { class: 'plan' }, rows, foot), otherPlans);
+  put(container, h('div', { class: 'plan' }, rows, foot), otherPlans);
 
   if (analysis.alternatives.length && analysis.recommendation) {
     const text = analysis.alternatives.map((alt) => `${nameOf(alt.id)} ${pct(alt.share)}`).join(', ');
-    alternatives.replaceChildren(h('span', {}, `Choice for pick ${analysis.recommendation.pick} across the best plans: `), h('strong', {}, text));
+    put(alternatives, h('span', {}, `Choice for pick ${analysis.recommendation.pick} across the best plans: `), h('strong', {}, text));
   } else {
-    alternatives.replaceChildren();
+    put(alternatives, );
   }
 }
 
@@ -324,9 +329,8 @@ const POOL_COLUMNS = [
   { key: 'rank', label: '#', left: false, defaultDirection: 1 },
   { key: 'name', label: 'Player', left: true, defaultDirection: 1 },
   { key: 'score', label: 'Score', left: false, defaultDirection: -1 },
-  { key: 'availability', label: 'Odds at your next pick', left: false, defaultDirection: -1 },
+  { key: 'availability', label: 'At your pick', left: false, defaultDirection: -1, title: 'Chance he is still available when you next pick' },
   { key: 'adp', label: 'ADP', left: false, defaultDirection: 1 },
-  { key: 'notes', label: 'Worth knowing', left: true, defaultDirection: 0 },
   ...STAT_COLUMNS.map((column) => ({ key: column.key, label: column.label, left: false, defaultDirection: column.key === 'to' ? 1 : -1 })),
 ];
 
@@ -337,11 +341,11 @@ function buildPoolHead() {
       th.append(h('button', { type: 'button', disabled: true }, column.label));
       return th;
     }
-    const button = h('button', { type: 'button', 'data-key': column.key, onclick: () => sortBy(column) }, column.label);
+    const button = h('button', { type: 'button', 'data-key': column.key, title: column.title, onclick: () => sortBy(column) }, column.label);
     th.append(button);
     return th;
   });
-  $('pool-head').replaceChildren(h('tr', {}, cells));
+  put($('pool-head'), h('tr', {}, cells));
 }
 
 function sortBy(column) {
@@ -402,11 +406,10 @@ function renderPool() {
   const body = rows.map(({ row, player }) => {
     const cells = [
       h('td', {}, row.rank),
-      h('td', { class: 'left player' }, h('strong', {}, player.name), h('div', { class: 'meta' }, `${player.team}, ${player.positions.join('/')}`)),
+      h('td', { class: 'left player' }, h('strong', {}, player.name), h('div', { class: 'meta' }, `${player.team}, ${player.positions.join('/')}`), h('div', { class: 'notes' }, notesFor(row, player))),
       h('td', { class: 'score' }, oneDecimal(row.score)),
       h('td', {}, row.availability === null ? '-' : pct(row.availability)),
       h('td', { title: player.adpEstimated ? 'Yahoo shows no ADP for him; estimated from nearby ranks' : '' }, `${player.adpEstimated ? '~' : ''}${player.adp.toFixed(1)}`),
-      h('td', { class: 'left notes' }, notesFor(row, player)),
       ...STAT_COLUMNS.map((column) => h('td', {}, column.kind === 'rate' ? formatRate(player.stats[column.key]) : oneDecimal(player.stats[column.key]))),
     ];
     return h(
@@ -426,7 +429,7 @@ function renderPool() {
       cells,
     );
   });
-  $('pool-body').replaceChildren(...body);
+  put($('pool-body'), ...body);
   if (rows.length === 0) $('pool-body').append(h('tr', {}, h('td', { colspan: POOL_COLUMNS.length, class: 'left' }, 'No available player matches. Clear the search or choose another position.')));
 
   for (const button of $('pool-head').querySelectorAll('button[data-key]')) {
@@ -440,11 +443,11 @@ function renderRoster() {
   const list = $('roster');
   if (analysis.roster.length === 0) {
     const first = pool.myPicks[0];
-    list.replaceChildren(h('li', {}, h('span', { class: 'empty' }, `No picks yet. Your first pick is ${first}.`)));
+    put(list, h('li', { class: 'empty-row' }, `No picks yet. Your first pick is ${first}.`));
     $('roster-positions').textContent = '';
     return;
   }
-  list.replaceChildren(
+  put(list, 
     ...analysis.roster.map((entry) =>
       h('li', {}, h('span', { class: 'pick' }, `#${entry.pick}`), h('span', {}, h('strong', {}, nameOf(entry.id)), h('div', { class: 'note' }, detailOf(entry.id)))),
     ),
@@ -458,7 +461,7 @@ function renderProfile() {
   const container = $('profile');
   const { roster, plan } = analysis.profile;
   if (!plan && !roster) {
-    container.replaceChildren(h('p', { class: 'note' }, 'Appears once you have picks or a plan.'));
+    put(container, h('p', { class: 'note' }, 'Appears once you have picks or a plan.'));
     return;
   }
   const keys = pool.categories.map((category) => category.key).filter((key) => state.categories.includes(key));
@@ -479,16 +482,16 @@ function renderProfile() {
     roster ? h('span', {}, h('i', { style: 'background:var(--mine)' }), 'Drafted') : null,
     plan ? h('span', {}, h('i', { style: 'background:var(--taken)' }), 'With best plan') : null,
   );
-  container.replaceChildren(legend, ...rows, h('p', { class: 'note' }, '0 to 100 against the pool. The number is the team average per category.'));
+  put(container, legend, ...rows, h('p', { class: 'note' }, '0 to 100 against the pool. The number is the team average per category.'));
 }
 
 function renderLog() {
   const list = $('log');
   if (analysis.log.length === 0) {
-    list.replaceChildren(h('li', {}, h('span', { class: 'empty' }, 'Nothing logged yet.')));
+    put(list, h('li', { class: 'empty-row' }, 'Nothing logged yet.'));
     return;
   }
-  list.replaceChildren(
+  put(list, 
     ...[...analysis.log].reverse().map((entry) => h('li', { class: entry.mine ? 'mine' : '' }, h('span', {}, `#${entry.pick}`), h('span', {}, nameOf(entry.id)))),
   );
 }
@@ -508,7 +511,7 @@ function buildCategories() {
       category.label,
     ),
   );
-  $('categories').replaceChildren(...boxes);
+  put($('categories'), ...boxes);
 }
 
 function onCategoryChange(event) {
@@ -521,7 +524,7 @@ function onCategoryChange(event) {
   hideError();
   state.categories = selected;
   saveState();
-  refresh();
+  scheduleRefresh(); // several quick clicks become one request
 }
 
 function buildPositionChips() {
@@ -541,7 +544,7 @@ function buildPositionChips() {
       position === 'ALL' ? 'All' : position,
     ),
   );
-  $('positions').replaceChildren(...chips);
+  put($('positions'), ...chips);
 }
 
 function syncRuleInputs() {

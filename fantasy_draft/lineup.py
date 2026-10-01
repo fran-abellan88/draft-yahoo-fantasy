@@ -5,12 +5,17 @@ This replaces the 2025 heuristic ("2 to 5 players eligible per position"). The q
 whether the players drafted so far can all be started at once, which is a bipartite matching of
 players to starting slots. A player who cannot be placed sits on the bench and adds nothing to the
 weekly categories, so a roster that fails this check is wasting a pick.
+
+Eligibility is held as a 5-bit mask (one bit per position) so the optimizer, which asks this question
+tens of thousands of times per request, can use cheap integer tuples as cache keys.
 """
 
 from functools import lru_cache
-from typing import FrozenSet, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Dict, FrozenSet, Iterable, List, Optional, Sequence, Set, Tuple
 
 ALL_POSITIONS: FrozenSet[str] = frozenset({"PG", "SG", "SF", "PF", "C"})
+POSITION_BIT: Dict[str, int] = {"PG": 1, "SG": 2, "SF": 4, "PF": 8, "C": 16}
+ALL_MASK = sum(POSITION_BIT.values())
 
 STARTING_SLOTS: Tuple[Tuple[str, FrozenSet[str]], ...] = (
     ("PG", frozenset({"PG"})),
@@ -27,20 +32,25 @@ STARTING_SLOTS: Tuple[Tuple[str, FrozenSet[str]], ...] = (
 BENCH_SPOTS = 3
 
 
-def _canonical(position_lists: Iterable[Sequence[str]]) -> Tuple[FrozenSet[str], ...]:
-    """Order-independent form of a roster, so equal rosters share a cache entry."""
-    sets = [frozenset(positions) for positions in position_lists]
-    return tuple(sorted(sets, key=lambda eligible: sorted(eligible)))
+def position_mask(positions: Iterable[str]) -> int:
+    """Bit mask of the positions a player can fill, e.g. ["PG", "SG"] -> 3."""
+    mask = 0
+    for position in positions:
+        mask |= POSITION_BIT[position]
+    return mask
+
+
+_SLOT_MASKS: Tuple[int, ...] = tuple(position_mask(eligible) for _, eligible in STARTING_SLOTS)
 
 
 @lru_cache(maxsize=None)
-def _max_matching(position_sets: Tuple[FrozenSet[str], ...]) -> int:
+def _max_matching(masks: Tuple[int, ...]) -> int:
     """Size of a maximum matching of players to starting slots (augmenting paths)."""
-    slot_owner: List[Optional[int]] = [None] * len(STARTING_SLOTS)
+    slot_owner: List[Optional[int]] = [None] * len(_SLOT_MASKS)
 
     def try_assign(player: int, seen: Set[int]) -> bool:
-        for slot_index, (_, eligible) in enumerate(STARTING_SLOTS):
-            if slot_index in seen or not position_sets[player] & eligible:
+        for slot_index, slot_mask in enumerate(_SLOT_MASKS):
+            if slot_index in seen or not masks[player] & slot_mask:
                 continue
             seen.add(slot_index)
             owner = slot_owner[slot_index]
@@ -49,15 +59,20 @@ def _max_matching(position_sets: Tuple[FrozenSet[str], ...]) -> int:
                 return True
         return False
 
-    return sum(try_assign(player, set()) for player in range(len(position_sets)))
+    return sum(try_assign(player, set()) for player in range(len(masks)))
+
+
+def all_masks_can_start(masks: Iterable[int]) -> bool:
+    """Return True when every player (given as position masks) fits in the starting lineup at once."""
+    canonical = tuple(sorted(masks))  # order does not matter, so equal rosters share a cache entry
+    return len(canonical) <= len(_SLOT_MASKS) and _max_matching(canonical) == len(canonical)
 
 
 def max_starters(position_lists: Iterable[Sequence[str]]) -> int:
     """Return how many of these players can start at the same time."""
-    return _max_matching(_canonical(position_lists))
+    return _max_matching(tuple(sorted(position_mask(positions) for positions in position_lists)))
 
 
 def all_can_start(position_lists: Iterable[Sequence[str]]) -> bool:
     """Return True when every player can be placed in the starting lineup simultaneously."""
-    canonical = _canonical(position_lists)
-    return len(canonical) <= len(STARTING_SLOTS) and _max_matching(canonical) == len(canonical)
+    return all_masks_can_start(position_mask(positions) for positions in position_lists)
