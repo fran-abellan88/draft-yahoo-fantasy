@@ -6,9 +6,12 @@ from typing import Dict, List, Tuple
 
 import pytest
 
+from fantasy_draft.categories import CATEGORIES
+
 
 WEB = Path(__file__).resolve().parent.parent / "fantasy_draft" / "web"
 CSS = (WEB / "style.css").read_text()
+JS = (WEB / "app.js").read_text()
 
 WCAG_TEXT = 4.5
 
@@ -63,3 +66,10 @@ def test_the_hidden_attribute_wins_over_display_rules() -> None:
 def test_the_page_declares_both_colour_schemes() -> None:
     # Otherwise form controls and scrollbars stay light in dark mode
     assert re.search(r"color-scheme:\s*light dark", CSS)
+
+
+def test_table_labels_use_the_same_names_as_the_categories() -> None:
+    labels = dict(re.findall(r"\{ key: '([\w]+)', label: '([^']+)', kind:", JS))
+    assert labels, "the stat columns moved; update this test"
+    for key, label in labels.items():
+        assert label == CATEGORIES[key].label, f"{key}: the table says {label}, the category list says {CATEGORIES[key].label}"

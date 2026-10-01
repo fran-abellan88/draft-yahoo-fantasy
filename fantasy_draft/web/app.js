@@ -9,7 +9,7 @@ const STAT_COLUMNS = [
   { key: 'pts', label: 'PTS', kind: 'number' },
   { key: 'reb', label: 'REB', kind: 'number' },
   { key: 'ast', label: 'AST', kind: 'number' },
-  { key: '3ptm', label: '3PM', kind: 'number' },
+  { key: '3ptm', label: '3PTM', kind: 'number' },
   { key: 'st', label: 'ST', kind: 'number' },
   { key: 'blk', label: 'BLK', kind: 'number' },
   { key: 'to', label: 'TO', kind: 'number' },
