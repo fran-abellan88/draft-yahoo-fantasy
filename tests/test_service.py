@@ -6,6 +6,7 @@ import pytest
 
 from fantasy_draft.data import load_players
 from fantasy_draft.draft import DraftState, my_picks
+from fantasy_draft.optimizer import FIRST_PICK_OPTIONS, NODE_BUDGET
 from fantasy_draft.service import DraftService, RequestError, parse_rule
 
 ALL = ["fg_pct", "ft_pct", "3ptm", "pts", "reb", "ast", "st", "blk", "to"]
@@ -189,3 +190,40 @@ def test_method_plans_use_the_chosen_scale(service: DraftService) -> None:
 def test_method_must_be_a_known_one(service: DraftService, value: Any) -> None:
     with pytest.raises(RequestError, match="method"):
         _ask(service, [], method=value)
+
+
+def test_the_answer_says_whether_the_search_was_complete(service: DraftService) -> None:
+    answer = _ask(service, [])
+    assert answer["search"]["truncated"] is False and 0 < answer["search"]["nodes"] < NODE_BUDGET
+
+
+def test_alternatives_are_other_first_picks_priced_against_the_best_plan(service: DraftService) -> None:
+    answer = _ask(service, [])
+    recommended = answer["recommendation"]["id"]
+    alternatives = answer["alternatives"]
+    assert alternatives and len(alternatives) <= 4
+    assert recommended not in [alt["id"] for alt in alternatives]
+    assert all(alt["behind"] >= 0 for alt in alternatives)
+    assert len({alt["id"] for alt in alternatives}) == len(alternatives)
+
+
+def test_a_rule_that_lets_everyone_through_is_cut_short_and_flagged(service: DraftService) -> None:
+    ids = _ids_by_xrank(service)
+    wide = {"type": "probability", "baseSd": 20, "sdPerAdp": 1.0, "threshold": 0.05}
+    answer = service.analyze({"categories": ["fg_pct", "ft_pct"], "picks": ids[:26], "rule": wide, "method": "uncapped"})
+    assert answer["search"]["truncated"] is True
+    assert answer["plans"], "a cut-short search still returns the best plan it found"
+    assert answer["search"]["nodes"] <= (FIRST_PICK_OPTIONS + 2) * (NODE_BUDGET + 1)
+
+
+@pytest.mark.parametrize("settings", [{"method": "uncapped", "gamesAdjusted": True}, {"method": "capped", "gamesAdjusted": False}])
+def test_the_work_budget_never_binds_with_default_rules_over_a_whole_draft(service: DraftService, settings: Dict[str, Any]) -> None:
+    """If this fails, default results have silently become approximate: more candidates or rounds were added without a rethink."""
+    ids = service.players.sort_values("adp_est")["player_id"].tolist()
+    busiest = 0
+    # Every third state, plus the one just before each of my picks, which is where the search is busiest
+    for made in sorted(set(range(0, 112, 3)) | {pick - 1 for pick in my_picks(rounds=8)}):
+        answer = service.analyze({"categories": ALL, "picks": ids[:made], **settings})
+        assert answer["search"]["truncated"] is False, f"cut short with {made} picks made"
+        busiest = max(busiest, answer["search"]["nodes"])
+    assert busiest < NODE_BUDGET / 2, f"the busiest state used {busiest:,} nodes; the budget is {NODE_BUDGET:,}"

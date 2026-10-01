@@ -94,3 +94,14 @@ def test_only_network_failures_are_retried_automatically() -> None:
     assert "NETWORK_RETRIES" in JS and "response.status >= 500" in JS
     loop = JS[JS.index("for (let attempt"): JS.index("if (response === null)")]
     assert "response.ok" not in loop
+
+
+def test_the_page_shows_a_busy_state_and_the_search_note() -> None:
+    html = (WEB / "index.html").read_text()
+    assert 'id="search-note"' in html
+    assert "BUSY_AFTER_MS" in JS and "main.busy" in CSS
+    assert "analysis.search.truncated" in JS, "an incomplete search must be said on the page, not hidden"
+
+
+def test_the_page_prices_alternatives_with_the_gap_the_server_sends() -> None:
+    assert "alt.behind" in JS and "alt.share" not in JS

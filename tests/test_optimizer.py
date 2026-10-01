@@ -1,7 +1,7 @@
 """Tests for the draft optimizer, including an exhaustive cross-check on small pools."""
 
 import itertools
-from typing import List
+from typing import Dict, List
 
 import numpy as np
 import pandas as pd
@@ -12,7 +12,7 @@ from fantasy_draft.categories import categories_in
 from fantasy_draft.data import load_players
 from fantasy_draft.draft import DraftState, my_picks
 from fantasy_draft.lineup import all_can_start
-from fantasy_draft.optimizer import pick_frequency, recommend, team_profile
+from fantasy_draft.optimizer import FIRST_PICK_OPTIONS, NODE_BUDGET, Recommendation, pick_frequency, plan_picks, recommend, team_profile
 from fantasy_draft.scoring import compute_bounds, composite_score
 
 ROUNDS = 3  # my picks are then 2, 27 and 30
@@ -186,3 +186,84 @@ def test_removing_a_category_changes_the_best_team() -> None:
     no_to_keys = [key for key in keys if key != "to"]
     without_to = recommend(players, DraftState(), no_to_keys, bounds, NormalAdpModel(), top_k=1)[0]
     assert set(with_to.player_ids) != set(without_to.player_ids)
+
+
+def _best_total_by_first_pick(pool: pd.DataFrame, rule: AvailabilityRule, state: DraftState, bounds: dict) -> Dict[str, float]:
+    """Best total of any valid team that starts with each player, by trying every assignment."""
+    scores = dict(zip(pool["player_id"], composite_score(pool, ["pts"], bounds)))
+    positions = dict(zip(pool["player_id"], pool["pos_list"]))
+    picks = [p for p in my_picks(rounds=ROUNDS) if p >= state.next_pick]
+    remaining = pool[~pool["player_id"].isin(set(state.taken) | set(state.mine))]
+    adp = remaining["adp_est"].to_numpy()
+    ids = remaining["player_id"].to_numpy()
+    eligible = [list(ids[rule.probability(adp, pick, state.picks_made) >= rule.threshold]) for pick in picks]
+    base = sum(scores[p] for p in state.mine)
+    best: Dict[str, float] = {}
+    for combo in itertools.product(*eligible):
+        if len(set(combo)) < len(combo) or not all_can_start([positions[p] for p in list(state.mine) + list(combo)]):
+            continue
+        total = base + sum(scores[p] for p in combo)
+        best[combo[0]] = max(best.get(combo[0], -np.inf), total)
+    return best
+
+
+@pytest.mark.parametrize("seed", range(4))
+@pytest.mark.parametrize("rule", [NormalAdpModel(), AdpWindow(slack=4.0)], ids=["normal", "window"])
+def test_first_pick_options_are_the_best_plan_for_each_first_pick(seed: int, rule: AvailabilityRule) -> None:
+    pool = _pool(seed)
+    bounds = compute_bounds(pool, ["pts"])
+    expected = _best_total_by_first_pick(pool, rule, DraftState(), bounds)
+    result = plan_picks(
+        pool, DraftState(), ["pts"], bounds, rule, rounds=ROUNDS, max_candidates=len(pool), node_budget=None, option_count=len(pool)
+    )
+    assert {option.player_id: option.plan.total_score for option in result.options} == pytest.approx(expected)
+    assert not result.truncated
+    assert result.options[0].plan.total_score == pytest.approx(result.plans[0].total_score)
+    assert all(option.plan.player_ids[0] == option.player_id for option in result.options)
+
+
+def test_options_are_sorted_best_first_and_cover_the_recommended_pick() -> None:
+    players = load_players()
+    keys = categories_in(players.columns)
+    result = plan_picks(players, DraftState(), keys, compute_bounds(players, keys), NormalAdpModel())
+    totals = [option.plan.total_score for option in result.options]
+    assert totals == sorted(totals, reverse=True)
+    assert result.plans[0].player_ids[0] in [option.player_id for option in result.options]
+    assert len({option.player_id for option in result.options}) == len(result.options) <= FIRST_PICK_OPTIONS + 1
+
+
+def _wide_open_search(node_budget: int) -> Recommendation:
+    players = load_players()
+    keys = ["fg_pct", "ft_pct"]
+    by_adp = players.sort_values("adp_est")["player_id"].tolist()
+    state = DraftState(taken=frozenset(by_adp[:26]) - {by_adp[1]}, mine=(by_adp[1],))  # 26 picks made, the second one mine
+    # Everyone clears the bar for every pick, so the same 25 players are candidates for all seven picks
+    rule = NormalAdpModel(base_sd=20.0, sd_per_adp=1.0, threshold=0.05)
+    bounds = compute_bounds(players, keys, method="uncapped")
+    return plan_picks(players, state, keys, bounds, rule, method="uncapped", node_budget=node_budget)
+
+
+def test_a_search_that_runs_out_of_budget_says_so_and_stops_near_the_budget() -> None:
+    result = _wide_open_search(node_budget=2_000)
+    assert result.truncated
+    searches = 1 + FIRST_PICK_OPTIONS + 1  # the main search and one per first-pick option, each stopping one node past its budget
+    assert result.nodes <= searches * (2_000 + 1)
+    assert result.plans, "a depth-first search reaches a first plan long before it runs out of budget"
+
+
+def test_a_truncated_search_is_reproducible() -> None:
+    first, second = _wide_open_search(5_000), _wide_open_search(5_000)
+    assert [p.player_ids for p in first.plans] == [p.player_ids for p in second.plans]
+    assert first.nodes == second.nodes
+
+
+def test_the_search_is_exact_when_the_budget_is_not_reached() -> None:
+    pool = _pool(seed=1)
+    bounds = compute_bounds(pool, ["pts"])
+    rule = NormalAdpModel()
+    exact = recommend(pool, DraftState(), ["pts"], bounds, rule, rounds=ROUNDS, top_k=10, max_candidates=len(pool))
+    budgeted = plan_picks(
+        pool, DraftState(), ["pts"], bounds, rule, rounds=ROUNDS, top_k=10, max_candidates=len(pool), node_budget=NODE_BUDGET
+    )
+    assert not budgeted.truncated
+    assert [p.total_score for p in budgeted.plans] == pytest.approx([p.total_score for p in exact])

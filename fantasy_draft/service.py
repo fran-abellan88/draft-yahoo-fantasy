@@ -19,12 +19,13 @@ from fantasy_draft.availability import AdpWindow, AvailabilityRule, NormalAdpMod
 from fantasy_draft.categories import CATEGORIES, categories_in
 from fantasy_draft.draft import MY_SLOT, ROSTER_SIZE, TEAMS, DraftState, my_picks
 from fantasy_draft.flags import build_flags
-from fantasy_draft.optimizer import Plan, pick_frequency, recommend, team_profile
+from fantasy_draft.optimizer import FirstPickOption, Plan, Recommendation, plan_picks, team_profile
 from fantasy_draft.scoring import METHODS, Bounds, category_scores, composite_score, compute_bounds
 
-MAX_TOP_K = 200
+MAX_TOP_K = 50
+DEFAULT_TOP_K = 10
 PLANS_SHOWN = 5
-ALTERNATIVES_SHOWN = 6
+ALTERNATIVES_SHOWN = 4
 DISPLAY_STATS = ["pts", "reb", "ast", "3ptm", "st", "blk", "to", "fg_pct", "ft_pct", "fga", "fta"]
 
 
@@ -119,7 +120,7 @@ class DraftService:
         keys = self._parse_categories(request.get("categories"))
         picks = self._parse_picks(request.get("picks"))
         rule = parse_rule(request.get("rule"))
-        top_k = int(_bounded(request, "topK", 100, 1, MAX_TOP_K))
+        top_k = int(_bounded(request, "topK", DEFAULT_TOP_K, 1, MAX_TOP_K))
         method = request.get("method", "capped")
         if method not in METHODS:
             raise RequestError(f"method must be one of {list(METHODS)}")
@@ -138,10 +139,10 @@ class DraftService:
         flags = build_flags(self.players, keys, self.bounds)
         drafted = set(picks)
 
-        plans: List[Plan] = []
+        recommendation_result = Recommendation([], [], False, 0)
         if not clock["draftComplete"]:
             try:
-                plans = recommend(
+                recommendation_result = plan_picks(
                     self.players,
                     state,
                     keys,
@@ -155,6 +156,7 @@ class DraftService:
                 )
             except ValueError as error:
                 raise RequestError(str(error)) from error
+        plans = recommendation_result.plans
 
         adp = self.players["adp_est"].to_numpy(dtype=float)
         next_mine = clock["nextMyPick"] if clock["nextMyPick"] is not None and clock["nextMyPick"] <= self._horizon_last() else None
@@ -166,7 +168,8 @@ class DraftService:
             "clock": clock,
             "pool": pool,
             "plans": [self._plan_payload(plan, rule, state) for plan in plans[:PLANS_SHOWN]],
-            "alternatives": self._alternatives(plans),
+            "alternatives": self._alternatives(recommendation_result.options, best),
+            "search": {"truncated": recommendation_result.truncated, "nodes": recommendation_result.nodes},
             "recommendation": self._recommendation(best, next_mine),
             "roster": [{"id": pid, "pick": number} for number, pid in enumerate(picks, start=1) if number in mine_numbers],
             "log": [{"pick": number, "id": pid, "mine": number in mine_numbers} for number, pid in enumerate(picks, start=1)],
@@ -264,11 +267,15 @@ class DraftService:
             steps.append({"pick": pick, "id": pid, "availability": _num(rule.probability(np.array([adp]), pick, state.picks_made)[0], 3)})
         return {"steps": steps, "totalScore": _num(plan.total_score, 1), "survival": _num(plan.survival, 3)}
 
-    def _alternatives(self, plans: List[Plan]) -> List[Dict[str, Any]]:
-        if not plans:
+    def _alternatives(self, options: List[FirstPickOption], best: Optional[Plan]) -> List[Dict[str, Any]]:
+        """What to take if the recommended first pick is gone: the best plan for each other player and how far behind it is."""
+        if best is None:
             return []
-        frequency = pick_frequency(plans, 0).head(ALTERNATIVES_SHOWN)
-        return [{"id": row.player_id, "share": _num(row.share, 3)} for row in frequency.itertuples()]
+        others = [option for option in options if option.player_id != best.player_ids[0]]
+        return [
+            {"id": option.player_id, "behind": _num(max(0.0, best.total_score - option.plan.total_score), 1)}
+            for option in others[:ALTERNATIVES_SHOWN]
+        ]
 
     def _recommendation(self, best: Optional[Plan], next_mine: Optional[int]) -> Optional[Dict[str, Any]]:
         if best is None or next_mine is None:

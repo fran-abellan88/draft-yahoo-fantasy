@@ -14,13 +14,19 @@ pick 30 beats the reverse when A will not last and B will.
 The search is exact (branch and bound over candidate lists sorted by score) and returns the best
 `top_k` distinct teams. Tests compare it with brute force on small pools.
 
+Work is bounded. Branch and bound is exact but its worst case is huge: when the availability rule lets almost
+everyone through, every pick shares the same candidates and the same team is reached in thousands of orders.
+`plan_picks` therefore counts search nodes and stops at a budget, and says so (`truncated`). A stopped search is
+depth first and tries the highest-scoring candidate first, so what it returns is the best plan found, which tends
+to start with the highest-scoring player available, not a proven best.
+
 The plan is a guide for the pick in front of you. Once real picks come in, call `recommend` again with
 the updated state: availability for players already gone becomes exact.
 """
 
 from collections import Counter
 from dataclasses import dataclass
-from typing import Dict, FrozenSet, List, Sequence, Set, Tuple
+from typing import Dict, FrozenSet, List, Optional, Sequence, Set, Tuple
 
 import numpy as np
 import pandas as pd
@@ -32,6 +38,12 @@ from fantasy_draft.scoring import Bounds, category_scores, composite_score
 
 # When nobody clears the availability threshold for a pick, fall back to the likeliest few.
 FALLBACK_CANDIDATES = 5
+
+# Search nodes per request. With the default rule a whole simulated draft needs at most about 25,000 for the main
+# search, so these leave a wide margin (tests/test_optimizer.py checks it) and only bind on pathological settings.
+NODE_BUDGET = 150_000
+OPTION_NODE_BUDGET = 30_000  # for each search that fixes one first pick
+FIRST_PICK_OPTIONS = 6
 
 
 @dataclass(frozen=True)
@@ -52,6 +64,24 @@ class _Candidate:
     mask: int  # positions he can fill, as a bit mask (see lineup.py)
 
 
+@dataclass(frozen=True)
+class FirstPickOption:
+    """The best plan that starts with one particular player."""
+
+    player_id: str
+    plan: Plan
+
+
+@dataclass(frozen=True)
+class Recommendation:
+    """Plans for the rest of the draft, how the best first picks compare, and whether the search was cut short."""
+
+    plans: List[Plan]
+    options: List[FirstPickOption]  # best first; the first is the best plan's own first pick
+    truncated: bool
+    nodes: int
+
+
 def recommend(
     players: pd.DataFrame,
     state: DraftState,
@@ -64,12 +94,41 @@ def recommend(
     max_candidates: int = 25,
     games_adjusted: bool = False,
     method: str = "capped",
+    node_budget: Optional[int] = None,
 ) -> List[Plan]:
-    """Return the best `top_k` distinct plans, best first. Empty when no picks of mine remain."""
+    """Return the best `top_k` distinct plans, best first. Empty when no picks of mine remain.
+
+    Exact unless a `node_budget` is given; see `plan_picks` for the version the dashboard uses.
+    """
+    return plan_picks(
+        players, state, keys, bounds, rule, slot, rounds, top_k, max_candidates, games_adjusted, method, node_budget, option_count=0
+    ).plans
+
+
+def plan_picks(
+    players: pd.DataFrame,
+    state: DraftState,
+    keys: Sequence[str],
+    bounds: Bounds,
+    rule: AvailabilityRule,
+    slot: int = MY_SLOT,
+    rounds: int = 8,
+    top_k: int = 10,
+    max_candidates: int = 25,
+    games_adjusted: bool = False,
+    method: str = "capped",
+    node_budget: Optional[int] = NODE_BUDGET,
+    option_count: int = FIRST_PICK_OPTIONS,
+) -> Recommendation:
+    """Plan the remaining picks within a work budget, and price the best alternatives for the next pick.
+
+    The alternatives are searched directly, one search per first pick with that player fixed, so `top_k` only has
+    to cover the plans shown and does not decide which alternatives can appear.
+    """
     _check_state(players, state, slot, rounds)
     remaining_picks = [pick for pick in my_picks(slot, rounds) if pick >= state.next_pick]
     if not remaining_picks:
-        return []
+        return Recommendation([], [], False, 0)
 
     scores = pd.Series(composite_score(players, keys, bounds, games_adjusted, method).to_numpy(), index=players["player_id"])
     positions = {player_id: tuple(pos) for player_id, pos in zip(players["player_id"], players["pos_list"])}
@@ -81,7 +140,20 @@ def recommend(
     ]
     mine_masks = [position_mask(positions[player_id]) for player_id in state.mine]
     base_score = float(sum(scores[player_id] for player_id in state.mine))
-    return _search(candidates, remaining_picks, mine_masks, base_score, top_k)
+    plans, truncated, nodes = _search(candidates, remaining_picks, mine_masks, base_score, top_k, node_budget)
+
+    options: List[FirstPickOption] = []
+    if option_count and plans:
+        by_id = {candidate.player_id: candidate for candidate in candidates[0]}
+        wanted = [plans[0].player_ids[0]] + [c.player_id for c in candidates[0][:option_count]]
+        for player_id in dict.fromkeys(wanted):  # in order, once each
+            budget = None if node_budget is None else min(node_budget, OPTION_NODE_BUDGET)
+            found, cut, used = _search([[by_id[player_id]]] + candidates[1:], remaining_picks, mine_masks, base_score, 1, budget)
+            truncated, nodes = truncated or cut, nodes + used
+            if found:
+                options.append(FirstPickOption(player_id, found[0]))
+        options.sort(key=lambda option: (option.plan.total_score, option.plan.survival), reverse=True)
+    return Recommendation(plans, options, truncated, nodes)
 
 
 def pick_frequency(plans: Sequence[Plan], pick_index: int = 0) -> pd.DataFrame:
@@ -144,8 +216,12 @@ def _search(
     mine_masks: List[int],
     base_score: float,
     top_k: int,
-) -> List[Plan]:
-    """Branch and bound for the `top_k` best distinct teams."""
+    node_budget: Optional[int] = None,
+) -> Tuple[List[Plan], bool, int]:
+    """Branch and bound for the `top_k` best distinct teams.
+
+    Returns the plans, whether the `node_budget` ran out before the search finished, and the nodes visited.
+    """
     n_picks = len(candidates)
     suffix_best = [0.0] * (n_picks + 1)
     for k in range(n_picks - 1, -1, -1):
@@ -171,7 +247,14 @@ def _search(
     def cannot_improve(optimistic_total: float) -> bool:
         return len(found) >= top_k and optimistic_total <= floor[0]
 
+    nodes = [0]
+    out_of_budget = [False]
+
     def recurse(k: int, total: float, survival: float) -> None:
+        nodes[0] += 1
+        if node_budget is not None and nodes[0] > node_budget:
+            out_of_budget[0] = True
+            return
         if k == n_picks:
             record(total, survival)
             return
@@ -187,6 +270,9 @@ def _search(
             recurse(k + 1, total + candidate.score, survival * candidate.probability)
             chosen_ids.discard(candidate.player_id)
             chosen.pop()
+            if out_of_budget[0]:
+                return
 
     recurse(0, base_score, 1.0)
-    return sorted(found.values(), key=lambda plan: (plan.total_score, plan.survival), reverse=True)
+    plans = sorted(found.values(), key=lambda plan: (plan.total_score, plan.survival), reverse=True)
+    return plans, out_of_budget[0], nodes[0]

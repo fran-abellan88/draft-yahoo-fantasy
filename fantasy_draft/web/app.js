@@ -131,8 +131,19 @@ function markRefreshFailed() {
   if (analysis) renderPool();
 }
 
+// Past this long the plan and recommendation are dimmed with a note, so a slow reply is not mistaken for a frozen page
+const BUSY_AFTER_MS = 200;
+let busyTimer = null;
+
+function setBusy(busy) {
+  clearTimeout(busyTimer);
+  busyTimer = busy ? setTimeout(() => document.querySelector('main').classList.add('busy'), BUSY_AFTER_MS) : null;
+  if (!busy) document.querySelector('main').classList.remove('busy');
+}
+
 async function refresh() {
   const requestId = ++latestRequest;
+  setBusy(true);
   const body = JSON.stringify({ categories: state.categories, picks: state.picks, rule: ruleForRequest(), gamesAdjusted: state.gamesAdjusted, method: state.method });
   let response = null;
   for (let attempt = 0; attempt <= NETWORK_RETRIES && response === null; attempt += 1) {
@@ -148,6 +159,7 @@ async function refresh() {
   }
   if (response === null) {
     if (requestId !== latestRequest) return;
+    setBusy(false);
     markRefreshFailed();
     showError("Can't reach the draft server. Your picks are saved in this browser. Check that run_dashboard.py is still running.", true);
     return;
@@ -159,6 +171,7 @@ async function refresh() {
     data = { error: 'The server sent a reply this page cannot read.' };
   }
   if (requestId !== latestRequest) return; // a newer request has already replaced this one
+  setBusy(false);
   if (!response.ok) {
     markRefreshFailed();
     showError(data.error || 'The server could not handle that request.', response.status >= 500);
@@ -220,6 +233,7 @@ function render() {
   renderClock();
   renderHero();
   renderPlan();
+  renderSearchNote();
   renderPool();
   renderRoster();
   renderProfile();
@@ -290,6 +304,7 @@ function renderHero() {
     h('h2', {}, heading),
     h('p', { class: 'name' }, nameOf(recommendation.id)),
     h('p', { class: 'facts' }, `${detailOf(recommendation.id)}, score ${oneDecimal(row.score)}${odds ? `. ${odds}` : ''}`),
+    analysis.search.truncated ? h('p', { class: 'facts' }, 'Approximate: the search was cut short. See the note under Plan.') : null,
     laterSteps.length ? h('p', { class: 'then' }, `Then ${laterSteps.join(', ')}.`) : null,
     mine
       ? h('div', { class: 'cta' }, h('button', { type: 'button', class: 'primary', onclick: () => draft(recommendation.id) }, `Draft ${nameOf(recommendation.id)}`))
@@ -346,8 +361,13 @@ function renderPlan() {
   put(container, h('div', { class: 'plan' }, rows, foot), otherPlans);
 
   if (analysis.alternatives.length && analysis.recommendation) {
-    const text = analysis.alternatives.map((alt) => `${nameOf(alt.id)} ${pct(alt.share)}`).join(', ');
-    put(alternatives, h('span', {}, `Choice for pick ${analysis.recommendation.pick} across the best plans: `), h('strong', {}, text));
+    const text = analysis.alternatives.map((alt) => `${nameOf(alt.id)} (${alt.behind > 0 ? `${oneDecimal(alt.behind)} lower` : 'same'})`).join(', ');
+    put(
+      alternatives,
+      h('span', {}, `If ${nameOf(analysis.recommendation.id)} is gone, take instead: `),
+      h('strong', {}, text),
+      h('span', {}, '. In brackets: how far the whole plan falls behind the best one.'),
+    );
   } else {
     put(alternatives, );
   }
@@ -478,6 +498,22 @@ function renderPool() {
 }
 
 // --- right rail ---
+// What an incomplete search gives back: the best plan found, which usually starts with the highest-scoring player
+function renderSearchNote() {
+  const note = $('search-note');
+  if (!analysis.search.truncated) {
+    note.hidden = true;
+    return;
+  }
+  const plans = analysis.plans;
+  const sameStart = plans.length > 0 && plans.every((plan) => plan.steps[0].id === plans[0].steps[0].id);
+  const reason = 'The search stopped early: these availability settings let so many players through that checking every plan would take too long.';
+  note.textContent = plans.length === 0
+    ? `${reason} It stopped before it found a plan. Narrow "Who will still be there?" and try again.`
+    : `${reason} The plan is the best one found, not proven the best${sameStart ? `, and every plan starts with ${nameOf(plans[0].steps[0].id)}, the highest-scoring player it tried first` : ''}.`;
+  note.hidden = false;
+}
+
 function renderRoster() {
   const list = $('roster');
   if (analysis.roster.length === 0) {
