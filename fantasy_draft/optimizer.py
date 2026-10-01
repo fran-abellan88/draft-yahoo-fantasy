@@ -33,8 +33,8 @@ import pandas as pd
 
 from fantasy_draft.availability import AvailabilityRule
 from fantasy_draft.draft import MY_SLOT, ROSTER_SIZE, DraftState, my_picks
-from fantasy_draft.lineup import all_masks_can_start, position_mask
-from fantasy_draft.scoring import Bounds, category_scores, composite_score
+from fantasy_draft.lineup import ALL_MASK, all_masks_can_start, position_mask
+from fantasy_draft.scoring import Bounds, category_scores, composite_score, replacement_score
 
 # When nobody clears the availability threshold for a pick, fall back to the likeliest few.
 FALLBACK_CANDIDATES = 5
@@ -146,8 +146,10 @@ def plan_picks(
     candidates = [
         _candidates_for_pick(pool, scores, positions, rule, pick, state.picks_made, max_candidates) for pick in remaining_picks
     ]
-    mine_masks = [position_mask(positions[player_id]) for player_id in state.mine]
-    base_score = float(sum(scores[player_id] for player_id in state.mine))
+    # A pick of a player outside the pool still fills a starting slot: any position, replacement-level value
+    mine_masks = [position_mask(positions[player_id]) for player_id in state.mine] + [ALL_MASK] * state.mine_outside
+    outside_value = replacement_score(players, keys, bounds, method) if state.mine_outside else 0.0
+    base_score = float(sum(scores[player_id] for player_id in state.mine)) + outside_value * state.mine_outside
     plans, truncated, nodes = _search(candidates, remaining_picks, mine_masks, base_score, top_k, node_budget)
     main_nodes, max_option_nodes = nodes, 0
 
@@ -197,10 +199,11 @@ def _check_state(players: pd.DataFrame, state: DraftState, slot: int, rounds: in
         raise ValueError("A player cannot be both mine and taken by someone else")
     # Count across the whole roster, not just the planning horizon: later picks may already be made
     expected_mine = sum(1 for pick in my_picks(slot, ROSTER_SIZE) if pick < state.next_pick)
-    if len(state.mine) != expected_mine:
+    mine_count = len(state.mine) + state.mine_outside
+    if mine_count != expected_mine:
         raise ValueError(
             f"{state.picks_made} picks are done, so slot {slot} should own {expected_mine} of them, "
-            f"but {len(state.mine)} are marked as mine"
+            f"but {mine_count} are marked as mine"
         )
 
 

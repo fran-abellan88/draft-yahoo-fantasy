@@ -131,6 +131,12 @@ def _replacement_composite(players: pd.DataFrame, keys: Sequence[str], bounds: B
     return float(_composite(pd.DataFrame([values]), keys, bounds, method).iloc[0])
 
 
+def replacement_score(players: pd.DataFrame, keys: Sequence[str], bounds: Bounds, method: str = "capped") -> float:
+    """What a replacement-level player scores: the value of a pick whose player is not in the pool."""
+    _check_method(method)
+    return _replacement_composite(players, keys, bounds, method)
+
+
 def _check_method(method: str) -> None:
     if method not in METHODS:
         raise ValueError(f"Unknown scoring method: {method!r}")

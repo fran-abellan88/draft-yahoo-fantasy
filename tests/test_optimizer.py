@@ -11,7 +11,7 @@ from fantasy_draft.availability import AdpWindow, AvailabilityRule, NormalAdpMod
 from fantasy_draft.categories import categories_in
 from fantasy_draft.data import load_players
 from fantasy_draft.draft import DraftState, my_picks
-from fantasy_draft.lineup import all_can_start
+from fantasy_draft.lineup import ALL_POSITIONS, all_can_start
 from fantasy_draft.optimizer import FIRST_PICK_OPTIONS, NODE_BUDGET, Recommendation, pick_frequency, plan_picks, recommend, team_profile
 from fantasy_draft.scoring import compute_bounds, composite_score
 
@@ -52,7 +52,7 @@ def _brute_force(
     for combo in itertools.product(*eligible):
         if len(set(combo)) < len(combo):
             continue
-        roster = [positions[p] for p in list(state.mine) + list(combo)]
+        roster = [positions[p] for p in list(state.mine) + list(combo)] + [sorted(ALL_POSITIONS)] * state.mine_outside
         if lineup_rule and not all_can_start(roster):
             continue
         team = frozenset(combo)
@@ -324,3 +324,25 @@ def test_the_search_is_exact_when_the_budget_is_not_reached() -> None:
     )
     assert not budgeted.truncated
     assert [p.total_score for p in budgeted.plans] == pytest.approx([p.total_score for p in exact])
+
+
+@pytest.mark.parametrize("rule", [NormalAdpModel(), AdpWindow(slack=4.0)], ids=["normal", "window"])
+def test_a_pick_outside_the_pool_is_planned_around_exactly(rule: AvailabilityRule) -> None:
+    """Round 1 is over and my pick 2 was a player outside the pool: he fills a slot at any position and scores nothing."""
+    pool = _pool(seed=3, size=36)
+    bounds = compute_bounds(pool, ["pts"])
+    state = DraftState(taken=frozenset(f"p{i}" for i in range(13)), mine_outside=1)
+    assert state.picks_made == 14 and state.next_pick == 15
+    expected = _brute_force(pool, rule, state, bounds)
+    assert expected
+    plans = recommend(pool, state, ["pts"], bounds, rule, rounds=ROUNDS, top_k=10, max_candidates=len(pool))
+    assert [plan.total_score for plan in plans] == pytest.approx(expected[:10])
+
+
+def test_an_outside_pick_counts_as_one_of_my_picks() -> None:
+    pool = _pool(seed=3)
+    state = DraftState(taken=frozenset({"p0", "p1", "p2", "p3", "p6"}), mine_outside=1)  # pick 2 done and it was mine
+    assert recommend(pool, state, ["pts"], compute_bounds(pool, ["pts"]), NormalAdpModel(), rounds=ROUNDS)
+    wrong = DraftState(taken=frozenset({"p0", "p1", "p2", "p3", "p6"}), mine_outside=2)
+    with pytest.raises(ValueError, match="should own"):
+        recommend(pool, wrong, ["pts"], compute_bounds(pool, ["pts"]), NormalAdpModel(), rounds=ROUNDS)

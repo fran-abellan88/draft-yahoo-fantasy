@@ -26,9 +26,9 @@ function sanitizeRule(rule, limits) {
 
 // ---------- the saved draft ----------
 // The pick log is a list of objects, {kind: 'player', id}. The first version of the page saved a bare list of player
-// ids under another storage key. Both are read here, so a draft saved by an older page is not lost. Other kinds of
-// pick are added to PICK_KINDS as they are built.
-const PICK_KINDS = ['player'];
+// ids under another storage key. Both are read here, so a draft saved by an older page is not lost. `outside` is a
+// pick of a player who is not in the pool. Other kinds are added to PICK_KINDS as they are built.
+const PICK_KINDS = ['player', 'outside'];
 
 // A pick log in either shape, as a list of objects; null when any entry is unusable (so nothing half-valid is kept).
 function normalizePicks(raw, knownIds) {
@@ -44,6 +44,9 @@ function normalizePicks(raw, knownIds) {
       if (typeof pick.id !== 'string' || !knownIds.has(pick.id) || seen.has(pick.id)) return null;
       seen.add(pick.id);
       picks.push({ kind, id: pick.id });
+    } else {
+      if (pick.id !== undefined) return null; // these kinds name no player
+      picks.push({ kind });
     }
   }
   return picks;

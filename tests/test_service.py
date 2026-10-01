@@ -287,3 +287,35 @@ def test_a_pick_can_be_a_plain_id_or_an_object_and_the_answer_is_the_same(servic
 def test_a_malformed_pick_is_refused_with_its_number(service: DraftService, picks: Any, message: str) -> None:
     with pytest.raises(RequestError, match=message):
         _ask(service, picks)
+
+
+def test_a_pick_outside_the_list_advances_the_draft_and_removes_nobody(service: DraftService) -> None:
+    ids = _ids_by_xrank(service)
+    plain = _ask(service, ids[:1])  # pick 1 made; I am on the clock at pick 2
+    after = _ask(service, [ids[0], {"kind": "outside"}])  # pick 2, mine, was a player outside the list
+    assert plain["clock"]["pick"] == 2 and after["clock"]["pick"] == 3
+    assert after["roster"] == [{"id": None, "kind": "outside", "pick": 2}]
+    assert [entry["kind"] for entry in after["log"]] == ["player", "outside"]
+    assert after["log"][1] == {"pick": 2, "kind": "outside", "id": None, "mine": True}
+    assert {row["id"] for row in after["pool"]} == {row["id"] for row in plain["pool"]}
+    assert after["plans"], "there is still a plan for the later picks"
+
+
+def test_an_outside_pick_by_another_team_only_moves_the_clock(service: DraftService) -> None:
+    ids = _ids_by_xrank(service)
+    answer = _ask(service, [{"kind": "outside"}, ids[0]])  # pick 1 outside the list, pick 2 (mine) Jokic
+    assert answer["clock"]["pick"] == 3
+    assert [entry["id"] for entry in answer["roster"]] == [ids[0]]
+    assert {row["id"] for row in answer["pool"]} == set(ids) - {ids[0]}
+
+
+def test_my_outside_pick_costs_a_slot_and_replacement_value(service: DraftService) -> None:
+    ids = _ids_by_xrank(service)
+    with_player = _ask(service, [ids[1], ids[0]])  # pick 2 mine is a pool player
+    with_outside = _ask(service, [ids[1], {"kind": "outside"}])
+    assert with_outside["plans"][0]["totalScore"] < with_player["plans"][0]["totalScore"]
+
+
+def test_an_outside_pick_carries_no_player_id(service: DraftService) -> None:
+    with pytest.raises(RequestError, match="no player id"):
+        _ask(service, [{"kind": "outside", "id": "nikola-jokic"}])

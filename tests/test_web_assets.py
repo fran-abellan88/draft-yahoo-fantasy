@@ -119,3 +119,10 @@ def test_a_late_reply_marks_the_row_that_was_just_clicked() -> None:
     assert re.search(r"function showBusy\(\)\s*\{[^}]*renderPool\(\)", JS, re.S)
     assert "badge('Logging the pick'" in JS
     assert "with a note" not in JS, "the busy state dims the plan, it shows no note"
+
+
+def test_the_page_can_log_a_pick_that_is_not_in_the_list() -> None:
+    html = (WEB / "index.html").read_text()
+    assert 'id="outside"' in html
+    assert "$('outside').addEventListener('click', draftOutside)" in JS
+    assert "state.picks.push({ kind: 'outside' })" in JS

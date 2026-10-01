@@ -218,6 +218,14 @@ function draft(id) {
   refresh();
 }
 
+// A pick of a player who is not in the pool: it advances the draft and, if it is mine, fills a starting slot
+function draftOutside() {
+  if (!analysis || analysis.clock.draftComplete) return;
+  state.picks.push({ kind: 'outside' });
+  saveState();
+  refresh();
+}
+
 function undo() {
   if (state.picks.length === 0) return;
   state.picks.pop();
@@ -282,6 +290,7 @@ function renderClock() {
     ? `Round ${clock.round}: picks run right to left. Slot numbers shown, yours is outlined.`
     : `Round ${clock.round}: picks run left to right. Slot numbers shown, yours is outlined.`;
   $('undo').disabled = state.picks.length === 0;
+  $('outside').disabled = analysis.clock.draftComplete;
 }
 
 function renderHero() {
@@ -550,12 +559,16 @@ function renderRoster() {
   }
   put(list, 
     ...analysis.roster.map((entry) =>
-      h('li', {}, h('span', { class: 'pick' }, `#${entry.pick}`), h('span', {}, h('strong', {}, nameOf(entry.id)), h('div', { class: 'note' }, detailOf(entry.id)))),
+      entry.kind === 'outside'
+        ? h('li', {}, h('span', { class: 'pick' }, `#${entry.pick}`), h('span', {}, h('strong', {}, 'Not in the list'), h('div', { class: 'note' }, 'Any position, replacement-level value')))
+        : h('li', {}, h('span', { class: 'pick' }, `#${entry.pick}`), h('span', {}, h('strong', {}, nameOf(entry.id)), h('div', { class: 'note' }, detailOf(entry.id)))),
     ),
   );
   const counts = Object.fromEntries(POSITIONS.map((position) => [position, 0]));
-  for (const entry of analysis.roster) for (const position of playerById.get(entry.id).positions) counts[position] += 1;
-  $('roster-positions').textContent = `Eligible at: ${POSITIONS.map((position) => `${position} ${counts[position]}`).join(', ')}`;
+  const outside = analysis.roster.filter((entry) => entry.kind === 'outside').length;
+  for (const entry of analysis.roster) if (entry.kind !== 'outside') for (const position of playerById.get(entry.id).positions) counts[position] += 1;
+  const outsideNote = outside ? `, plus ${outside} not in the list (any position)` : '';
+  $('roster-positions').textContent = `Eligible at: ${POSITIONS.map((position) => `${position} ${counts[position]}`).join(', ')}${outsideNote}`;
 }
 
 function renderProfile() {
@@ -593,7 +606,7 @@ function renderLog() {
     return;
   }
   put(list, 
-    ...[...analysis.log].reverse().map((entry) => h('li', { class: entry.mine ? 'mine' : '' }, h('span', {}, `#${entry.pick}`), h('span', {}, nameOf(entry.id)))),
+    ...[...analysis.log].reverse().map((entry) => h('li', { class: entry.mine ? 'mine' : '' }, h('span', {}, `#${entry.pick}`), h('span', {}, entry.kind === 'outside' ? 'Not in the list' : nameOf(entry.id)))),
   );
 }
 
@@ -683,6 +696,7 @@ function onRuleChange() {
 function wireControls() {
   $('error-retry').addEventListener('click', refresh);
   $('undo').addEventListener('click', undo);
+  $('outside').addEventListener('click', draftOutside);
   $('reset').addEventListener('click', reset);
   $('search').addEventListener('input', (event) => {
     state.search = event.target.value;

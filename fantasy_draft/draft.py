@@ -24,7 +24,9 @@ def my_picks(slot: int = MY_SLOT, rounds: int = 8, teams: int = TEAMS) -> List[i
 
 
 # What one entry of the pick log can be. Extended as each kind is built.
-PICK_KINDS: Tuple[str, ...] = ("player",)
+#   player   a player in the pool, picked by whoever's turn it was
+#   outside  a pick I saw but whose player is not in the pool: every pool player is known to have survived it
+PICK_KINDS: Tuple[str, ...] = ("player", "outside")
 
 
 @dataclass(frozen=True)
@@ -41,11 +43,13 @@ class DraftState:
 
     taken: FrozenSet[str] = frozenset()
     mine: Tuple[str, ...] = ()
+    mine_outside: int = 0  # my picks of players outside the pool: they fill a slot but have no stats
+    other_outside: int = 0  # other teams' picks of players outside the pool
 
     @property
     def picks_made(self) -> int:
         """Number of picks made by everyone so far."""
-        return len(self.taken) + len(self.mine)
+        return len(self.taken) + len(self.mine) + self.mine_outside + self.other_outside
 
     @property
     def next_pick(self) -> int:

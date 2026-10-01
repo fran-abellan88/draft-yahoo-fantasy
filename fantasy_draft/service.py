@@ -143,7 +143,12 @@ class DraftService:
         numbered = list(enumerate(picks, start=1))
         mine = tuple(pick.player_id for number, pick in numbered if number in mine_numbers and pick.player_id is not None)
         taken = frozenset(pick.player_id for number, pick in numbered if number not in mine_numbers and pick.player_id is not None)
-        state = DraftState(taken=taken, mine=mine)
+        state = DraftState(
+            taken=taken,
+            mine=mine,
+            mine_outside=sum(1 for number, pick in numbered if number in mine_numbers and pick.kind == "outside"),
+            other_outside=sum(1 for number, pick in numbered if number not in mine_numbers and pick.kind == "outside"),
+        )
         clock = self._clock(state)
 
         scores = composite_score(self.players, keys, self.method_bounds[method], games_adjusted, method)
@@ -231,6 +236,8 @@ class DraftService:
         if extra or kind not in PICK_KINDS:
             raise RequestError(f"Pick {number}: a pick has a kind ({', '.join(PICK_KINDS)}) and, for a player, an id")
         player_id = entry.get("id")
+        if kind == "outside" and player_id is not None:
+            raise RequestError(f"Pick {number}: a pick outside the list has no player id")
         if kind == "player":
             if not isinstance(player_id, str):
                 raise RequestError(f"Pick {number}: a player pick needs the player's id")

@@ -144,3 +144,8 @@ def test_a_page_pick_log_is_accepted_by_the_server() -> None:
     ids = service.players["player_id"].tolist()[:4]
     picks = _run(f"L.normalizePicks({json.dumps(ids)}, new Set({json.dumps(ids)}))")
     assert len(service._parse_picks(picks)) == 4
+
+
+def test_an_outside_pick_has_no_id_and_a_player_pick_needs_one() -> None:
+    assert _run(f"L.normalizePicks([{{kind: 'outside'}}, 'a'], {KNOWN})") == [{"kind": "outside"}, {"kind": "player", "id": "a"}]
+    assert _run(f"L.normalizePicks([{{kind: 'outside', id: 'a'}}], {KNOWN})") is None
