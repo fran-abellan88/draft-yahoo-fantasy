@@ -1,7 +1,7 @@
 """
 Local web server for the draft dashboard.
 
-Standard library only. It binds to 127.0.0.1, serves three static files and two JSON endpoints, and
+Standard library only. It binds to 127.0.0.1, serves four static files and two JSON endpoints, and
 holds no state: the page sends the whole draft with every request.
 
 Binding to 127.0.0.1 keeps other computers out, but not other web pages in the user's own browser. A page
@@ -32,6 +32,7 @@ LOCAL_NAMES = ("127.0.0.1", "localhost")
 # Only these files are ever served from disk, so a crafted path cannot reach anything else
 STATIC_FILES: Dict[str, Tuple[str, str]] = {
     "/": ("index.html", "text/html; charset=utf-8"),
+    "/logic.js": ("logic.js", "text/javascript; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/style.css": ("style.css", "text/css; charset=utf-8"),
 }

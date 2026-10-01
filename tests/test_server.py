@@ -44,7 +44,8 @@ def _post(url: str, body: bytes, content_type: str = "application/json") -> Tupl
 
 
 def test_the_page_and_its_assets_are_served(base_url: str) -> None:
-    for path, expected_type in (("/", "text/html"), ("/app.js", "text/javascript"), ("/style.css", "text/css")):
+    pages = (("/", "text/html"), ("/app.js", "text/javascript"), ("/logic.js", "text/javascript"), ("/style.css", "text/css"))
+    for path, expected_type in pages:
         status, content_type, body = _get(base_url + path)
         assert status == 200 and content_type.startswith(expected_type) and body
 

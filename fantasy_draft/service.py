@@ -10,7 +10,7 @@ snake order, so the state can never be inconsistent with the draft.
 
 import math
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -33,18 +33,28 @@ class RequestError(ValueError):
     """The request cannot be served; the message is safe to show to the user."""
 
 
+# The only place the allowed availability settings are written down: (default, lowest, highest). The page gets them
+# from /api/pool, so what it lets the user type and what the server accepts cannot drift apart.
+RULE_LIMITS: Dict[str, Tuple[float, float, float]] = {
+    "baseSd": (2.0, 0.1, 20.0),
+    "sdPerAdp": (0.2, 0.0, 1.0),
+    "threshold": (0.5, 0.05, 0.95),
+    "slack": (3.0, 0.0, 60.0),
+}
+
+
 def parse_rule(raw: Optional[Dict[str, Any]]) -> AvailabilityRule:
     """Build an availability rule from the request, rejecting nonsense values."""
     raw = raw or {}
     kind = raw.get("type", "probability")
     if kind == "probability":
         return NormalAdpModel(
-            base_sd=_bounded(raw, "baseSd", 2.0, 0.1, 20.0),
-            sd_per_adp=_bounded(raw, "sdPerAdp", 0.2, 0.0, 1.0),
-            threshold=_bounded(raw, "threshold", 0.5, 0.05, 0.95),
+            base_sd=_bounded(raw, "baseSd", *RULE_LIMITS["baseSd"]),
+            sd_per_adp=_bounded(raw, "sdPerAdp", *RULE_LIMITS["sdPerAdp"]),
+            threshold=_bounded(raw, "threshold", *RULE_LIMITS["threshold"]),
         )
     if kind == "window":
-        return AdpWindow(slack=_bounded(raw, "slack", 3.0, 0.0, 60.0))
+        return AdpWindow(slack=_bounded(raw, "slack", *RULE_LIMITS["slack"]))
     raise RequestError(f"Unknown availability rule: {kind!r}")
 
 
@@ -107,6 +117,7 @@ class DraftService:
                 }
             )
         return {
+            "ruleLimits": {key: {"default": d, "min": low, "max": high} for key, (d, low, high) in RULE_LIMITS.items()},
             "league": {"teams": self.teams, "slot": self.slot, "rounds": self.rounds, "rosterSize": ROSTER_SIZE},
             "myPicks": my_picks(self.slot, ROSTER_SIZE, self.teams),
             "categories": [

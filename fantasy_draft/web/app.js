@@ -99,7 +99,8 @@ function restoreState() {
   }
   if (typeof saved.gamesAdjusted === 'boolean') state.gamesAdjusted = saved.gamesAdjusted;
   if (saved.method === 'capped' || saved.method === 'uncapped') state.method = saved.method;
-  if (saved.rule && typeof saved.rule === 'object') state.rule = { ...DEFAULT_RULE, ...saved.rule };
+  // A saved value outside the allowed range would be refused by the server on every request, so it is put back in range
+  if (saved.rule && typeof saved.rule === 'object') state.rule = sanitizeRule({ ...DEFAULT_RULE, ...saved.rule }, pool.ruleLimits);
 }
 
 // ---------- talking to the server ----------
@@ -646,6 +647,10 @@ function buildPositionChips() {
 
 function syncRuleInputs() {
   const rule = state.rule;
+  for (const [key, id] of [['baseSd', 'rule-base-sd'], ['sdPerAdp', 'rule-sd-per-adp'], ['threshold', 'rule-threshold'], ['slack', 'rule-slack']]) {
+    $(id).min = pool.ruleLimits[key].min;
+    $(id).max = pool.ruleLimits[key].max;
+  }
   document.querySelector(`input[name="rule"][value="${rule.type}"]`).checked = true;
   $('rule-base-sd').value = rule.baseSd;
   $('rule-sd-per-adp').value = rule.sdPerAdp;
@@ -656,16 +661,18 @@ function syncRuleInputs() {
 }
 
 function onRuleChange() {
-  const type = document.querySelector('input[name="rule"]:checked').value;
-  state.rule = {
-    type,
-    baseSd: Number($('rule-base-sd').value),
-    sdPerAdp: Number($('rule-sd-per-adp').value),
-    threshold: Number($('rule-threshold').value),
-    slack: Number($('rule-slack').value),
-  };
-  $('rule-probability').hidden = type !== 'probability';
-  $('rule-window').hidden = type !== 'window';
+  // Typed values are held inside the allowed range and written back, so the box shows what is being used
+  state.rule = sanitizeRule(
+    {
+      type: document.querySelector('input[name="rule"]:checked').value,
+      baseSd: $('rule-base-sd').value,
+      sdPerAdp: $('rule-sd-per-adp').value,
+      threshold: $('rule-threshold').value,
+      slack: $('rule-slack').value,
+    },
+    pool.ruleLimits,
+  );
+  syncRuleInputs();
   saveState();
   scheduleRefresh();
 }

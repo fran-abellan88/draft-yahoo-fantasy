@@ -249,3 +249,12 @@ def test_the_answer_reports_the_main_and_the_busiest_option_search(service: Draf
     search = _ask(service, [])["search"]
     assert 0 < search["mainNodes"] < NODE_BUDGET and 0 < search["maxOptionNodes"] < OPTION_NODE_BUDGET
     assert search["nodes"] >= search["mainNodes"] + search["maxOptionNodes"]
+
+
+def test_the_pool_tells_the_page_the_allowed_availability_settings(service: DraftService) -> None:
+    limits = service.pool_payload()["ruleLimits"]
+    assert limits["baseSd"] == {"default": 2.0, "min": 0.1, "max": 20.0}
+    assert set(limits) == {"baseSd", "sdPerAdp", "threshold", "slack"}
+    for key, limit in limits.items():  # the values the page may send are exactly the ones the server accepts
+        assert parse_rule({"type": "window" if key == "slack" else "probability", key: limit["min"]})
+        assert parse_rule({"type": "window" if key == "slack" else "probability", key: limit["max"]})
