@@ -1,6 +1,7 @@
 /* Draft assistant. System fonts only, so the page works with no network. */
 
 :root {
+  color-scheme: light dark;
   --paper: #edf0f3;
   --surface: #ffffff;
   --ink: #142033;
@@ -36,6 +37,9 @@
 }
 
 * { box-sizing: border-box; }
+
+/* An author display rule such as `.fields { display: grid }` would otherwise keep a hidden element on screen */
+[hidden] { display: none !important; }
 
 body {
   margin: 0;
