@@ -22,6 +22,7 @@ const DEFAULT_RULE = { type: 'probability', baseSd: 2, sdPerAdp: 0.2, threshold:
 
 const state = {
   picks: [],
+  history: [], // the actions Undo reverts, newest last (see logic.js)
   categories: [],
   gamesAdjusted: true,
   method: 'uncapped',
@@ -76,7 +77,7 @@ const detailOf = (id) => {
 // ---------- persistence ----------
 function saveState() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 2, picks: state.picks, categories: state.categories, gamesAdjusted: state.gamesAdjusted, method: state.method, rule: state.rule }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 2, picks: state.picks, history: state.history, categories: state.categories, gamesAdjusted: state.gamesAdjusted, method: state.method, rule: state.rule }));
   } catch (error) {
     // Private mode or blocked storage: the draft still works, it just will not survive a refresh
   }
@@ -93,6 +94,7 @@ function restoreState() {
   state.categories = allKeys;
   if (!saved || typeof saved !== 'object') return;
   state.picks = normalizePicks(saved.picks, new Set(playerById.keys())) || [];
+  state.history = sanitizeHistory(saved.history, state.picks);
   if (Array.isArray(saved.categories) && saved.categories.length > 0 && saved.categories.every((key) => allKeys.includes(key))) {
     state.categories = allKeys.filter((key) => saved.categories.includes(key));
   }
@@ -212,6 +214,7 @@ function draft(id) {
     return;
   }
   state.picks.push({ kind: 'player', id });
+  state.history.push({ type: 'log', count: 1 });
   state.search = '';
   $('search').value = '';
   saveState();
@@ -222,6 +225,7 @@ function draft(id) {
 function draftOutside() {
   if (!analysis || analysis.clock.draftComplete) return;
   state.picks.push({ kind: 'outside' });
+  state.history.push({ type: 'log', count: 1 });
   saveState();
   refresh();
 }
@@ -237,6 +241,7 @@ function submitBehind(event) {
     return;
   }
   for (const number of plan.unseen) state.picks.push({ kind: 'unseen' });
+  if (plan.unseen.length) state.history.push({ type: 'log', count: plan.unseen.length });
   note.textContent = plan.stoppedAt === null
     ? `${plan.unseen.length} unseen picks added.`
     : `${plan.unseen.length ? `${plan.unseen.length} unseen picks added. ` : ''}Pick ${plan.stoppedAt} is yours: log it now, then press I am behind again for the rest.`;
@@ -261,6 +266,7 @@ function toggleBehind() {
 function markPlayerGone(id) {
   const next = markGone(state.picks, id, playerById.get(id).adp);
   if (!next) return;
+  state.history.push({ type: 'gone', index: next.findIndex((pick, index) => pick.id === id && state.picks[index].kind === 'unseen') });
   state.picks = next;
   saveState();
   refresh();
@@ -271,8 +277,10 @@ function hasUnseenPicks() {
 }
 
 function undo() {
-  if (state.picks.length === 0) return;
-  state.picks.pop();
+  const result = undoLast(state.picks, state.history);
+  if (!result) return;
+  state.picks = result.picks;
+  state.history = result.history;
   saveState();
   refresh();
 }
@@ -291,6 +299,7 @@ function reset() {
   resetArmed = false;
   button.textContent = 'Reset draft';
   state.picks = [];
+  state.history = [];
   saveState();
   refresh();
 }
@@ -676,10 +685,20 @@ function renderProfile() {
   put(container, legend, ...rows, h('p', { class: 'note' }, '0 to 100 against the pool. The number is the team average per category.'));
 }
 
+// A gone entry back to an unseen pick, for a mistake noticed after other picks were logged
+function unmark(index) {
+  const result = unmarkGone(state.picks, state.history, index);
+  if (!result) return;
+  state.picks = result.picks;
+  state.history = result.history;
+  saveState();
+  refresh();
+}
+
 function logLabel(entry) {
   if (entry.kind === 'outside') return 'Not in the list';
   if (entry.kind === 'unseen') return 'Unseen pick';
-  if (entry.kind === 'gone') return `${nameOf(entry.id)} (gone, pick unknown)`;
+  if (entry.kind === 'gone') return `${nameOf(entry.id)} (gone, pick assumed)`;
   return nameOf(entry.id);
 }
 
@@ -690,7 +709,7 @@ function renderLog() {
     return;
   }
   put(list, 
-    ...[...analysis.log].reverse().map((entry) => h('li', { class: entry.mine ? 'mine' : '' }, h('span', {}, `#${entry.pick}`), h('span', {}, logLabel(entry)))),
+    ...[...analysis.log].reverse().map((entry) => h('li', { class: entry.mine ? 'mine' : '' }, h('span', {}, `#${entry.pick}`), h('span', {}, logLabel(entry), ...(entry.kind === 'gone' ? [h('button', { type: 'button', class: 'gone', onclick: () => unmark(entry.pick - 1) }, 'Unmark')] : [])))),
   );
 }
 

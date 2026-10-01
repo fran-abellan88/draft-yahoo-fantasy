@@ -236,3 +236,40 @@ def test_what_the_page_builds_for_a_gap_is_accepted_by_the_server() -> None:
     log = _run(f"L.markGone({json.dumps(log)}, {json.dumps(ids[20])}, 21)")
     assert len(plan["unseen"]) == 6  # picks 21 to 26; pick 27 is mine, so the page stops there
     assert [pick.kind for pick in service._parse_picks(log)[18:]] == ["player", "player", "gone"] + ["unseen"] * 5
+
+
+def test_undo_reverts_the_last_action_whatever_it_was() -> None:
+    picks = [{"kind": "player", "id": "a"}, {"kind": "unseen"}, {"kind": "unseen"}, {"kind": "gone", "id": "b"}]
+    history = [{"type": "log", "count": 1}, {"type": "log", "count": 3}, {"type": "gone", "index": 3}]
+    first = _run(f"L.undoLast({json.dumps(picks)}, {json.dumps(history)})")
+    assert first["picks"][3] == {"kind": "unseen"} and len(first["picks"]) == 4, "Gone is undone, no pick is lost"
+    second = _run(f"L.undoLast({json.dumps(first['picks'])}, {json.dumps(first['history'])})")
+    assert second["picks"] == [{"kind": "player", "id": "a"}], "the three unseen picks of one catch-up go together"
+
+
+def test_undo_in_the_middle_of_the_log_does_not_touch_a_later_unseen_pick() -> None:
+    picks = [{"kind": "gone", "id": "b"}, {"kind": "unseen"}]
+    history = [{"type": "log", "count": 2}, {"type": "gone", "index": 0}]
+    assert _run(f"L.undoLast({json.dumps(picks)}, {json.dumps(history)})")["picks"] == [{"kind": "unseen"}, {"kind": "unseen"}]
+
+
+def test_undo_with_no_history_removes_the_last_entry_and_with_no_picks_does_nothing() -> None:
+    assert _run("L.undoLast([{kind: 'unseen'}, {kind: 'unseen'}], [])")["picks"] == [{"kind": "unseen"}]
+    assert _run("L.undoLast([], [])") is None
+
+
+def test_a_saved_history_that_does_not_describe_the_log_is_dropped() -> None:
+    picks = json.dumps([{"kind": "unseen"}])
+    assert _run(f"L.sanitizeHistory([{{type: 'log', count: 1}}], {picks})") == [{"type": "log", "count": 1}]
+    assert _run(f"L.sanitizeHistory([{{type: 'log', count: 5}}], {picks})") == []  # more than the log holds
+    assert _run(f"L.sanitizeHistory([{{type: 'gone', index: 0}}], {picks})") == []  # that entry is not gone
+    assert _run(f"L.sanitizeHistory([{{type: 'nope'}}], {picks})") == []
+    assert _run(f"L.sanitizeHistory('x', {picks})") == []
+
+
+def test_unmarking_a_gone_entry_makes_it_unseen_and_forgets_its_action() -> None:
+    picks = json.dumps([{"kind": "gone", "id": "b"}, {"kind": "player", "id": "a"}])
+    history = json.dumps([{"type": "log", "count": 2}, {"type": "gone", "index": 0}])
+    result = _run(f"L.unmarkGone({picks}, {history}, 0)")
+    assert result == {"picks": [{"kind": "unseen"}, {"kind": "player", "id": "a"}], "history": [{"type": "log", "count": 2}]}
+    assert _run(f"L.unmarkGone({picks}, {history}, 1)") is None

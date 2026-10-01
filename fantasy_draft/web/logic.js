@@ -104,6 +104,53 @@ function markGone(picks, id, adp) {
   return next;
 }
 
+// ---------- undoing ----------
+// Undo reverts the last action, whatever it was. `history` lists the actions of this session, oldest first:
+//   {type: 'log', count}   `count` entries were appended (one pick, or the unseen picks of one "I am behind")
+//   {type: 'gone', index}  the unseen pick at `index` was resolved to a player known to be taken
+// The history may be shorter than the log (a draft saved before it existed, or after an edit): with nothing left to
+// undo in it, Undo removes the last entry, which is what it always did.
+
+// A saved history kept only if it still describes the log; anything else is dropped.
+function sanitizeHistory(raw, picks) {
+  if (!Array.isArray(raw)) return [];
+  let logged = 0;
+  for (const action of raw) {
+    if (!action || typeof action !== 'object') return [];
+    if (action.type === 'log') {
+      if (!Number.isInteger(action.count) || action.count < 1) return [];
+      logged += action.count;
+    } else if (action.type === 'gone') {
+      if (!Number.isInteger(action.index) || !picks[action.index] || picks[action.index].kind !== 'gone') return [];
+    } else {
+      return [];
+    }
+  }
+  if (logged > picks.length) return [];
+  return raw.map((action) => (action.type === 'log' ? { type: 'log', count: action.count } : { type: 'gone', index: action.index }));
+}
+
+function unseenAgain(picks, index) {
+  const next = picks.slice();
+  next[index] = { kind: 'unseen' };
+  return next;
+}
+
+// The log and history after undoing the last action; null when there is nothing to undo.
+function undoLast(picks, history) {
+  if (picks.length === 0) return null;
+  const last = history[history.length - 1];
+  if (last && last.type === 'gone') return { picks: unseenAgain(picks, last.index), history: history.slice(0, -1) };
+  if (last && last.type === 'log') return { picks: picks.slice(0, picks.length - last.count), history: history.slice(0, -1) };
+  return { picks: picks.slice(0, -1), history: [] };
+}
+
+// A gone entry back to an unseen pick, for a mistake noticed after other picks; null when it is not a gone entry.
+function unmarkGone(picks, history, index) {
+  if (!picks[index] || picks[index].kind !== 'gone') return null;
+  return { picks: unseenAgain(picks, index), history: history.filter((action) => !(action.type === 'gone' && action.index === index)) };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { clampRuleValue, sanitizeRule, normalizePicks, pickSavedState, planBehind, markGone, PICK_KINDS };
+  module.exports = { clampRuleValue, sanitizeRule, normalizePicks, pickSavedState, planBehind, markGone, sanitizeHistory, undoLast, unmarkGone, PICK_KINDS };
 }
