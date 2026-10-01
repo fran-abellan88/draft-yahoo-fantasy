@@ -177,7 +177,7 @@ class DraftService:
 
         adp = self.players["adp_est"].to_numpy(dtype=float)
         next_mine = clock["nextMyPick"] if clock["nextMyPick"] is not None and clock["nextMyPick"] <= self._horizon_last() else None
-        next_mine_probability = rule.probability(adp, next_mine, state.picks_made) if next_mine is not None else None
+        next_mine_probability = rule.probability(adp, next_mine, state.picks_made, state.unseen) if next_mine is not None else None
 
         pool = self._pool_rows(scores, category, flags, drafted, next_mine_probability)
         best = plans[0] if plans else None
@@ -306,7 +306,8 @@ class DraftService:
         steps = []
         for pick, pid in zip(plan.pick_numbers, plan.player_ids):
             adp = float(self._by_id.loc[pid, "adp_est"])
-            steps.append({"pick": pick, "id": pid, "availability": _num(rule.probability(np.array([adp]), pick, state.picks_made)[0], 3)})
+            odds = rule.probability(np.array([adp]), pick, state.picks_made, state.unseen)[0]
+            steps.append({"pick": pick, "id": pid, "availability": _num(odds, 3)})
         return {"steps": steps, "totalScore": _num(plan.total_score, 1), "survival": _num(plan.survival, 3)}
 
     def _alternatives(self, options: List[FirstPickOption], best: Optional[Plan]) -> List[Dict[str, Any]]:

@@ -45,11 +45,12 @@ class DraftState:
     mine: Tuple[str, ...] = ()
     mine_outside: int = 0  # my picks of players outside the pool: they fill a slot but have no stats
     other_outside: int = 0  # other teams' picks of players outside the pool
+    unseen: Tuple[int, ...] = ()  # pick numbers nobody reported; the pool may be missing players taken at them
 
     @property
     def picks_made(self) -> int:
         """Number of picks made by everyone so far."""
-        return len(self.taken) + len(self.mine) + self.mine_outside + self.other_outside
+        return len(self.taken) + len(self.mine) + self.mine_outside + self.other_outside + len(self.unseen)
 
     @property
     def next_pick(self) -> int:

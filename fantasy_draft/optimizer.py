@@ -144,7 +144,8 @@ def plan_picks(
     pool = players[~players["player_id"].isin(unavailable)]
 
     candidates = [
-        _candidates_for_pick(pool, scores, positions, rule, pick, state.picks_made, max_candidates) for pick in remaining_picks
+        _candidates_for_pick(pool, scores, positions, rule, pick, state.picks_made, state.unseen, max_candidates)
+        for pick in remaining_picks
     ]
     # A pick of a player outside the pool still fills a starting slot: any position, replacement-level value
     mine_masks = [position_mask(positions[player_id]) for player_id in state.mine] + [ALL_MASK] * state.mine_outside
@@ -214,10 +215,11 @@ def _candidates_for_pick(
     rule: AvailabilityRule,
     pick: int,
     picks_made: int,
+    unseen: Sequence[int],
     max_candidates: int,
 ) -> List[_Candidate]:
     """The best players who will likely still be there at `pick`, highest score first."""
-    probabilities = rule.probability(pool["adp_est"].to_numpy(dtype=float), pick, picks_made)
+    probabilities = rule.probability(pool["adp_est"].to_numpy(dtype=float), pick, picks_made, unseen)
     chosen = np.flatnonzero(probabilities >= rule.threshold)
     if len(chosen) == 0:
         chosen = np.argsort(-probabilities, kind="stable")[:FALLBACK_CANDIDATES]

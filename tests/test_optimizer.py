@@ -346,3 +346,21 @@ def test_an_outside_pick_counts_as_one_of_my_picks() -> None:
     wrong = DraftState(taken=frozenset({"p0", "p1", "p2", "p3", "p6"}), mine_outside=2)
     with pytest.raises(ValueError, match="should own"):
         recommend(pool, wrong, ["pts"], compute_bounds(pool, ["pts"]), NormalAdpModel(), rounds=ROUNDS)
+
+
+def test_unseen_picks_lower_the_odds_the_plan_relies_on_and_count_as_picks_made() -> None:
+    players = load_players()
+    keys = categories_in(players.columns)
+    bounds = compute_bounds(players, keys, method="uncapped")
+    by_adp = players.sort_values("adp_est")["player_id"].tolist()
+    seen = by_adp[:20]  # picks 1 to 20, seen; pick 2 was mine
+    state_seen = DraftState(taken=frozenset(seen[:1] + seen[2:]), mine=(seen[1],))
+    state_unseen = DraftState(taken=state_seen.taken, mine=state_seen.mine, unseen=tuple(range(21, 27)))
+    assert state_unseen.picks_made == 26 and state_unseen.next_pick == 27
+    rule = NormalAdpModel()
+    plain = plan_picks(players, DraftState(taken=frozenset(seen[:1] + seen[2:] + by_adp[20:26]), mine=(seen[1],)), keys, bounds, rule,
+                       method="uncapped")
+    unseen = plan_picks(players, state_unseen, keys, bounds, rule, method="uncapped")
+    assert plain.plans and unseen.plans
+    # Same pick on the clock (27), but six of the listed players may in fact be gone
+    assert unseen.plans[0].survival < plain.plans[0].survival
