@@ -4,6 +4,11 @@ Local web server for the draft dashboard.
 Standard library only. It binds to 127.0.0.1, serves three static files and two JSON endpoints, and
 holds no state: the page sends the whole draft with every request.
 
+Binding to 127.0.0.1 keeps other computers out, but not other web pages in the user's own browser. A page
+on any site can make the browser send a request here, and DNS rebinding can even make it read the reply. So
+every request must name this server in its `Host` header, a browser-supplied `Origin` must be this server
+too, and POSTs must be `application/json`, which a foreign page cannot send without a preflight we never grant.
+
     GET  /               the page
     GET  /api/pool       league settings, categories and every player
     POST /api/analyze    recommendation for a draft state
@@ -22,6 +27,7 @@ from fantasy_draft.service import DraftService, RequestError
 WEB_DIR = Path(__file__).resolve().parent / "web"
 MAX_BODY_BYTES = 1_000_000
 HOST = "127.0.0.1"
+LOCAL_NAMES = ("127.0.0.1", "localhost")
 
 # Only these files are ever served from disk, so a crafted path cannot reach anything else
 STATIC_FILES: Dict[str, Tuple[str, str]] = {
@@ -39,6 +45,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
         super().__init__(*args, **kwargs)
 
     def do_GET(self) -> None:  # noqa: N802 (name fixed by BaseHTTPRequestHandler)
+        if not self._is_local_request():
+            return
         path = self.path.split("?", 1)[0]
         if path in STATIC_FILES:
             filename, content_type = STATIC_FILES[path]
@@ -49,8 +57,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "Not found"})
 
     def do_POST(self) -> None:  # noqa: N802
+        if not self._is_local_request():
+            return
         if self.path.split("?", 1)[0] != "/api/analyze":
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "Not found"})
+            return
+        if self.headers.get_content_type() != "application/json":
+            self._send_json(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, {"error": "Send the request as application/json"})
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -67,6 +80,17 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._send_json(HTTPStatus.OK, self.service.analyze(request))
         except (RequestError, json.JSONDecodeError, ValueError) as error:
             self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+
+    def _is_local_request(self) -> bool:
+        """Answer 403 and return False unless the request names this server as its host and, if sent, its origin."""
+        port = self.server.server_address[1]
+        hosts = {f"{name}:{port}" for name in LOCAL_NAMES}
+        origin = self.headers.get("Origin")
+        if self.headers.get("Host", "").lower() in hosts and (origin is None or origin.lower() in {f"http://{h}" for h in hosts}):
+            return True
+        self.close_connection = True
+        self._send_json(HTTPStatus.FORBIDDEN, {"error": "This server only answers requests made from its own page"})
+        return False
 
     def _send_json(self, status: HTTPStatus, payload: Dict[str, Any]) -> None:
         self._send(status, json.dumps(payload, separators=(",", ":")).encode("utf-8"), "application/json")

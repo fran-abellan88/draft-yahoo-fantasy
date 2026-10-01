@@ -5,7 +5,7 @@ import json
 import threading
 import urllib.error
 import urllib.request
-from typing import Any, Dict, Iterator, Tuple
+from typing import Any, Dict, Iterator, Optional, Tuple
 
 import pytest
 
@@ -114,3 +114,72 @@ def test_the_server_only_listens_on_localhost() -> None:
         assert server.server_address[0] == "127.0.0.1"
     finally:
         server.server_close()
+
+
+def _raw(port: int, method: str, path: str, headers: Dict[str, str], body: bytes = b"") -> Tuple[int, Dict[str, Any]]:
+    """Send a request with exactly these headers (http.client would otherwise fill in Host itself)."""
+    connection = http.client.HTTPConnection(HOST, port, timeout=10)
+    try:
+        connection.putrequest(method, path, skip_host=True)
+        for name, value in headers.items():
+            connection.putheader(name, value)
+        if body:
+            connection.putheader("Content-Length", str(len(body)))
+        connection.endheaders(body)
+        response = connection.getresponse()
+        return response.status, json.loads(response.read())
+    finally:
+        connection.close()
+
+
+def _port(base_url: str) -> int:
+    return int(base_url.rsplit(":", 1)[1])
+
+
+ANALYZE = json.dumps({"categories": ["pts"], "picks": []}).encode()
+
+
+@pytest.mark.parametrize("host", ["evil.example", "127.0.0.1", "127.0.0.1:1", "localhost.evil.example:{port}", "evil.example:{port}"])
+def test_a_request_for_another_host_is_refused(base_url: str, host: str) -> None:
+    # DNS rebinding: a hostile site's name pointing at 127.0.0.1 would otherwise be answered
+    port = _port(base_url)
+    headers = {"Host": host.format(port=port), "Content-Type": "application/json"}
+    assert _raw(port, "GET", "/api/pool", headers)[0] == 403
+    assert _raw(port, "POST", "/api/analyze", headers, ANALYZE)[0] == 403
+
+
+def test_a_request_with_no_host_header_is_refused(base_url: str) -> None:
+    assert _raw(_port(base_url), "GET", "/api/pool", {})[0] == 403
+
+
+@pytest.mark.parametrize("origin", ["https://evil.example", "http://evil.example", "null", "http://127.0.0.1:1", "http://localhost"])
+def test_a_request_from_another_origin_is_refused(base_url: str, origin: str) -> None:
+    port = _port(base_url)
+    headers = {"Host": f"{HOST}:{port}", "Origin": origin, "Content-Type": "application/json"}
+    assert _raw(port, "POST", "/api/analyze", headers, ANALYZE)[0] == 403
+
+
+@pytest.mark.parametrize("name", ["127.0.0.1", "localhost", "LOCALHOST"])
+def test_the_page_own_address_is_accepted_with_or_without_an_origin(base_url: str, name: str) -> None:
+    port = _port(base_url)
+    host = f"{name}:{port}"
+    plain = {"Host": host, "Content-Type": "application/json"}
+    assert _raw(port, "POST", "/api/analyze", plain, ANALYZE)[0] == 200
+    assert _raw(port, "POST", "/api/analyze", {**plain, "Origin": f"http://{host}"}, ANALYZE)[0] == 200
+
+
+@pytest.mark.parametrize("content_type", ["text/plain", "application/x-www-form-urlencoded", "multipart/form-data", None])
+def test_a_post_that_is_not_json_is_refused(base_url: str, content_type: Optional[str]) -> None:
+    # text/plain is what a foreign page can send without a preflight
+    port = _port(base_url)
+    headers = {"Host": f"{HOST}:{port}"}
+    if content_type:
+        headers["Content-Type"] = content_type
+    status, payload = _raw(port, "POST", "/api/analyze", headers, ANALYZE)
+    assert status == 415 and "application/json" in payload["error"]
+
+
+def test_json_with_a_charset_is_accepted(base_url: str) -> None:
+    port = _port(base_url)
+    headers = {"Host": f"{HOST}:{port}", "Content-Type": "application/json; charset=utf-8"}
+    assert _raw(port, "POST", "/api/analyze", headers, ANALYZE)[0] == 200
