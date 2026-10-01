@@ -33,7 +33,9 @@ const PICK_KINDS = ['player', 'outside', 'unseen', 'gone'];
 const KINDS_WITH_A_PLAYER = ['player', 'gone'];
 
 // A pick log in either shape, as a list of objects; null when any entry is unusable (so nothing half-valid is kept).
-function normalizePicks(raw, knownIds) {
+// With `myPicks` (the user's own pick numbers) an unseen or gone entry on one of them is unusable too: the server
+// refuses such a log, so keeping it would leave the page unable to load.
+function normalizePicks(raw, knownIds, myPicks = []) {
   if (!Array.isArray(raw)) return null;
   const seen = new Set();
   const picks = [];
@@ -50,6 +52,7 @@ function normalizePicks(raw, knownIds) {
       if (pick.id !== undefined) return null; // these kinds name no player
       picks.push({ kind });
     }
+    if (['unseen', 'gone'].includes(kind) && myPicks.includes(picks.length)) return null;
   }
   return picks;
 }
@@ -104,6 +107,57 @@ function markGone(picks, id, adp) {
   return next;
 }
 
+// ---------- editing the log ----------
+// Every edit takes 1-based pick numbers and returns {picks} or {error}, and none can produce a log the server would
+// refuse: an unseen or gone entry never lands on one of the user's own pick numbers (`myPicks`). Edits make the
+// history of Undo meaningless, so the page clears it after one.
+function pickNumberError(picks, number, label) {
+  if (!Number.isInteger(number) || number < 1 || number > picks.length) return `${label} must be a pick already in the log (1 to ${picks.length}).`;
+  return null;
+}
+
+function canHold(entry, number, myPicks) {
+  return !(['unseen', 'gone'].includes(entry.kind) && myPicks.includes(number));
+}
+
+// Pick `a` and pick `b` exchange what was logged at them.
+function swapPicks(picks, a, b, myPicks) {
+  const error = pickNumberError(picks, a, 'The first pick') || pickNumberError(picks, b, 'The second pick');
+  if (error) return { error };
+  if (a === b) return { error: 'Choose two different picks.' };
+  if (!canHold(picks[a - 1], b, myPicks) || !canHold(picks[b - 1], a, myPicks)) {
+    return { error: 'Pick ' + (myPicks.includes(a) ? a : b) + ' is yours: it cannot hold an unseen or gone pick. Log your own pick there.' };
+  }
+  const next = picks.slice();
+  next[a - 1] = picks[b - 1];
+  next[b - 1] = picks[a - 1];
+  return { picks: next };
+}
+
+// "I do not know what pick N was": it becomes an unseen pick again, and a player logged there returns to the pool.
+function forgetPick(picks, number, myPicks) {
+  const error = pickNumberError(picks, number, 'The pick');
+  if (error) return { error };
+  if (myPicks.includes(number)) return { error: `Pick ${number} is yours, so you know what it was.` };
+  if (picks[number - 1].kind === 'unseen') return { error: `Pick ${number} is already unseen.` };
+  const next = picks.slice();
+  next[number - 1] = { kind: 'unseen' };
+  return { picks: next };
+}
+
+// Confirm a gone entry: the player was taken at pick `to`, which must be an unseen pick. The entry he was marked
+// at becomes unseen again, and he is now an ordinary player pick.
+function placeGone(picks, from, to) {
+  const error = pickNumberError(picks, from, 'The gone pick') || pickNumberError(picks, to, 'The new pick');
+  if (error) return { error };
+  if (picks[from - 1].kind !== 'gone') return { error: `Pick ${from} is not a gone entry.` };
+  if (picks[to - 1].kind !== 'unseen') return { error: `Pick ${to} is not an unseen pick, so nothing can be placed there.` };
+  const next = picks.slice();
+  next[to - 1] = { kind: 'player', id: picks[from - 1].id };
+  next[from - 1] = { kind: 'unseen' };
+  return { picks: next };
+}
+
 // ---------- undoing ----------
 // Undo reverts the last action, whatever it was. `history` lists the actions of this session, oldest first:
 //   {type: 'log', count}   `count` entries were appended (one pick, or the unseen picks of one "I am behind")
@@ -152,5 +206,5 @@ function unmarkGone(picks, history, index) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { clampRuleValue, sanitizeRule, normalizePicks, pickSavedState, planBehind, markGone, sanitizeHistory, undoLast, unmarkGone, PICK_KINDS };
+  module.exports = { clampRuleValue, sanitizeRule, normalizePicks, pickSavedState, planBehind, markGone, sanitizeHistory, undoLast, unmarkGone, swapPicks, forgetPick, placeGone, PICK_KINDS };
 }

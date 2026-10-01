@@ -93,7 +93,7 @@ function restoreState() {
   const allKeys = pool.categories.map((category) => category.key);
   state.categories = allKeys;
   if (!saved || typeof saved !== 'object') return;
-  state.picks = normalizePicks(saved.picks, new Set(playerById.keys())) || [];
+  state.picks = normalizePicks(saved.picks, new Set(playerById.keys()), pool.myPicks) || [];
   state.history = sanitizeHistory(saved.history, state.picks);
   if (Array.isArray(saved.categories) && saved.categories.length > 0 && saved.categories.every((key) => allKeys.includes(key))) {
     state.categories = allKeys.filter((key) => saved.categories.includes(key));
@@ -155,6 +155,7 @@ function setBusy(busy) {
 }
 
 async function refresh() {
+  editing = null; // an open edit was built from the log as it was
   const requestId = ++latestRequest;
   setBusy(true);
   const body = JSON.stringify({ categories: state.categories, picks: state.picks, rule: ruleForRequest(), gamesAdjusted: state.gamesAdjusted, method: state.method });
@@ -702,15 +703,89 @@ function logLabel(entry) {
   return nameOf(entry.id);
 }
 
+// "pick 22 (unseen)", "pick 40 (not in the list)", "pick 24 (Tyrese Maxey)": what a confirmation names
+function describePick(number) {
+  const entry = state.picks[number - 1];
+  const what = entry.kind === 'unseen' ? 'unseen' : entry.kind === 'outside' ? 'not in the list' : entry.kind === 'gone' ? `${nameOf(entry.id)}, gone` : nameOf(entry.id);
+  return `pick ${number} (${what})`;
+}
+
+// Editing the log: which pick is open, and an edit waiting for its confirmation ({picks, text})
+let editing = null;
+
+function closeEditing() {
+  editing = null;
+  renderLog();
+}
+
+function askToConfirm(result, text) {
+  if (result.error) {
+    editing.error = result.error;
+    editing.pending = null;
+  } else {
+    editing.error = null;
+    editing.pending = { picks: result.picks, text };
+  }
+  renderLog();
+}
+
+function applyEdit() {
+  state.picks = editing.pending.picks;
+  state.history = []; // an edit is not something Undo can take back
+  editing = null;
+  saveState();
+  refresh();
+}
+
+function editPanel(entry) {
+  const number = entry.pick;
+  const mine = pool.myPicks.includes(number);
+  const field = (id, label) => h('label', {}, label, ' ', h('input', { id, type: 'number', min: 1, max: state.picks.length, class: 'pick-number' }));
+  const readNumber = (id) => Number($(id).value);
+  const controls = [
+    h('div', { class: 'edit-row' }, field('edit-swap', `Swap pick ${number} with pick`),
+      h('button', { type: 'button', onclick: () => {
+        const other = readNumber('edit-swap');
+        askToConfirm(swapPicks(state.picks, number, other, pool.myPicks), `Swap ${describePick(number)} and ${describePick(other)}?`);
+      } }, 'Swap')),
+  ];
+  if (!mine && entry.kind !== 'unseen') {
+    controls.push(h('div', { class: 'edit-row' }, h('button', { type: 'button', onclick: () => {
+      const returns = entry.kind === 'player' || entry.kind === 'gone' ? ` ${nameOf(entry.id)} goes back to the pool.` : '';
+      askToConfirm(forgetPick(state.picks, number, pool.myPicks), `Make ${describePick(number)} unseen?${returns}`);
+    } }, 'I do not know what this pick was')));
+  }
+  if (entry.kind === 'gone') {
+    controls.push(h('div', { class: 'edit-row' }, field('edit-place', `${nameOf(entry.id)} was taken at pick`),
+      h('button', { type: 'button', onclick: () => {
+        const to = readNumber('edit-place');
+        askToConfirm(placeGone(state.picks, number, to), `Log ${nameOf(entry.id)} at ${describePick(to)}? Pick ${number} becomes unseen again.`);
+      } }, 'Place')));
+  }
+  const pending = editing.pending
+    ? h('div', { class: 'edit-confirm' }, h('span', {}, editing.pending.text), h('button', { type: 'button', onclick: applyEdit }, 'Confirm'), h('button', { type: 'button', onclick: closeEditing }, 'Cancel'))
+    : null;
+  return h('li', { class: 'edit-panel' }, ...controls, editing.error ? h('p', { class: 'note error-note' }, editing.error) : null, pending,
+    h('button', { type: 'button', class: 'gone', onclick: closeEditing }, 'Close'));
+}
+
 function renderLog() {
   const list = $('log');
   if (analysis.log.length === 0) {
     put(list, h('li', { class: 'empty-row' }, 'Nothing logged yet.'));
     return;
   }
-  put(list, 
-    ...[...analysis.log].reverse().map((entry) => h('li', { class: entry.mine ? 'mine' : '' }, h('span', {}, `#${entry.pick}`), h('span', {}, logLabel(entry), ...(entry.kind === 'gone' ? [h('button', { type: 'button', class: 'gone', onclick: () => unmark(entry.pick - 1) }, 'Unmark')] : [])))),
-  );
+  const rows = [...analysis.log].reverse().flatMap((entry) => {
+    const buttons = [];
+    if (entry.kind === 'gone') buttons.push(h('button', { type: 'button', class: 'gone', onclick: () => unmark(entry.pick - 1) }, 'Unmark'));
+    buttons.push(h('button', { type: 'button', class: 'gone', 'aria-expanded': String(editing !== null && editing.pick === entry.pick), onclick: () => {
+      editing = editing && editing.pick === entry.pick ? null : { pick: entry.pick, pending: null, error: null };
+      renderLog();
+    } }, 'Edit'));
+    const row = h('li', { class: entry.mine ? 'mine' : '' }, h('span', {}, `#${entry.pick}`), h('span', {}, logLabel(entry), ...buttons));
+    return editing && editing.pick === entry.pick ? [row, editPanel(entry)] : [row];
+  });
+  put(list, ...rows);
 }
 
 // ---------- controls ----------

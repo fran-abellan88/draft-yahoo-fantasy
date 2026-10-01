@@ -273,3 +273,51 @@ def test_unmarking_a_gone_entry_makes_it_unseen_and_forgets_its_action() -> None
     result = _run(f"L.unmarkGone({picks}, {history}, 0)")
     assert result == {"picks": [{"kind": "unseen"}, {"kind": "player", "id": "a"}], "history": [{"type": "log", "count": 2}]}
     assert _run(f"L.unmarkGone({picks}, {history}, 1)") is None
+
+
+def _edit(call: str, picks: list) -> dict:
+    return _run(f"L.{call.replace('PICKS', json.dumps(picks))}")
+
+
+MINE = "[2, 27]"
+LOG = [{"kind": "player", "id": "a"}, {"kind": "player", "id": "b"}, {"kind": "unseen"}, {"kind": "outside"}]
+
+
+def test_a_swap_exchanges_two_picks_and_leaves_the_list_given_alone() -> None:
+    result = _edit(f"swapPicks(PICKS, 1, 4, {MINE})", LOG)
+    assert result["picks"] == [{"kind": "outside"}, {"kind": "player", "id": "b"}, {"kind": "unseen"}, {"kind": "player", "id": "a"}]
+    assert LOG[0] == {"kind": "player", "id": "a"}
+
+
+def test_a_swap_never_puts_an_unseen_or_gone_pick_on_one_of_mine() -> None:
+    assert "error" in _edit(f"swapPicks(PICKS, 2, 3, {MINE})", LOG), "unseen would land on my pick 2"
+    gone = [{"kind": "player", "id": "a"}, {"kind": "player", "id": "b"}, {"kind": "gone", "id": "c"}]
+    assert "error" in _edit(f"swapPicks(PICKS, 2, 3, {MINE})", gone)
+    assert "picks" in _edit(f"swapPicks(PICKS, 1, 3, {MINE})", gone), "pick 1 is not mine"
+
+
+def test_a_swap_needs_two_different_picks_inside_the_log() -> None:
+    for first, second in ((1, 1), (0, 2), (1, 9), (1.5, 2)):
+        assert "error" in _edit(f"swapPicks(PICKS, {first}, {second}, {MINE})", LOG)
+
+
+def test_forgetting_a_pick_makes_it_unseen_but_never_on_my_pick_or_twice() -> None:
+    assert _edit(f"forgetPick(PICKS, 4, {MINE})", LOG)["picks"][3] == {"kind": "unseen"}
+    assert "error" in _edit(f"forgetPick(PICKS, 2, {MINE})", LOG), "pick 2 is mine"
+    assert "error" in _edit(f"forgetPick(PICKS, 3, {MINE})", LOG), "already unseen"
+
+
+def test_confirming_a_gone_entry_moves_him_to_an_unseen_pick() -> None:
+    log = [{"kind": "gone", "id": "c"}, {"kind": "player", "id": "a"}, {"kind": "unseen"}]
+    moved = [{"kind": "unseen"}, {"kind": "player", "id": "a"}, {"kind": "player", "id": "c"}]
+    assert _edit("placeGone(PICKS, 1, 3)", log)["picks"] == moved
+    assert "error" in _edit("placeGone(PICKS, 1, 2)", log), "pick 2 is a player pick"
+    assert "error" in _edit("placeGone(PICKS, 2, 3)", log), "pick 2 is not a gone entry"
+
+
+def test_a_saved_log_with_an_unseen_pick_on_mine_is_not_loaded() -> None:
+    known = "new Set(['a', 'b'])"
+    log = json.dumps([{"kind": "player", "id": "a"}, {"kind": "unseen"}])
+    assert _run(f"L.normalizePicks({log}, {known}, [2])") is None
+    assert _run(f"L.normalizePicks({log}, {known}, [3])") == [{"kind": "player", "id": "a"}, {"kind": "unseen"}]
+    assert _run(f"L.normalizePicks({log}, {known})") is not None, "no pick numbers given: nothing to check against"

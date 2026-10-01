@@ -213,6 +213,11 @@ td.player .notes { margin-top: 3px; }
 .profile-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; }
 .log li { display: grid; grid-template-columns: 38px 1fr; gap: 8px; padding: 4px 0; font-size: 13px; color: var(--muted); }
 .log li.mine { color: var(--mine); font-weight: 650; }
+.log li.edit-panel { display: block; padding: 8px; margin: 2px 0 6px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); }
+.edit-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 6px; }
+.edit-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; font-weight: 600; }
+.pick-number { width: 64px; }
+.error-note { color: var(--danger); }
 
 @media (max-width: 1280px) {
   .layout { grid-template-columns: 300px minmax(0, 1fr); }
