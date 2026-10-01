@@ -112,3 +112,10 @@ def test_the_alternatives_line_is_hidden_when_it_says_nothing() -> None:
     worth_showing = re.search(r"function alternativesWorthShowing\(\)\s*\{\s*return (.*?);", JS, re.S)
     assert worth_showing and "!analysis.search.truncated" in worth_showing.group(1) and "alternatives.some" in worth_showing.group(1)
     assert "analysis.alternativesMode === 'gone'" in JS
+
+
+def test_a_late_reply_marks_the_row_that_was_just_clicked() -> None:
+    # The hero dims after 200 ms, but the user is looking at the table
+    assert re.search(r"function showBusy\(\)\s*\{[^}]*renderPool\(\)", JS, re.S)
+    assert "badge('Logging the pick'" in JS
+    assert "with a note" not in JS, "the busy state dims the plan, it shows no note"

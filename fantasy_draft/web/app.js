@@ -131,14 +131,25 @@ function markRefreshFailed() {
   if (analysis) renderPool();
 }
 
-// Past this long the plan and recommendation are dimmed with a note, so a slow reply is not mistaken for a frozen page
+// Past this long the plan and recommendation are dimmed and a pick just logged is marked "Logging", so a slow reply
+// is not mistaken for a frozen page. The user is looking at the table, so the row has to say it, not only the hero.
 const BUSY_AFTER_MS = 200;
 let busyTimer = null;
+let busyShown = false;
+
+function showBusy() {
+  busyShown = true;
+  document.querySelector('main').classList.add('busy');
+  if (analysis) renderPool();
+}
 
 function setBusy(busy) {
   clearTimeout(busyTimer);
-  busyTimer = busy ? setTimeout(() => document.querySelector('main').classList.add('busy'), BUSY_AFTER_MS) : null;
-  if (!busy) document.querySelector('main').classList.remove('busy');
+  busyTimer = busy ? setTimeout(showBusy, BUSY_AFTER_MS) : null;
+  if (!busy) {
+    busyShown = false;
+    document.querySelector('main').classList.remove('busy');
+  }
 }
 
 async function refresh() {
@@ -462,10 +473,16 @@ function renderPool() {
   visibleIds = rows.map(({ player }) => player.id);
 
   const body = rows.map(({ row, player }) => {
-    const unconfirmed = refreshFailed && state.picks.includes(player.id);
+    const logged = state.picks.includes(player.id); // still in the table because the server has not answered yet
+    const unconfirmed = refreshFailed && logged;
+    const pending = busyShown && logged && !unconfirmed;
     const cells = [
       h('td', {}, row.rank),
-      h('td', { class: 'left player' }, h('strong', {}, player.name), h('div', { class: 'meta' }, `${player.team}, ${player.positions.join('/')}`), h('div', { class: 'notes' }, [...(unconfirmed ? [badge('Logged, not confirmed. Click to retry', 'injury', 'The server has not confirmed this pick yet')] : []), ...notesFor(row, player)])),
+      h('td', { class: 'left player' }, h('strong', {}, player.name), h('div', { class: 'meta' }, `${player.team}, ${player.positions.join('/')}`), h('div', { class: 'notes' }, [
+        ...(unconfirmed ? [badge('Logged, not confirmed. Click to retry', 'injury', 'The server has not confirmed this pick yet')] : []),
+        ...(pending ? [badge('Logging the pick', 'info', 'Waiting for the server to confirm this pick')] : []),
+        ...notesFor(row, player),
+      ])),
       h('td', { class: 'score' }, oneDecimal(row.score)),
       h('td', {}, row.availability === null ? '-' : pct(row.availability)),
       h('td', { title: player.adpEstimated ? 'Yahoo shows no ADP for him; estimated from nearby ranks' : '' }, `${player.adpEstimated ? '~' : ''}${player.adp.toFixed(1)}`),
@@ -477,7 +494,7 @@ function renderPool() {
       'tr',
       {
         tabindex: '0',
-        class: unconfirmed ? 'unconfirmed' : '',
+        class: unconfirmed || pending ? 'unconfirmed' : '',
         'data-id': player.id,
         title: `Log ${player.name} as the pick on the clock`,
         onclick: () => draft(player.id),
