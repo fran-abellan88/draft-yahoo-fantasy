@@ -81,9 +81,10 @@ def test_the_sorted_column_is_marked_on_its_header_cell_with_an_arrow() -> None:
     assert re.search(r'th\[aria-sort="descending"\] button::after', CSS)
 
 
-def test_the_error_banner_stays_on_screen_and_offers_a_retry() -> None:
+def test_the_error_banner_has_its_own_row_and_offers_a_retry() -> None:
     banner = re.search(r"\.banner\s*\{(.*?)\}", CSS, re.S)
-    assert banner and "position: fixed" in banner.group(1), "a banner in the page flow is off-screen when the table is scrolled"
+    assert banner and "grid-area: err" in banner.group(1), "the banner has its own row under the top bar"
+    assert re.search(r"html, body \{[^}]*overflow: hidden", CSS), "the page never scrolls, so a banner in the grid is always in view"
     html = (WEB / "index.html").read_text()
     assert re.search(r'id="error"[^>]*>.*?id="error-retry"', html, re.S)
     assert "$('error-retry').addEventListener('click', refresh)" in JS
@@ -99,7 +100,7 @@ def test_only_network_failures_are_retried_automatically() -> None:
 def test_the_page_shows_a_busy_state_and_the_search_note() -> None:
     html = (WEB / "index.html").read_text()
     assert 'id="search-note"' in html
-    assert "BUSY_AFTER_MS" in JS and "main.busy" in CSS
+    assert "BUSY_AFTER_MS" in JS and "#app.busy" in CSS
     assert "analysis.search.truncated" in JS, "an incomplete search must be said on the page, not hidden"
 
 
@@ -191,3 +192,37 @@ def test_the_sync_record_follows_every_successful_save_and_a_replaced_browser_co
     init = JS[JS.index("async function init"):]
     assert "discardsUnconfirmed(" in init and "ASIDE_KEY" in init and "showNotice(" in init
     assert 'id="error-dismiss"' in (WEB / "index.html").read_text()
+
+
+def test_the_page_never_scrolls_and_each_width_has_its_own_named_areas() -> None:
+    assert re.search(r"html, body \{[^}]*overflow: hidden", CSS)
+    assert ".app {" in CSS and "height: 100vh" in CSS
+    widths = (
+        "(min-width: 2350px)",
+        "(min-width: 1720px) and (max-width: 2349.98px)",
+        "(min-width: 1240px) and (max-width: 1719.98px)",
+        "(max-width: 1239.98px)",
+    )
+    for width in widths:
+        assert f"@media {width}" in CSS, width
+    for area in ("rec", "plan", "standing", "table", "team", "log", "teams", "tabs", "tabp"):
+        assert f'{area}' in CSS
+    html = (WEB / "index.html").read_text()
+    for panel in ("rec", "plan", "standing", "table", "team", "log", "teams"):
+        assert f'data-panel="{panel}"' in html, f"{panel} is a child of the one grid"
+    # the recommendation never goes into a tab, at any width
+    assert 'data-tab="rec"' not in html and '[data-panel="rec"]' not in CSS
+
+
+def test_the_tab_strip_keeps_a_valid_active_tab_when_the_window_changes_width() -> None:
+    assert "window.addEventListener('resize', syncTabs)" in JS
+    sync = JS[JS.index("function syncTabs"): JS.index("function wireTabs")]
+    assert "visibleTabs()" in sync and "aria-selected" in sync
+
+
+def test_the_last_pick_and_the_settings_summary_are_shown_in_the_page() -> None:
+    html = (WEB / "index.html").read_text()
+    for element in ('id="last-pick"', 'id="settings-summary"', 'id="settings-toggle"', 'id="tabs"', 'id="mode"'):
+        assert element in html
+    assert "renderTopBar();" in JS[JS.index("function render()"):]
+    assert html.index('id="reset"') > html.index('id="settings"'), "Reset lives in the settings panel"

@@ -240,7 +240,7 @@ let busyShown = false;
 
 function showBusy() {
   busyShown = true;
-  document.querySelector('main').classList.add('busy');
+  $('app').classList.add('busy');
   if (analysis) renderPool();
 }
 
@@ -249,7 +249,7 @@ function setBusy(busy) {
   busyTimer = busy ? setTimeout(showBusy, BUSY_AFTER_MS) : null;
   if (!busy) {
     busyShown = false;
-    document.querySelector('main').classList.remove('busy');
+    $('app').classList.remove('busy');
   }
 }
 
@@ -416,6 +416,7 @@ function reset() {
 
 // ---------- rendering ----------
 function render() {
+  renderTopBar();
   renderClock();
   renderHero();
   renderPlan();
@@ -457,6 +458,55 @@ function renderClock() {
   $('undo').disabled = state.picks.length === 0;
   $('undo').textContent = undoLabel(state.picks, state.history, nameOf);
   $('outside').disabled = analysis.clock.draftComplete;
+}
+
+// The last logged pick, always visible beside the table, with the Undo button that reverts it
+function renderLastPick() {
+  const entries = analysis.log;
+  const last = entries[entries.length - 1];
+  $('last-pick').textContent = last ? `Logged pick ${last.pick}: ${logLabel(last)}.` : 'Nothing logged yet.';
+}
+
+function renderSettingsSummary() {
+  const method = state.method === 'uncapped' ? 'uncapped' : 'capped';
+  const games = state.gamesAdjusted ? 'games counted' : 'games not counted';
+  $('settings-summary').textContent = `${state.categories.length} ${state.categories.length === 1 ? 'category' : 'categories'}, ${method}, ${games}`;
+}
+
+function renderTopBar() {
+  renderLastPick();
+  renderSettingsSummary();
+}
+
+// ---------- panels and tabs ----------
+// Which panels share a tab strip depends on the window width (the stylesheet decides); the strip shows only the tabs
+// that apply, and the page keeps the active one valid when the window is resized.
+function visibleTabs() {
+  return [...$('tabs').querySelectorAll('button')].filter((button) => getComputedStyle(button).display !== 'none');
+}
+
+function syncTabs() {
+  const tabs = visibleTabs();
+  if (tabs.length === 0) return;
+  if (!tabs.some((button) => button.dataset.tab === $('app').dataset.tab)) $('app').dataset.tab = tabs[0].dataset.tab;
+  for (const button of $('tabs').querySelectorAll('button')) button.setAttribute('aria-selected', String(button.dataset.tab === $('app').dataset.tab));
+}
+
+function wireTabs() {
+  for (const button of $('tabs').querySelectorAll('button')) {
+    button.addEventListener('click', () => {
+      $('app').dataset.tab = button.dataset.tab;
+      syncTabs();
+    });
+  }
+  window.addEventListener('resize', syncTabs);
+  syncTabs();
+}
+
+function toggleSettings() {
+  const panel = $('settings');
+  panel.hidden = !panel.hidden;
+  $('settings-toggle').setAttribute('aria-expanded', String(!panel.hidden));
 }
 
 function renderHero() {
@@ -1045,6 +1095,10 @@ function wireControls() {
   $('error-retry').addEventListener('click', refresh);
   $('error-dismiss').addEventListener('click', () => hideError(true));
   $('undo').addEventListener('click', undo);
+  $('settings-toggle').addEventListener('click', toggleSettings);
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !$('settings').hidden) toggleSettings();
+  });
   $('outside').addEventListener('click', draftOutside);
   $('behind').addEventListener('click', toggleBehind);
   $('behind-form').addEventListener('submit', submitBehind);
@@ -1111,6 +1165,7 @@ async function init() {
   buildPoolHead();
   syncRuleInputs();
   wireControls();
+  wireTabs();
   await refresh();
 }
 

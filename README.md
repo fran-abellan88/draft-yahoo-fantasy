@@ -49,6 +49,19 @@ Your picks are kept in the browser, so reloading the page mid-draft loses nothin
 - **Worth knowing** badges under a name: the injury tag, no or few games last season, a projection that differs a lot
   from last season, or a projection of few games played. They never change the score; they tell you when to look twice.
 
+### The screen
+
+The page never scrolls: it is exactly the window, and a panel that needs more room scrolls inside itself. It is built
+for a window of about 2500 x 1476 placed on the right half of a wide screen, with Yahoo's draft room on the left, so
+the recommendation column is on the dashboard's left edge, next to the seam. From left to right: recommendation, plan
+and category strength; the table (search, position chips, the last logged pick with Undo, then the players); your
+roster and the log; the 14-team box (reserved, filled in a later step). Settings (categories, score, who will still
+be there, Reset) open from the button in the top bar, which also shows the choices in one line.
+
+Narrower windows keep the same panels and fold them into a tab strip, in this order as the window shrinks: 14 teams
+and log at 2349 px, then your roster and category strength at 1719 px, then the plan and the table at 1239 px. The
+recommendation never goes into a tab.
+
 ### Where the draft is saved
 
 Every change is saved to `saved_draft.json` in the project folder (not tracked by git), and also in the browser as a
