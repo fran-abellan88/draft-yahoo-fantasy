@@ -273,3 +273,25 @@ def test_browser_copies_are_keyed_by_the_draft_file_not_only_the_address() -> No
         assert key in JS
     assert "localStorage.getItem(STORAGE_KEY)" not in JS and "localStorage.setItem(STORAGE_KEY" not in JS
     assert "the draft file had none" in JS
+
+
+def _blend(foreground: str, background: str, share: float) -> str:
+    first = [int(foreground[i: i + 2], 16) for i in (1, 3, 5)]
+    second = [int(background[i: i + 2], 16) for i in (1, 3, 5)]
+    return "#" + "".join(f"{round(a * share + b * (1 - share)):02x}" for a, b in zip(first, second))
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_text_stays_readable_on_the_strongest_tint_of_a_table_cell(theme: str) -> None:
+    tokens = _themes()[theme]
+    for share in (0.30,):  # the most any tint reaches
+        tinted = _blend(tokens["cool"], tokens["surface"], share)
+        assert _contrast(tokens["ink"], tinted) >= WCAG_TEXT, f"ink on the strongest tint in {theme} mode"
+        assert _contrast(tokens["ink"], _blend(tokens["cool"], tokens["hover"], share)) >= WCAG_TEXT
+
+
+def test_green_means_only_mine_and_the_odds_and_stats_use_the_second_hue() -> None:
+    tints = [line for line in JS.splitlines() if "color-mix" in line]
+    assert tints and all("var(--cool)" in line and "var(--mine)" not in line for line in tints)
+    assert ".meter .fill { height: 100%; background: var(--cool); }" in CSS
+    assert "accent-color: var(--cool)" in CSS

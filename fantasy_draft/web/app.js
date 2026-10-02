@@ -826,8 +826,8 @@ const UNSEEN_RISK_SHOWN = 0.05;
 function oddsCell(value) {
   if (value === null || value === undefined) return h('td', {}, '-');
   const style = value >= 0.5
-    ? `background: color-mix(in srgb, var(--mine) ${Math.round(value * 28)}%, transparent)`
-    : `background: color-mix(in srgb, var(--flag) ${Math.round((1 - value) * 22)}%, transparent)`;
+    ? `background: color-mix(in srgb, var(--cool) ${Math.round(value * 28)}%, transparent)`
+    : '';
   return h('td', { style }, pct(value));
 }
 
@@ -835,7 +835,7 @@ function oddsCell(value) {
 function statCell(column, player, row) {
   const score = row.categoryScores[column.key];
   const ticked = state.categories.includes(column.key);
-  const style = ticked && score !== null && score !== undefined ? `background: color-mix(in srgb, var(--mine) ${Math.round(Math.max(0, Math.min(100, score)) * 0.28)}%, transparent)` : '';
+  const style = ticked && score !== null && score !== undefined ? `background: color-mix(in srgb, var(--cool) ${Math.round(Math.max(0, Math.min(100, score)) * 0.28)}%, transparent)` : '';
   return h('td', { class: ticked ? '' : 'dim', style }, column.kind === 'rate' ? formatRate(player.stats[column.key]) : oneDecimal(player.stats[column.key]));
 }
 
@@ -1063,7 +1063,7 @@ let leagueView = 'projected';
 
 function tintFor(rank, teams) {
   const good = (teams - rank) / (teams - 1); // 1 for the best, 0 for the worst
-  return `background: color-mix(in srgb, var(--mine) ${Math.round(good * 30)}%, transparent)`;
+  return `background: color-mix(in srgb, var(--cool) ${Math.round(good * 30)}%, transparent)`;
 }
 
 function cellValue(key, value) {
@@ -1238,7 +1238,7 @@ function renderLog() {
       editing = editing && editing.pick === entry.pick ? null : { pick: entry.pick, pending: null, error: null };
       renderLog();
     } }, 'Edit'));
-    const row = h('li', { class: entry.mine ? 'mine' : '' }, h('span', {}, `#${entry.pick}`), h('span', {}, logLabel(entry), h('span', { class: 'team-name' }, entry.team), ...buttons));
+    const row = h('li', { class: entry.mine ? 'mine' : '' }, h('span', {}, `#${entry.pick}`), h('span', {}, logLabel(entry), entry.id ? h('span', { class: 'team-name' }, playerById.get(entry.id).positions.join('/')) : null, h('span', { class: 'team-name' }, entry.team), ...buttons));
     return editing && editing.pick === entry.pick ? [row, editPanel(entry)] : [row];
   });
   put(list, ...rows);
