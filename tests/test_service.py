@@ -438,3 +438,34 @@ def test_the_team_names_follow_the_snake_order_and_slot_2_is_the_users_team(serv
     assert answer["log"][1]["team"] == "Fran'stastic Team" and answer["log"][14]["slot"] == 14
     assert answer["log"][14]["team"] == TEAM_NAMES[13]
     assert answer["clock"]["teamOnClock"] == TEAM_NAMES[12], "pick 16 goes to slot 13 in the second round"
+
+
+def test_the_league_block_scores_all_14_teams_so_far_and_projected(service: DraftService) -> None:
+    ids = _by_adp(service)
+    answer = _ask(service, ids[:30], method="uncapped", gamesAdjusted=True)
+    league = answer["league"]
+    assert league["basis"] == "so far" and league["size"] == 2 and len(league["teams"]) == 14
+    assert {row["players"] for row in league["teams"]} == {2}
+    projected = league["projected"]
+    assert projected["size"] == 8 and {row["players"] for row in projected["teams"]} == {8}
+    mine = next(row for row in projected["teams"] if row["mine"])
+    assert mine["name"] == "Fran'stastic Team" and set(mine["totals"]) == set(ALL)
+    assert set(league["standing"]) == set(ALL) and all(1 <= value["rank"] <= 14 for value in league["standing"].values())
+
+
+def test_the_projection_never_changes_the_logged_picks_or_gives_one_player_to_two_teams(service: DraftService) -> None:
+    ids = _by_adp(service)
+    answer = _ask(service, ids[:30])
+    again = _ask(service, ids[:30])
+    assert answer["league"] == again["league"], "deterministic"
+    assert answer["league"]["size"] == 2
+
+
+def test_autopick_gives_the_best_adp_that_fits_and_refuses_a_bad_request(service: DraftService) -> None:
+    ids = _by_adp(service)
+    assert service.autopick({"picks": ids[:3]}) == {"id": ids[3], "pick": 4}
+    assert service.autopick({"picks": ids[:3], "noise": True, "seed": 5}) == service.autopick({"picks": ids[:3], "noise": True, "seed": 5})
+    with pytest.raises(RequestError):
+        service.autopick({"picks": ids[:3], "seed": "x"})
+    with pytest.raises(RequestError):
+        service.autopick({"picks": ids[:3], "noise": "yes"})

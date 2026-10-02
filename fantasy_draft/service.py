@@ -15,10 +15,12 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from fantasy_draft.autopick import next_for_clock, project
 from fantasy_draft.availability import AdpWindow, AvailabilityRule, NormalAdpModel
 from fantasy_draft.categories import CATEGORIES, categories_in
 from fantasy_draft.draft import MY_SLOT, PICK_KINDS, ROSTER_SIZE, TEAM_NAMES, TEAMS, DraftState, Pick, my_picks, slot_of_pick
 from fantasy_draft.flags import build_flags
+from fantasy_draft.league import league_table, rosters_by_slot
 from fantasy_draft.optimizer import FirstPickOption, Plan, Recommendation, plan_picks, team_profile
 from fantasy_draft.scoring import METHODS, Bounds, category_scores, composite_score, compute_bounds
 
@@ -221,7 +223,43 @@ class DraftService:
                 "plan": self._profile(list(mine) + list(best.player_ids), keys) if best else None,
             },
             "horizonDone": next_mine is None,
+            "league": self._league(picks, keys, best),
         }
+
+    def _league(self, picks: List[Pick], keys: List[str], best: Optional[Plan]) -> Dict[str, Any]:
+        """All 14 teams: over the complete rounds so far, and projected to the end of the planning horizon.
+
+        The projection keeps every logged pick, adds my best plan to my team and fills the other teams' missing picks
+        automatically (autopick.py), protecting the players my plan counts on. It answers "what will the league look
+        like", not "who will be available".
+        """
+        size = len(picks) // self.teams
+        rosters = rosters_by_slot(picks, self.teams)
+        table = league_table(self.players, rosters, keys, size, self.slot, TEAM_NAMES)
+        table["basis"] = "so far"
+        planned = list(best.player_ids) if best else []
+        added = project(self.players, picks, self.teams, self.rounds * self.teams, self.slot, set(planned))
+        projected_rosters = {slot: rosters[slot] + (planned if slot == self.slot else added[slot]) for slot in rosters}
+        projected = league_table(self.players, projected_rosters, keys, self.rounds, self.slot, TEAM_NAMES)
+        projected["basis"] = f"projected, {self.rounds} players each"
+        table["projected"] = projected
+        return table
+
+    def autopick(self, request: Dict[str, Any]) -> Dict[str, Any]:
+        """The pick the team on the clock would make, for rehearsal: ADP with lineup limits, optionally blurred and seeded."""
+        picks = self._parse_picks(request.get("picks"))
+        if len(picks) >= self.teams * ROSTER_SIZE:
+            raise RequestError("The draft is complete")
+        seed = request.get("seed")
+        if seed is not None and (isinstance(seed, bool) or not isinstance(seed, int)):
+            raise RequestError("seed must be a whole number")
+        noise = request.get("noise", False)
+        if not isinstance(noise, bool):
+            raise RequestError("noise must be true or false")
+        chosen = next_for_clock(self.players, picks, self.teams, seed, noise)
+        if chosen is None:
+            raise RequestError("Nobody left fits that team's lineup")
+        return {"id": chosen, "pick": len(picks) + 1}
 
     def _parse_categories(self, raw: Any) -> List[str]:
         if not isinstance(raw, list) or not raw:

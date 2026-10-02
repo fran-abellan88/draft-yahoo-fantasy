@@ -15,6 +15,7 @@ too, and POSTs must be `application/json`, which a foreign page cannot send with
     POST /api/analyze    recommendation for a draft state
     GET  /api/draft      the saved draft and its version
     POST /api/draft      save the draft, naming the version it is based on
+    POST /api/autopick   the pick the team on the clock would make (rehearsal)
 """
 
 import json
@@ -73,7 +74,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
-        if path not in ("/api/analyze", "/api/draft"):
+        if path not in ("/api/analyze", "/api/draft", "/api/autopick"):
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "Not found"})
             return
         if self.headers.get_content_type() != "application/json":
@@ -94,6 +95,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if path == "/api/draft":
                 version = self.saved.save(request.get("state"), request.get("baseVersion"))
                 self._send_json(HTTPStatus.OK, {"version": version})
+            elif path == "/api/autopick":
+                self._send_json(HTTPStatus.OK, self.service.autopick(request))
             else:
                 self._send_json(HTTPStatus.OK, self.service.analyze(request))
         except Conflict as conflict:
