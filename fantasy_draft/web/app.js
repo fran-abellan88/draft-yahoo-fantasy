@@ -209,12 +209,15 @@ function pickedIds() {
   return new Set(state.picks.filter((pick) => pick.id !== undefined).map((pick) => pick.id));
 }
 
+// A click on a table row (or Enter in the search box): the pick on the clock, or the player for the pick being chosen.
+// The hero's Draft button is not this: it always logs the pick on the clock and ends any choosing.
+function rowPicked(id) {
+  if (choosing) choosePlayerFor(id);
+  else draft(id);
+}
+
 function draft(id) {
   if (!analysis || analysis.clock.draftComplete) return;
-  if (choosing) {
-    choosePlayerFor(id);
-    return;
-  }
   if (pickedIds().has(id)) {
     if (refreshFailed) refresh(); // clicking a pick the server has not confirmed tries again
     return;
@@ -404,7 +407,10 @@ function renderHero() {
       ? h(
           'div',
           { class: 'cta' },
-          h('button', { type: 'button', class: 'primary', onclick: () => draft(recommendation.id) }, `Draft ${nameOf(recommendation.id)}`),
+          h('button', { type: 'button', class: 'primary', onclick: () => {
+            cancelChoosing();
+            draft(recommendation.id);
+          } }, `Draft ${nameOf(recommendation.id)}`),
           doubt ? h('button', { type: 'button', onclick: () => markPlayerGone(recommendation.id) }, 'He is gone') : null,
         )
       : null,
@@ -604,11 +610,11 @@ function renderPool() {
         class: unconfirmed || pending ? 'unconfirmed' : '',
         'data-id': player.id,
         title: `Log ${player.name} as the pick on the clock`,
-        onclick: () => draft(player.id),
+        onclick: () => rowPicked(player.id),
         onkeydown: (event) => {
           if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
-            draft(player.id);
+            rowPicked(player.id);
           }
         },
       },
@@ -755,20 +761,43 @@ function applyEdit() {
   refresh();
 }
 
-function renderChoosing() {
-  const note = $('choosing-note');
-  note.hidden = choosing === null;
+function cancelChoosing() {
   if (choosing === null) return;
-  put(note, `Choosing the player for pick ${choosing.pick}: click a player in the table. `, h('button', { type: 'button', onclick: closeEditing }, 'Cancel'));
+  choosing = null;
+  renderChoosing();
+  renderLog();
 }
 
-// A table row was clicked while choosing: that player replaces the pick, after a confirmation
-function choosePlayerFor(id) {
-  const number = choosing.pick;
+// The note stays in view and holds the confirmation, so nothing changes out of sight (the log may be below the window)
+function renderChoosing() {
+  const note = $('choosing-note');
+  if (analysis) $('outside').disabled = analysis.clock.draftComplete || choosing !== null; // it would log the pick on the clock
+  note.hidden = choosing === null;
+  if (choosing === null) return;
+  if (choosing.pending) {
+    put(note, choosing.pending.text, ' ', h('button', { type: 'button', onclick: applyChosen }, 'Confirm'), h('button', { type: 'button', onclick: cancelChoosing }, 'Cancel'));
+  } else {
+    put(note, `Choosing the player for pick ${choosing.pick}: click a player in the table. `, choosing.error ? h('strong', {}, `${choosing.error} `) : null, h('button', { type: 'button', onclick: cancelChoosing }, 'Cancel'));
+  }
+  note.scrollIntoView({ block: 'nearest' });
+}
+
+function applyChosen() {
+  state.picks = choosing.pending.picks;
+  state.history = [];
   choosing = null;
-  editing = { pick: number, pending: null, error: null };
+  saveState();
+  refresh();
+}
+
+// A table row was clicked while choosing: that player replaces the pick, after a confirmation. Row clicks are
+// ignored while a confirmation waits, so a second click cannot log anything.
+function choosePlayerFor(id) {
+  if (choosing.pending) return;
+  const number = choosing.pick;
   const result = choosePlayer(state.picks, number, id);
-  askToConfirm(result, () => chooseText(state.picks, number, id, pool.myPicks, nameOf));
+  choosing.error = result.error || null;
+  choosing.pending = result.error ? null : { picks: result.picks, text: chooseText(state.picks, number, id, pool.myPicks, nameOf) };
   renderChoosing();
 }
 
@@ -779,7 +808,7 @@ function editPanel(entry) {
   const readNumber = (id) => ($(id).value.trim() === '' ? NaN : Number($(id).value));
   const controls = [
     h('div', { class: 'edit-row' }, h('button', { type: 'button', onclick: () => {
-      choosing = { pick: number };
+      choosing = { pick: number, pending: null, error: null };
       editing = null;
       renderChoosing();
       renderLog();
@@ -924,7 +953,7 @@ function wireControls() {
   });
   $('search').addEventListener('keydown', (event) => {
     // Enter logs the pick only when exactly one player matches, so a slip of the keyboard cannot log the wrong one
-    if (event.key === 'Enter' && visibleIds.length === 1) draft(visibleIds[0]);
+    if (event.key === 'Enter' && visibleIds.length === 1) rowPicked(visibleIds[0]);
   });
   document.querySelector(`input[name="method"][value="${state.method}"]`).checked = true;
   for (const input of document.querySelectorAll('input[name="method"]')) {

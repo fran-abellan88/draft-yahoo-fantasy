@@ -148,10 +148,21 @@ def test_on_my_turn_with_unseen_picks_the_page_shows_the_doubt_the_better_player
     assert "!hasUnseenPicks()" in plan[: plan.index("\nfunction ", 10)]
 
 
-def test_choosing_a_player_intercepts_the_next_row_click_and_the_hero_says_less_under_the_window_rule() -> None:
+def test_only_table_rows_choose_a_player_and_the_hero_button_ends_the_choosing() -> None:
     html = (WEB / "index.html").read_text()
     assert 'id="choosing-note"' in html
-    draft = JS[JS.index("function draft(id)"): JS.index("function draftOutside")]
-    assert "if (choosing)" in draft and "choosePlayerFor(id)" in draft
+    row = JS[JS.index("function rowPicked"): JS.index("function draft(id)")]
+    assert "if (choosing) choosePlayerFor(id)" in row, "checked before draft() can refuse on a complete draft"
+    assert "if (choosing)" not in JS[JS.index("function draft(id)"): JS.index("function draftOutside")]
+    assert "onclick: () => rowPicked(player.id)" in JS and "rowPicked(visibleIds[0])" in JS
+    hero = JS[JS.index("function renderHero"): JS.index("function meter")]
+    assert "cancelChoosing();" in hero and "draft(recommendation.id)" in hero
     assert "state.rule.type === 'window'" in JS and "Picks were missed" in JS
     assert "undoLabel(" in JS
+
+
+def test_the_choosing_note_holds_the_confirmation_and_blocks_a_second_click_and_the_outside_button() -> None:
+    note = JS[JS.index("function renderChoosing"): JS.index("function editPanel")]
+    assert "choosing.pending.text" in note and "applyChosen" in note and "scrollIntoView" in note
+    assert "$('outside').disabled = analysis.clock.draftComplete || choosing !== null" in note
+    assert "if (choosing.pending) return;" in note
