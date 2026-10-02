@@ -239,3 +239,9 @@ def test_the_page_shows_the_standing_and_the_14_teams_and_can_rehearse() -> None
     assert "state.rehearsal" in undo, "in a rehearsal Undo goes back to just before my last pick"
     assert "autoPlayFailed" in JS and "!autoPlayFailed" in JS[JS.index("render();\n  if (state.rehearsal"):][:200]
     assert "rehearsal: state.rehearsal, seed: state.seed" in JS
+
+
+def test_the_need_weights_are_a_setting_that_is_saved_requested_and_shown() -> None:
+    assert 'id="needs"' in (WEB / "index.html").read_text()
+    assert "needs: state.needs" in JS and "state.needs = saved.needs === true" in JS
+    assert "analysis.needs" in JS and "Weights in use" in JS

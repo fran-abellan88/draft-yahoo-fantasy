@@ -469,3 +469,33 @@ def test_autopick_gives_the_best_adp_that_fits_and_refuses_a_bad_request(service
         service.autopick({"picks": ids[:3], "seed": "x"})
     with pytest.raises(RequestError):
         service.autopick({"picks": ids[:3], "noise": "yes"})
+
+
+def test_team_need_weights_are_off_by_default_and_exactly_neutral_before_a_round_is_complete(service: DraftService) -> None:
+    ids = _by_adp(service)
+    plain = _ask(service, ids[:5], method="uncapped", gamesAdjusted=True)
+    assert plain["needs"] == {"on": False, "ramp": 0.0, "weights": None}
+    early = _ask(service, ids[:5], method="uncapped", gamesAdjusted=True, needs=True)
+    assert early["needs"]["ramp"] == 0.0 and set(early["needs"]["weights"].values()) == {1.0}
+    assert [row["score"] for row in early["pool"]] == [row["score"] for row in plain["pool"]]
+    assert early["recommendation"] == plain["recommendation"] and early["plans"] == plain["plans"]
+
+
+def test_team_need_weights_change_the_scores_once_rounds_are_complete_and_never_revive_a_punted_category(service: DraftService) -> None:
+    ids = _by_adp(service)
+    picks = ids[:56]
+    plain = _ask(service, picks, method="uncapped", gamesAdjusted=True)
+    needs = _ask(service, picks, method="uncapped", gamesAdjusted=True, needs=True)
+    assert needs["needs"]["ramp"] == 1.0
+    weights = needs["needs"]["weights"]
+    assert set(weights) == set(ALL) and sum(weights.values()) / len(weights) == pytest.approx(1.0, abs=0.02)
+    assert [row["score"] for row in needs["pool"]] != [row["score"] for row in plain["pool"]]
+    punted = [key for key in ALL if key != "ast"]
+    assert set(_ask(service, picks, method="uncapped", needs=True, **{})["needs"]["weights"]) == set(ALL)
+    answer = service.analyze({"categories": punted, "picks": picks, "method": "uncapped", "needs": True})
+    assert set(answer["needs"]["weights"]) == set(punted), "an unticked category has no weight"
+
+
+def test_needs_must_be_a_boolean(service: DraftService) -> None:
+    with pytest.raises(RequestError):
+        _ask(service, [], needs="yes")

@@ -26,7 +26,7 @@ the updated state: availability for players already gone becomes exact.
 
 from collections import Counter
 from dataclasses import dataclass
-from typing import Dict, FrozenSet, List, Optional, Sequence, Set, Tuple
+from typing import Dict, FrozenSet, List, Mapping, Optional, Sequence, Set, Tuple
 
 import numpy as np
 import pandas as pd
@@ -122,6 +122,7 @@ def plan_picks(
     method: str = "capped",
     node_budget: Optional[int] = NODE_BUDGET,
     option_count: int = FIRST_PICK_OPTIONS,
+    weights: Optional[Mapping[str, float]] = None,
 ) -> Recommendation:
     """Plan the remaining picks within a work budget, and price the best alternatives for the next pick.
 
@@ -138,7 +139,7 @@ def plan_picks(
     if not remaining_picks:
         return Recommendation([], [], False, 0)
 
-    scores = pd.Series(composite_score(players, keys, bounds, games_adjusted, method).to_numpy(), index=players["player_id"])
+    scores = pd.Series(composite_score(players, keys, bounds, games_adjusted, method, weights).to_numpy(), index=players["player_id"])
     positions = {player_id: tuple(pos) for player_id, pos in zip(players["player_id"], players["pos_list"])}
     unavailable = set(state.taken) | set(state.mine)
     pool = players[~players["player_id"].isin(unavailable)]
@@ -149,7 +150,7 @@ def plan_picks(
     ]
     # A pick of a player outside the pool still fills a starting slot: any position, replacement-level value
     mine_masks = [position_mask(positions[player_id]) for player_id in state.mine] + [ALL_MASK] * state.mine_outside
-    outside_value = replacement_score(players, keys, bounds, method) if state.mine_outside else 0.0
+    outside_value = replacement_score(players, keys, bounds, method, weights) if state.mine_outside else 0.0
     base_score = float(sum(scores[player_id] for player_id in state.mine)) + outside_value * state.mine_outside
     plans, truncated, nodes = _search(candidates, remaining_picks, mine_masks, base_score, top_k, node_budget)
     main_nodes, max_option_nodes = nodes, 0

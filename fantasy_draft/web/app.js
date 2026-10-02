@@ -25,6 +25,7 @@ const DEFAULT_RULE = { type: 'probability', baseSd: 2, sdPerAdp: 0.2, threshold:
 const state = {
   picks: [],
   history: [], // the actions Undo reverts, newest last (see logic.js)
+  needs: false, // weight the categories by team need (an option, off by default)
   rehearsal: false, // the other teams pick automatically
   seed: 0, // makes one rehearsal repeatable and the next one different
   categories: [],
@@ -105,7 +106,7 @@ function readStored(key) {
 }
 
 function currentSavedState() {
-  return { version: 2, picks: state.picks, history: state.history, rehearsal: state.rehearsal, seed: state.seed, categories: state.categories, gamesAdjusted: state.gamesAdjusted, method: state.method, rule: state.rule };
+  return { version: 2, picks: state.picks, history: state.history, rehearsal: state.rehearsal, seed: state.seed, needs: state.needs, categories: state.categories, gamesAdjusted: state.gamesAdjusted, method: state.method, rule: state.rule };
 }
 
 function saveState() {
@@ -184,6 +185,7 @@ function restoreState(fromServer) {
   state.picks = picks || [];
   state.history = sanitizeHistory(saved.history, state.picks);
   state.rehearsal = saved.rehearsal === true;
+  state.needs = saved.needs === true;
   state.seed = Number.isInteger(saved.seed) ? saved.seed : 0;
   if (Array.isArray(saved.categories) && saved.categories.length > 0 && saved.categories.every((key) => allKeys.includes(key))) {
     state.categories = allKeys.filter((key) => saved.categories.includes(key));
@@ -263,7 +265,7 @@ async function refresh() {
   choosing = null;
   const requestId = ++latestRequest;
   setBusy(true);
-  const body = JSON.stringify({ categories: state.categories, picks: state.picks, rule: ruleForRequest(), gamesAdjusted: state.gamesAdjusted, method: state.method });
+  const body = JSON.stringify({ categories: state.categories, picks: state.picks, rule: ruleForRequest(), gamesAdjusted: state.gamesAdjusted, method: state.method, needs: state.needs });
   let response = null;
   for (let attempt = 0; attempt <= NETWORK_RETRIES && response === null; attempt += 1) {
     if (attempt > 0) {
@@ -913,6 +915,14 @@ function standingGroup(beaten) {
   return 'Behind';
 }
 
+function renderWeightsNote(keys, labels) {
+  const needs = analysis.needs;
+  if (!needs.on) return h('p', { class: 'note' }, 'Every category counts equally. Settings can favour the ones you can still win.');
+  if (needs.ramp === 0) return h('p', { class: 'note' }, 'Favouring the categories you can still win: not yet, it starts after the first complete round.');
+  const list = keys.map((key) => `${labels[key]} ${needs.weights[key].toFixed(2)}`).join(', ');
+  return h('p', { class: 'note' }, `Weights in use (${pct(needs.ramp)} of full effect): ${list}.`);
+}
+
 function renderStanding() {
   const container = $('profile');
   const league = analysis.league;
@@ -938,6 +948,7 @@ function renderStanding() {
     h('p', { class: 'note standing-summary' }, summary ? `${summary}.` : ''),
     ...rows,
     h('p', { class: 'note' }, `Bar: the share of the other 13 teams you beat, ${league.projected.basis}. "Now" counts ${league.size} complete round${league.size === 1 ? '' : 's'}.`),
+    renderWeightsNote(keys, labels),
   );
 }
 
@@ -1242,6 +1253,12 @@ function wireControls() {
   $('games-adjusted').checked = state.gamesAdjusted;
   $('games-adjusted').addEventListener('change', (event) => {
     state.gamesAdjusted = event.target.checked;
+    saveState();
+    scheduleRefresh();
+  });
+  $('needs').checked = state.needs;
+  $('needs').addEventListener('change', (event) => {
+    state.needs = event.target.checked;
     saveState();
     scheduleRefresh();
   });

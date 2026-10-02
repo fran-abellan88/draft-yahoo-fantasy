@@ -21,6 +21,7 @@ from fantasy_draft.categories import CATEGORIES, categories_in
 from fantasy_draft.draft import MY_SLOT, PICK_KINDS, ROSTER_SIZE, TEAM_NAMES, TEAMS, DraftState, Pick, my_picks, slot_of_pick
 from fantasy_draft.flags import build_flags
 from fantasy_draft.league import league_table, rosters_by_slot
+from fantasy_draft.needs import category_weights
 from fantasy_draft.optimizer import FirstPickOption, Plan, Recommendation, plan_picks, team_profile
 from fantasy_draft.scoring import METHODS, Bounds, category_scores, composite_score, compute_bounds
 
@@ -162,7 +163,16 @@ class DraftService:
         )
         clock = self._clock(state)
 
-        scores = composite_score(self.players, keys, self.method_bounds[method], games_adjusted, method)
+        needs_on = request.get("needs", False)
+        if not isinstance(needs_on, bool):
+            raise RequestError("needs must be true or false")
+        weights: Optional[Dict[str, float]] = None
+        ramp = 0.0
+        if needs_on:
+            rounds_done = len(picks) // self.teams
+            so_far = league_table(self.players, rosters_by_slot(picks, self.teams), keys, rounds_done, self.slot, TEAM_NAMES)
+            weights, ramp = category_weights(so_far["standing"], keys, rounds_done)
+        scores = composite_score(self.players, keys, self.method_bounds[method], games_adjusted, method, weights)
         category = category_scores(self.players, keys, self.bounds) * 100.0  # bars stay on the 0-100 capped scale
         flags = build_flags(self.players, keys, self.bounds)
         drafted = {pick.player_id for pick in picks if pick.player_id is not None}
@@ -181,6 +191,7 @@ class DraftService:
                     top_k,
                     games_adjusted=games_adjusted,
                     method=method,
+                    weights=weights,
                 )
             except ValueError as error:
                 raise RequestError(str(error)) from error
@@ -224,6 +235,11 @@ class DraftService:
             },
             "horizonDone": next_mine is None,
             "league": self._league(picks, keys, best),
+            "needs": {
+                "on": needs_on,
+                "ramp": round(ramp, 2),
+                "weights": None if weights is None else {key: round(value, 2) for key, value in weights.items()},
+            },
         }
 
     def _league(self, picks: List[Pick], keys: List[str], best: Optional[Plan]) -> Dict[str, Any]:

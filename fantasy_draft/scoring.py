@@ -27,7 +27,7 @@ Three scoring methods share that structure:
                 composite. It measures distance in units of how much players actually differ in that category.
 """
 
-from typing import Dict, Sequence, Tuple
+from typing import Dict, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -97,7 +97,12 @@ def games_factor(players: pd.DataFrame) -> pd.Series:
 
 
 def composite_score(
-    players: pd.DataFrame, keys: Sequence[str], bounds: Bounds, games_adjusted: bool = False, method: str = "capped"
+    players: pd.DataFrame,
+    keys: Sequence[str],
+    bounds: Bounds,
+    games_adjusted: bool = False,
+    method: str = "capped",
+    weights: Optional[Mapping[str, float]] = None,
 ) -> pd.Series:
     """Return the composite of the selected categories for every player (0-100 for ``capped``).
 
@@ -106,20 +111,35 @@ def composite_score(
     a player at the 5th percentile of every category (the 95th for turnovers). For ``capped`` and ``uncapped``
     that player scores 0 and the adjustment is a plain multiplication. For ``zscore`` the level comes from
     `players`, so pass the whole pool.
+
+    With `weights` (one per selected category) the composite is the weighted mean, so a category that matters more
+    to the team counts more. Equal weights, or none, give the plain mean. A category the user did not select is not
+    in `keys` and so can never be revived by a weight.
     """
-    composite = _composite(players, keys, bounds, method)
+    composite = _composite(players, keys, bounds, method, weights)
     if not games_adjusted:
         return composite
-    anchor = _replacement_composite(players, keys, bounds, method)
+    anchor = _replacement_composite(players, keys, bounds, method, weights)
     return anchor + (composite - anchor) * games_factor(players)
 
 
-def _composite(players: pd.DataFrame, keys: Sequence[str], bounds: Bounds, method: str) -> pd.Series:
+def _composite(
+    players: pd.DataFrame, keys: Sequence[str], bounds: Bounds, method: str, weights: Optional[Mapping[str, float]] = None
+) -> pd.Series:
     scale = Z_SCALE if method == "zscore" else 100.0
-    return category_scores(players, keys, bounds, method).mean(axis=1) * scale
+    scores = category_scores(players, keys, bounds, method)
+    if weights is None:
+        return scores.mean(axis=1) * scale
+    missing = [key for key in keys if key not in weights]
+    if missing or any(weights[key] < 0 for key in keys) or sum(weights[key] for key in keys) <= 0:
+        raise ValueError(f"Weights must be non-negative, cover every selected category (missing: {missing}) and not all be zero")
+    total = sum(weights[key] for key in keys)
+    return sum(scores[key] * weights[key] for key in keys) / total * scale
 
 
-def _replacement_composite(players: pd.DataFrame, keys: Sequence[str], bounds: Bounds, method: str) -> float:
+def _replacement_composite(
+    players: pd.DataFrame, keys: Sequence[str], bounds: Bounds, method: str, weights: Optional[Mapping[str, float]] = None
+) -> float:
     """Composite of a player at replacement level in every selected category."""
     if method != "zscore":
         return 0.0  # the 5th percentile (95th for turnovers) is where these scales start
@@ -128,13 +148,15 @@ def _replacement_composite(players: pd.DataFrame, keys: Sequence[str], bounds: B
         category = CATEGORIES[key]
         pool = players[category.column].dropna().astype(float)
         values[category.column] = float(np.percentile(pool, 95.0 if category.lower_is_better else 5.0))
-    return float(_composite(pd.DataFrame([values]), keys, bounds, method).iloc[0])
+    return float(_composite(pd.DataFrame([values]), keys, bounds, method, weights).iloc[0])
 
 
-def replacement_score(players: pd.DataFrame, keys: Sequence[str], bounds: Bounds, method: str = "capped") -> float:
+def replacement_score(
+    players: pd.DataFrame, keys: Sequence[str], bounds: Bounds, method: str = "capped", weights: Optional[Mapping[str, float]] = None
+) -> float:
     """What a replacement-level player scores: the value of a pick whose player is not in the pool."""
     _check_method(method)
-    return _replacement_composite(players, keys, bounds, method)
+    return _replacement_composite(players, keys, bounds, method, weights)
 
 
 def _check_method(method: str) -> None:
