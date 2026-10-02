@@ -6,7 +6,7 @@ holds no state: the page sends the whole draft with every request.
 
 Binding to 127.0.0.1 keeps other computers out, but not other web pages in the user's own browser. A page
 on any site can make the browser send a request here, and DNS rebinding can even make it read the reply. So
-every request must name this server in its `Host` header, a browser-supplied `Origin` must be this server
+every request (checked once, in `parse_request`) must name this server in its `Host` header, a browser-supplied `Origin` must be this server
 too, and POSTs must be `application/json`, which a foreign page cannot send without a preflight we never grant.
 
     GET  /               the page
@@ -45,9 +45,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.service = service
         super().__init__(*args, **kwargs)
 
+    def parse_request(self) -> bool:
+        """The one gate: nothing reaches a `do_*` method, present or future, unless it names this server.
+
+        BaseHTTPRequestHandler calls this after reading the request line and headers and before choosing the method
+        to run; a False answer ends the request. A method with no `do_*` (PUT, DELETE, HEAD...) is gated too.
+        """
+        return super().parse_request() and self._is_local_request()
+
     def do_GET(self) -> None:  # noqa: N802 (name fixed by BaseHTTPRequestHandler)
-        if not self._is_local_request():
-            return
         path = self.path.split("?", 1)[0]
         if path in STATIC_FILES:
             filename, content_type = STATIC_FILES[path]
@@ -58,8 +64,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "Not found"})
 
     def do_POST(self) -> None:  # noqa: N802
-        if not self._is_local_request():
-            return
         if self.path.split("?", 1)[0] != "/api/analyze":
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "Not found"})
             return

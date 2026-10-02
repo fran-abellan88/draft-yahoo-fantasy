@@ -5,6 +5,7 @@ import json
 import threading
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Any, Dict, Iterator, Optional, Tuple
 
 import pytest
@@ -184,3 +185,35 @@ def test_json_with_a_charset_is_accepted(base_url: str) -> None:
     port = _port(base_url)
     headers = {"Host": f"{HOST}:{port}", "Content-Type": "application/json; charset=utf-8"}
     assert _raw(port, "POST", "/api/analyze", headers, ANALYZE)[0] == 200
+
+
+@pytest.mark.parametrize("method", ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS", "TRACE"])
+def test_every_method_is_refused_for_another_host_before_anything_else(base_url: str, method: str) -> None:
+    port = _port(base_url)
+    connection = http.client.HTTPConnection(HOST, port, timeout=10)
+    try:
+        connection.putrequest(method, "/api/analyze", skip_host=True)
+        connection.putheader("Host", "evil.example")
+        connection.putheader("Content-Length", "0")
+        connection.endheaders()
+        assert connection.getresponse().status == 403
+    finally:
+        connection.close()
+
+
+@pytest.mark.parametrize("method", ["PUT", "DELETE", "PATCH", "OPTIONS"])
+def test_a_method_the_server_does_not_support_is_501_from_its_own_page(base_url: str, method: str) -> None:
+    port = _port(base_url)
+    connection = http.client.HTTPConnection(HOST, port, timeout=10)
+    try:
+        connection.request(method, "/api/analyze")
+        assert connection.getresponse().status == 501
+    finally:
+        connection.close()
+
+
+def test_the_gate_is_in_one_place_not_repeated_in_each_method() -> None:
+    from fantasy_draft import server
+
+    source = Path(server.__file__).read_text()
+    assert source.count("self._is_local_request()") == 1, "only parse_request calls the check"
