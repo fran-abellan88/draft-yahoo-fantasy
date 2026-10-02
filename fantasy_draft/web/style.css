@@ -234,7 +234,6 @@ body { margin: 0; }
 .topbar .clock { flex: 1 1 260px; min-width: 0; }
 .topbar .clock .note { display: none; }
 .topbar-actions { display: flex; gap: 8px; margin-left: auto; }
-.mode { padding: 3px 10px; border-radius: 999px; background: color-mix(in srgb, var(--cool) 14%, transparent); color: var(--cool); font-weight: 650; font-size: 13px; white-space: nowrap; }
 .topbar .behind-form { flex-basis: 100%; margin: 0; }
 .topbar .clock-line { font-size: 16px; }
 .banner { margin: 0; border: 1px solid var(--danger); border-radius: 6px; }
@@ -361,8 +360,6 @@ body { margin: 0; }
 .league-table td.left { max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
 .league-table tr.mine-row td { font-weight: 700; box-shadow: inset 0 1px 0 var(--mine), inset 0 -1px 0 var(--mine); }
 .league-table tr.mine-row td.left { color: var(--mine); }
-.mode.rehearsal { background: var(--flag-soft); color: var(--flag); }
-#rehearsal[aria-pressed="true"] { background: var(--flag-soft); color: var(--flag); border-color: var(--flag); }
 .saved { font-size: 12px; color: var(--muted); white-space: nowrap; }
 .saved.bad { color: var(--danger); font-weight: 650; }
 td.dim { opacity: 0.45; }
@@ -385,3 +382,13 @@ td.dim { opacity: 0.45; }
   .roster { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(7, auto); grid-auto-flow: column; column-gap: 32px; }
 }
 .league-table td.score { font-weight: 650; white-space: nowrap; }
+
+/* The two drafts: the current one is filled, and a mock draft also tints the top bar so it is never mistaken for the real one */
+.modes { display: flex; gap: 0; white-space: nowrap; }
+.modes a { padding: 5px 12px; border: 1px solid var(--line); color: var(--ink); text-decoration: none; font-size: 13px; background: var(--surface); }
+.modes a:first-child { border-radius: 6px 0 0 6px; }
+.modes a:last-child { border-radius: 0 6px 6px 0; border-left: 0; }
+.modes a:hover { border-color: var(--muted); }
+.modes a[aria-current="page"] { background: var(--ink); color: var(--paper); border-color: var(--ink); font-weight: 650; }
+.app[data-mode="mock"] .topbar { border-bottom: 2px solid var(--flag); }
+.app[data-mode="mock"] .modes a[aria-current="page"] { background: var(--flag); border-color: var(--flag); color: var(--paper); }

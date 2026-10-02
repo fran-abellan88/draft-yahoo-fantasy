@@ -3,8 +3,11 @@
 // Draft assistant front end. The server holds no state: this page keeps the ordered list of picks
 // (also in localStorage, so a refresh mid-draft loses nothing) and asks the server what to do next.
 
-// Browser copies are keyed by the draft file's id (from the server), not only by this address: a rehearsal and the live
-// draft can take turns on one port and must never share a copy
+// Browser copies are keyed by the draft file's id (from the server), not only by this address: a mock draft and the real
+// draft can sit on one port and must never share a copy
+// The real draft is served at / and a mock draft at /mock (its own file, automatic picks); the routes follow the address
+const MOCK = location.pathname === '/mock' || location.pathname.startsWith('/mock/');
+const API = MOCK ? '/mock/api' : '/api';
 const STORAGE_KEY = 'draft-assistant-v2';
 const ASIDE_KEY = 'draft-assistant-unconfirmed'; // a browser copy the file replaced, kept so nothing is lost
 const TAB_KEY = 'draft-assistant-tab'; // the tab last open, a per-browser convenience
@@ -32,7 +35,7 @@ const state = {
   picks: [],
   history: [], // the actions Undo reverts, newest last (see logic.js)
   needs: false, // weight the categories by team need (an option, off by default)
-  rehearsal: false, // set from the server (started with --rehearsal), never from a saved draft
+  rehearsal: false, // set from the server (the draft served at /mock), never from a saved draft
   seed: 0, // makes one rehearsal repeatable and the next one different
   categories: [],
   gamesAdjusted: true,
@@ -148,7 +151,7 @@ async function saveToServer() {
   try {
     do {
       serverSaveAgain = false;
-      const response = await fetch('/api/draft', {
+      const response = await fetch(API + '/draft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ baseVersion: serverVersion, state: currentSavedState() }),
@@ -180,7 +183,7 @@ async function saveToServer() {
 // What the server has saved: {version, state, problem}. A failed read is an error like a failed read of the pool: the
 // page stops, because starting without knowing the file's version would later overwrite it.
 async function loadServerDraft() {
-  const response = await fetch('/api/draft');
+  const response = await fetch(API + '/draft');
   if (!response.ok) throw new Error(`the server answered ${response.status}`);
   return response.json();
 }
@@ -293,7 +296,7 @@ async function refresh() {
       if (requestId !== latestRequest) return;
     }
     try {
-      response = await fetch('/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+      response = await fetch(API + '/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
     } catch (error) {
       response = null;
     }
@@ -450,7 +453,7 @@ async function autoPlayOthers() {
   try {
     const total = pool.league.teams * pool.league.rosterSize;
     while (state.picks.length < total && !pool.myPicks.includes(state.picks.length + 1)) {
-      const response = await fetch('/api/autopick', {
+      const response = await fetch(API + '/autopick', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ picks: state.picks, noise: true, seed: state.seed + state.picks.length }),
@@ -557,8 +560,10 @@ function renderSettingsSummary() {
 }
 
 function renderTopBar() {
-  $('mode').textContent = state.rehearsal ? 'Rehearsal: other teams automatic' : 'Live';
-  $('mode').classList.toggle('rehearsal', state.rehearsal);
+  $('app').dataset.mode = state.rehearsal ? 'mock' : 'real';
+  $('mode-real').setAttribute('aria-current', state.rehearsal ? 'false' : 'page');
+  $('mode-mock').setAttribute('aria-current', state.rehearsal ? 'page' : 'false');
+  document.title = state.rehearsal ? 'Mock draft - Draft assistant' : 'Draft assistant';
   renderLastPick();
   renderSettingsSummary();
 }
@@ -1420,7 +1425,7 @@ function wireControls() {
 
 async function init() {
   try {
-    const response = await fetch('/api/pool');
+    const response = await fetch(API + '/pool');
     pool = await response.json();
   } catch (error) {
     showError("Can't reach the draft server. Check that run_dashboard.py is running, then reload.");
@@ -1453,7 +1458,7 @@ async function init() {
   if (source === 'browser' && state.picks.length > 0) {
     showNotice(`Loaded ${plural(state.picks.length, 'pick')} from this browser's copy; the draft file had none. If this is not the draft you expect, press Reset.`);
   } else if (state.picks.length > 0 && !draftRefused && !server.problem && !keptAside) {
-    showNotice(`Continuing a saved draft: ${plural(state.picks.length, 'pick')}${state.rehearsal ? ' (a rehearsal)' : ''}. Reset starts a new one.`);
+    showNotice(`Continuing a saved draft: ${plural(state.picks.length, 'pick')}${state.rehearsal ? ' (a mock draft)' : ''}. Reset starts a new one.`);
   }
   if (server.problem) showError(server.problem, false, true);
   else if (source === 'browser' && !draftRefused && state.picks.length > 0) saveToServer(); // a draft the file does not have yet

@@ -224,7 +224,7 @@ def test_the_tab_strip_keeps_a_valid_active_tab_when_the_window_changes_width() 
 
 def test_the_last_pick_and_the_settings_summary_are_shown_in_the_page() -> None:
     html = (WEB / "index.html").read_text()
-    for element in ('id="last-pick"', 'id="settings-summary"', 'id="settings-toggle"', 'id="tabs"', 'id="mode"'):
+    for element in ('id="last-pick"', 'id="settings-summary"', 'id="settings-toggle"', 'id="tabs"', 'id="modes"'):
         assert element in html
     assert "renderTopBar();" in JS[JS.index("function render()"):]
     assert html.index('id="reset"') > html.index('id="settings"'), "Reset lives in the settings panel"
@@ -234,11 +234,12 @@ def test_the_page_shows_the_standing_and_the_14_teams_and_can_rehearse() -> None
     html = (WEB / "index.html").read_text()
     for element in ('id="league"', 'id="profile"'):
         assert element in html
-    assert 'id="rehearsal"' not in html, "there is no button: a rehearsal is a separate instance, started with --rehearsal"
+    assert 'id="rehearsal"' not in html, "a mock draft is its own page and file, never a button that turns the real draft automatic"
+    assert 'href="/mock"' in html and 'href="/"' in html and "const API = MOCK ?" in JS
     assert "state.rehearsal = pool.rehearsal === true" in JS and "saved.rehearsal" not in JS
     render = JS[JS.index("function render()"):]
     assert "renderStanding();" in render and "renderLeague();" in render
-    assert "'/api/autopick'" in JS and "noise: true" in JS and "seed: state.seed + state.picks.length" in JS
+    assert "API + '/autopick'" in JS and "'/api/" not in JS and "noise: true" in JS and "seed: state.seed + state.picks.length" in JS
     undo = JS[JS.index("function undo()"): JS.index("// ---------- rehearsal")]
     assert "state.rehearsal" in undo, "in a rehearsal Undo goes back to just before my last pick"
     assert "autoPlayFailed" in JS and "!autoPlayFailed" in JS[JS.index("render();\n  if (state.rehearsal"):][:200]
@@ -308,7 +309,7 @@ def test_a_settings_change_after_the_first_pick_waits_for_a_confirmation() -> No
 
 
 def test_the_small_colour_and_badge_fixes_stay() -> None:
-    assert ".mode { padding: 3px 10px; border-radius: 999px; background: color-mix(in srgb, var(--cool)" in CSS
+    assert ".mode " not in CSS and ".modes a[aria-current" in CSS, "the draft switch does not use green"
     assert ".log li button { color: var(--ink)" in CSS
     assert "container-type: inline-size" in CSS and "@container" in CSS
     assert "state.picks.length === 0 && serverVersion === 0" in JS

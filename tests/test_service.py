@@ -550,7 +550,7 @@ def test_automatic_picks_exist_only_in_a_rehearsal(service: DraftService) -> Non
     ids = _by_adp(service)
     assert service.pool_payload()["rehearsal"] is False
     plain = DraftService(service.players)
-    with pytest.raises(RequestError, match="rehearsal"):
+    with pytest.raises(RequestError, match="mock draft"):
         plain.autopick({"picks": ids[:3]})
     practice = DraftService(service.players, rehearsal=True)
     assert practice.pool_payload()["rehearsal"] is True and practice.autopick({"picks": ids[:3]})["id"] == ids[3]

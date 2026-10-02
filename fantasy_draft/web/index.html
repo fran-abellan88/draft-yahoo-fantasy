@@ -9,7 +9,10 @@
 <body>
   <div class="app" id="app" data-tab="plan">
     <header class="topbar">
-      <div class="mode" id="mode" title="Real draft: you log every pick yourself">Real draft</div>
+      <nav class="modes" id="modes" aria-label="Which draft">
+        <a id="mode-real" href="/" title="The real draft: you log every pick yourself">Real draft</a>
+        <a id="mode-mock" href="/mock" title="A mock draft: the other 13 teams pick automatically, with its own saved file">Mock draft</a>
+      </nav>
       <div class="saved" id="saved-state" role="status" title="Whether the draft is saved in the draft file"></div>
       <div class="clock">
         <p id="clock-line" class="clock-line">Loading</p>

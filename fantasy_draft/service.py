@@ -86,7 +86,7 @@ class DraftService:
     slot: int = MY_SLOT
     rounds: int = 8
     teams: int = TEAMS
-    rehearsal: bool = False  # started with --rehearsal: the other teams may pick automatically
+    rehearsal: bool = False  # the mock draft: the other teams may pick automatically
     keys: List[str] = field(init=False)
     bounds: Bounds = field(init=False)
     method_bounds: Dict[str, Bounds] = field(init=False)
@@ -277,7 +277,7 @@ class DraftService:
     def autopick(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """The pick the team on the clock would make, for rehearsal: ADP with lineup limits, optionally blurred and seeded."""
         if not self.rehearsal:
-            raise RequestError("Automatic picks are only available in a rehearsal: start the dashboard with --rehearsal")
+            raise RequestError("Automatic picks are only available in the mock draft (open /mock): the real draft never picks for others")
         picks = self._parse_picks(request.get("picks"))
         if len(picks) >= self.teams * ROSTER_SIZE:
             raise RequestError("The draft is complete")

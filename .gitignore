@@ -33,3 +33,6 @@ saved_draft.json
 saved_draft.unreadable.json
 .saved_draft_*.tmp
 saved_draft.previous-v*.json
+saved_mock_draft.json
+saved_mock_draft.unreadable.json
+saved_mock_draft.previous-v*.json

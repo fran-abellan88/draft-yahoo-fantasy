@@ -267,3 +267,53 @@ def test_the_draft_id_names_the_file_and_the_mode_so_browser_copies_never_cross(
             server.shutdown()
             server.server_close()
     assert len(ids) == 3 and all(len(value) == 12 for value in ids)
+
+
+@pytest.fixture(scope="module")
+def both(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Tuple[str, Path, Path]]:
+    folder = tmp_path_factory.mktemp("both")
+    players = load_players()
+    real, mock = SavedDraft(folder / "real.json"), SavedDraft(folder / "mock.json")
+    server = make_server(DraftService(players), port=0, saved=real, mock=(DraftService(players, rehearsal=True), mock))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield f"http://{HOST}:{server.server_address[1]}", folder / "real.json", folder / "mock.json"
+    server.shutdown()
+    server.server_close()
+
+
+def test_the_mock_draft_is_served_apart_and_only_it_picks_automatically(both: Tuple[str, Path, Path]) -> None:
+    url, _, _ = both
+    status, content_type, body = _get(url + "/mock")
+    assert status == 200 and content_type.startswith("text/html") and b"Draft assistant" in body
+    assert _get(url + "/mock/")[0] == 200 and _get(url + "/mock/app.js")[0] == 404, "under /mock only the page itself"
+    assert json.loads(_get(url + "/api/pool")[2])["rehearsal"] is False
+    assert json.loads(_get(url + "/mock/api/pool")[2])["rehearsal"] is True
+    players = load_players()
+    body_picks = json.dumps({"picks": [players.iloc[0]["player_id"]]}).encode()
+    assert _post(url + "/mock/api/autopick", body_picks)[0] == 200
+    status, answer = _post(url + "/api/autopick", body_picks)
+    assert status == 400 and "mock" in answer["error"].lower(), "the real draft refuses automatic picks"
+
+
+def test_the_two_drafts_keep_separate_files_and_ids(both: Tuple[str, Path, Path]) -> None:
+    url, real, mock = both
+    real_id = json.loads(_get(url + "/api/draft")[2])["id"]
+    mock_id = json.loads(_get(url + "/mock/api/draft")[2])["id"]
+    assert real_id != mock_id
+    state = {"version": 2, "picks": [], "history": [], "categories": ALL}
+    assert _post(url + "/mock/api/draft", json.dumps({"baseVersion": 0, "state": state}).encode())[0] == 200
+    assert mock.exists() and not real.exists(), "a mock save never touches the real file"
+    assert json.loads(_get(url + "/api/draft")[2])["version"] == 0
+
+
+def test_without_a_mock_draft_the_mock_routes_do_not_exist(base_url: str) -> None:
+    assert _get(base_url + "/mock")[0] == 404 and _get(base_url + "/mock/api/pool")[0] == 404
+    assert _post(base_url + "/mock/api/analyze", b"{}")[0] == 404
+
+
+def test_the_mock_routes_are_gated_like_the_rest(both: Tuple[str, Path, Path]) -> None:
+    url, _, _ = both
+    port = _port(url)
+    assert _raw(port, "GET", "/mock/api/draft", {"Host": "evil.example"})[0] == 403
+    assert _raw(port, "POST", "/mock/api/autopick", {"Host": "evil.example", "Content-Type": "application/json"}, b"{}")[0] == 403
