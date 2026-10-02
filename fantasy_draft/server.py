@@ -1,8 +1,9 @@
 """
 Local web server for the draft dashboard.
 
-Standard library only. It binds to 127.0.0.1, serves four static files and two JSON endpoints, and
-holds no state: the page sends the whole draft with every request.
+Standard library only. It binds to 127.0.0.1, serves four static files and JSON endpoints, and
+analyses without state: the page sends the whole draft with every request. The only thing kept is the saved draft
+(see saved_draft.py).
 
 Binding to 127.0.0.1 keeps other computers out, but not other web pages in the user's own browser. A page
 on any site can make the browser send a request here, and DNS rebinding can even make it read the reply. So
@@ -12,6 +13,8 @@ too, and POSTs must be `application/json`, which a foreign page cannot send with
     GET  /               the page
     GET  /api/pool       league settings, categories and every player
     POST /api/analyze    recommendation for a draft state
+    GET  /api/draft      the saved draft and its version
+    POST /api/draft      save the draft, naming the version it is based on
 """
 
 import json
@@ -20,8 +23,9 @@ from functools import partial
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
+from fantasy_draft.saved_draft import Conflict, SavedDraft, SavedDraftError
 from fantasy_draft.service import DraftService, RequestError
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
@@ -41,8 +45,9 @@ STATIC_FILES: Dict[str, Tuple[str, str]] = {
 class DashboardHandler(BaseHTTPRequestHandler):
     """Routes requests to the static files and the draft service."""
 
-    def __init__(self, service: DraftService, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, service: DraftService, saved: SavedDraft, *args: Any, **kwargs: Any) -> None:
         self.service = service
+        self.saved = saved
         super().__init__(*args, **kwargs)
 
     def parse_request(self) -> bool:
@@ -60,11 +65,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.OK, (WEB_DIR / filename).read_bytes(), content_type)
         elif path == "/api/pool":
             self._send_json(HTTPStatus.OK, self.service.pool_payload())
+        elif path == "/api/draft":
+            version, state, problem = self.saved.load()
+            self._send_json(HTTPStatus.OK, {"version": version, "state": state, "problem": problem})
         else:
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "Not found"})
 
     def do_POST(self) -> None:  # noqa: N802
-        if self.path.split("?", 1)[0] != "/api/analyze":
+        path = self.path.split("?", 1)[0]
+        if path not in ("/api/analyze", "/api/draft"):
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "Not found"})
             return
         if self.headers.get_content_type() != "application/json":
@@ -82,8 +91,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
             request = json.loads(self.rfile.read(length))
             if not isinstance(request, dict):
                 raise RequestError("The request body must be a JSON object")
-            self._send_json(HTTPStatus.OK, self.service.analyze(request))
-        except (RequestError, json.JSONDecodeError, ValueError) as error:
+            if path == "/api/draft":
+                version = self.saved.save(request.get("state"), request.get("baseVersion"))
+                self._send_json(HTTPStatus.OK, {"version": version})
+            else:
+                self._send_json(HTTPStatus.OK, self.service.analyze(request))
+        except Conflict as conflict:
+            self._send_json(HTTPStatus.CONFLICT, {"error": str(conflict), "version": conflict.current})
+        except (RequestError, SavedDraftError, json.JSONDecodeError, ValueError) as error:
             self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
 
     def _is_local_request(self) -> bool:
@@ -126,6 +141,6 @@ class LocalServer(ThreadingHTTPServer):
         self.server_port = port
 
 
-def make_server(service: DraftService, port: int = 0) -> ThreadingHTTPServer:
+def make_server(service: DraftService, port: int = 0, saved: Optional[SavedDraft] = None) -> ThreadingHTTPServer:
     """Create (but do not start) a server on 127.0.0.1; port 0 picks a free one."""
-    return LocalServer((HOST, port), partial(DashboardHandler, service))
+    return LocalServer((HOST, port), partial(DashboardHandler, service, saved or SavedDraft()))

@@ -11,6 +11,7 @@ from typing import Any, Dict, Iterator, Optional, Tuple
 import pytest
 
 from fantasy_draft.data import load_players
+from fantasy_draft.saved_draft import SavedDraft
 from fantasy_draft.server import HOST, make_server
 from fantasy_draft.service import DraftService
 
@@ -18,8 +19,9 @@ ALL = ["fg_pct", "ft_pct", "3ptm", "pts", "reb", "ast", "st", "blk", "to"]
 
 
 @pytest.fixture(scope="module")
-def base_url() -> Iterator[str]:
-    server = make_server(DraftService(load_players()), port=0)
+def base_url(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
+    saved = SavedDraft(tmp_path_factory.mktemp("saved") / "saved_draft.json")
+    server = make_server(DraftService(load_players()), port=0, saved=saved)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     yield f"http://{HOST}:{server.server_address[1]}"
@@ -217,3 +219,34 @@ def test_the_gate_is_in_one_place_not_repeated_in_each_method() -> None:
 
     source = Path(server.__file__).read_text()
     assert source.count("self._is_local_request()") == 1, "only parse_request calls the check"
+
+
+def test_the_saved_draft_round_trips_through_the_server_and_rejects_a_stale_save(base_url: str) -> None:
+    assert json.loads(_get(base_url + "/api/draft")[2]) == {"version": 0, "state": None, "problem": None}
+    state = {"version": 2, "picks": [{"kind": "unseen"}], "method": "uncapped"}
+    status, payload = _post(base_url + "/api/draft", json.dumps({"baseVersion": 0, "state": state}).encode())
+    assert (status, payload) == (200, {"version": 1})
+    assert json.loads(_get(base_url + "/api/draft")[2]) == {"version": 1, "state": state, "problem": None}
+    status, payload = _post(base_url + "/api/draft", json.dumps({"baseVersion": 0, "state": state}).encode())
+    assert status == 409 and payload["version"] == 1 and "another window" in payload["error"]
+
+
+MALFORMED_SAVES = [
+    {"baseVersion": 1, "state": {"evil": 1}},
+    {"baseVersion": 1, "state": []},
+    {"baseVersion": "1", "state": {}},
+    {"state": {}},
+]
+
+
+@pytest.mark.parametrize("body", MALFORMED_SAVES)
+def test_a_malformed_save_is_a_400(base_url: str, body: Dict[str, Any]) -> None:
+    status, payload = _post(base_url + "/api/draft", json.dumps(body).encode())
+    assert status == 400 and "error" in payload
+
+
+def test_the_saved_draft_endpoint_is_gated_like_the_rest(base_url: str) -> None:
+    port = _port(base_url)
+    headers = {"Host": "evil.example", "Content-Type": "application/json"}
+    assert _raw(port, "GET", "/api/draft", headers)[0] == 403
+    assert _raw(port, "POST", "/api/draft", headers, b'{"baseVersion": 0, "state": {}}')[0] == 403
