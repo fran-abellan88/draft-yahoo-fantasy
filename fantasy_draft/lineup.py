@@ -68,6 +68,29 @@ def all_masks_can_start(masks: Iterable[int]) -> bool:
     return len(canonical) <= len(_SLOT_MASKS) and _max_matching(canonical) == len(canonical)
 
 
+def assign_slots(masks: Sequence[int]) -> List[Optional[int]]:
+    """Which player (an index into `masks`) starts in each of the ten starting slots, or None for an open slot.
+
+    A maximum matching, so as many players as possible start; players left over sit on the bench.
+    """
+    slot_owner: List[Optional[int]] = [None] * len(_SLOT_MASKS)
+
+    def try_assign(player: int, seen: Set[int]) -> bool:
+        for slot_index, slot_mask in enumerate(_SLOT_MASKS):
+            if slot_index in seen or not masks[player] & slot_mask:
+                continue
+            seen.add(slot_index)
+            owner = slot_owner[slot_index]
+            if owner is None or try_assign(owner, seen):
+                slot_owner[slot_index] = player
+                return True
+        return False
+
+    for player in range(len(masks)):
+        try_assign(player, set())
+    return slot_owner
+
+
 def max_starters(position_lists: Iterable[Sequence[str]]) -> int:
     """Return how many of these players can start at the same time."""
     return _max_matching(tuple(sorted(position_mask(positions) for positions in position_lists)))

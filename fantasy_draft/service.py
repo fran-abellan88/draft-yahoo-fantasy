@@ -15,11 +15,12 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from fantasy_draft.autopick import next_for_clock, project
+from fantasy_draft.autopick import next_for_clock, project, startable
 from fantasy_draft.availability import AdpWindow, AvailabilityRule, NormalAdpModel
 from fantasy_draft.categories import CATEGORIES, categories_in
 from fantasy_draft.draft import MY_SLOT, PICK_KINDS, ROSTER_SIZE, TEAM_NAMES, TEAMS, DraftState, Pick, my_picks, slot_of_pick
 from fantasy_draft.flags import build_flags
+from fantasy_draft.lineup import ALL_MASK, POSITION_BIT, STARTING_SLOTS, assign_slots, position_mask
 from fantasy_draft.league import league_table, rosters_by_slot
 from fantasy_draft.needs import category_weights
 from fantasy_draft.optimizer import FirstPickOption, Plan, Recommendation, plan_picks, team_profile
@@ -202,12 +203,13 @@ class DraftService:
         next_mine_probability = rule.probability(adp, next_mine, state.picks_made, state.unseen) if next_mine is not None else None
 
         pool = self._pool_rows(scores, category, flags, drafted, next_mine_probability)
+        self._add_unseen_risk(pool, adp, state)
         best = plans[0] if plans else None
         return {
             "clock": clock,
             "pool": pool,
             "plans": [self._plan_payload(plan, rule, state) for plan in plans[:PLANS_SHOWN]],
-            "alternatives": self._alternatives(recommendation_result.options, best),
+            "alternatives": self._alternatives(recommendation_result.options, best, rule, state),
             "alternativesMode": "gone" if recommendation_result.assumed_gone else "instead",
             "search": {
                 "truncated": recommendation_result.truncated,
@@ -216,6 +218,8 @@ class DraftService:
                 "maxOptionNodes": recommendation_result.max_option_nodes,
             },
             "recommendation": self._recommendation(best, next_mine),
+            "lineup": self._lineup(picks, mine_numbers),
+            "bestAvailable": self._best_available(pool, picks, mine_numbers),
             "lookFirst": self._look_first(pool, best, rule, clock, state),
             "roster": [{"id": pick.player_id, "kind": pick.kind, "pick": number} for number, pick in numbered if number in mine_numbers],
             "log": [
@@ -390,8 +394,14 @@ class DraftService:
             steps.append({"pick": pick, "id": pid, "availability": _num(odds, 3)})
         return {"steps": steps, "totalScore": _num(plan.total_score, 1), "survival": _num(plan.survival, 3)}
 
-    def _alternatives(self, options: List[FirstPickOption], best: Optional[Plan]) -> List[Dict[str, Any]]:
-        """The best plan for each other first pick and how far behind the best plan it is (see `plan_picks` for the two modes)."""
+    def _alternatives(
+        self, options: List[FirstPickOption], best: Optional[Plan], rule: AvailabilityRule, state: DraftState
+    ) -> List[Dict[str, Any]]:
+        """The best plan for each other first pick and how far behind the best plan it is (see `plan_picks` for the two modes).
+
+        When such a plan takes the recommended player at my next pick instead (the same team in the other order), `then`
+        names him and his chance of lasting that long, so "same" is not mistaken for "no difference".
+        """
         if best is None:
             return []
         # Not clamped at 0: an option can only beat the best plan if the search was cut short, and then the page
@@ -399,8 +409,56 @@ class DraftService:
         shown: List[Dict[str, Any]] = []
         for option in options[:ALTERNATIVES_SHOWN]:
             gap = best.total_score - option.plan.total_score
-            shown.append({"id": option.player_id, "behind": 0.0 if abs(gap) < 1e-9 else _num(gap, 1)})
+            item: Dict[str, Any] = {"id": option.player_id, "behind": 0.0 if abs(gap) < 1e-9 else _num(gap, 1)}
+            if len(option.plan.player_ids) > 1 and option.plan.player_ids[1] == best.player_ids[0]:
+                adp = float(self._by_id.loc[best.player_ids[0], "adp_est"])
+                odds = rule.probability(np.array([adp]), option.plan.pick_numbers[1], state.picks_made, state.unseen)[0]
+                item["then"] = {"id": best.player_ids[0], "pick": option.plan.pick_numbers[1], "availability": _num(odds, 3)}
+            shown.append(item)
         return shown
+
+    def _add_unseen_risk(self, pool: List[Dict[str, Any]], adp: np.ndarray, state: DraftState) -> None:
+        """Per row, the chance he was taken at one of the unseen picks (0 with none), so Gone shows only where it matters."""
+        if not state.unseen:
+            for row in pool:
+                row["unseenRisk"] = 0.0
+            return
+        position = {pid: index for index, pid in enumerate(self.players["player_id"])}
+        survive = NormalAdpModel().probability(adp, state.next_pick, state.picks_made, state.unseen)
+        for row in pool:
+            row["unseenRisk"] = _num(1.0 - survive[position[row["id"]]], 3)
+
+    def _roster_masks(self, picks: List[Pick], mine_numbers: set) -> List[Tuple[int, str]]:
+        """My roster in pick order as (position mask, id or "" for a pick of a player outside the list)."""
+        entries: List[Tuple[int, str]] = []
+        for number, pick in enumerate(picks, start=1):
+            if number not in mine_numbers:
+                continue
+            if pick.kind == "player" and pick.player_id is not None:
+                entries.append((position_mask(self._by_id.loc[pick.player_id, "pos_list"]), pick.player_id))
+            elif pick.kind == "outside":
+                entries.append((ALL_MASK, ""))
+        return entries
+
+    def _lineup(self, picks: List[Pick], mine_numbers: set) -> Dict[str, Any]:
+        """Who starts in each of the ten slots, who sits, and which positions one more player could still start at."""
+        entries = self._roster_masks(picks, mine_numbers)
+        masks = [mask for mask, _ in entries]
+        owners = assign_slots(masks)
+        started = {owner for owner in owners if owner is not None}
+        return {
+            "slots": [{"slot": name, "entry": owner} for (name, _), owner in zip(STARTING_SLOTS, owners)],
+            "bench": [index for index in range(len(entries)) if index not in started],
+            "canAdd": [position for position, bit in POSITION_BIT.items() if startable(masks + [bit])],
+        }
+
+    def _best_available(self, pool: List[Dict[str, Any]], picks: List[Pick], mine_numbers: set) -> Optional[Dict[str, Any]]:
+        """The best-scoring player left whom my lineup can still start, for when no plan covers the pick."""
+        masks = [mask for mask, _ in self._roster_masks(picks, mine_numbers)]
+        for row in pool:
+            if startable(masks + [position_mask(self._by_id.loc[row["id"], "pos_list"])]):
+                return {"id": row["id"], "score": row["score"]}
+        return None
 
     def _look_first(
         self, pool: List[Dict[str, Any]], best: Optional[Plan], rule: AvailabilityRule, clock: Dict[str, Any], state: DraftState

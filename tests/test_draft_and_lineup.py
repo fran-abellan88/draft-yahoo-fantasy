@@ -69,3 +69,26 @@ def test_result_does_not_depend_on_order() -> None:
 
 def test_empty_roster_is_fine() -> None:
     assert all_can_start([])
+
+
+def test_assign_slots_fills_the_ten_starting_slots_in_order_and_leaves_open_ones() -> None:
+    from fantasy_draft.lineup import ALL_MASK, assign_slots, position_mask
+
+    pg, c = position_mask(["PG"]), position_mask(["C"])
+    owners = assign_slots([pg, c])
+    assert owners[0] == 0 and owners[6] == 1, "PG slot and the first C slot"
+    assert owners.count(None) == 8 and len(owners) == 10
+    # three centres: C, C and a Util
+    owners = assign_slots([c, c, c])
+    assert sorted(owner for owner in owners if owner is not None) == [0, 1, 2]
+    # a player who can play anywhere goes where he is needed, not blocking a specialist
+    owners = assign_slots([ALL_MASK, pg, pg, pg, pg])
+    assert sum(owner is not None for owner in owners) == 5
+
+
+def test_assign_slots_benches_the_players_who_do_not_fit() -> None:
+    from fantasy_draft.lineup import assign_slots, position_mask
+
+    centres = [position_mask(["C"])] * 6
+    owners = assign_slots(centres)
+    assert sum(owner is not None for owner in owners) == 4, "C, C, Util, Util"

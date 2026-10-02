@@ -499,3 +499,38 @@ def test_team_need_weights_change_the_scores_once_rounds_are_complete_and_never_
 def test_needs_must_be_a_boolean(service: DraftService) -> None:
     with pytest.raises(RequestError):
         _ask(service, [], needs="yes")
+
+
+def test_the_lineup_block_names_the_slots_the_bench_and_the_positions_that_still_fit(service: DraftService) -> None:
+    ids = _by_adp(service)
+    answer = _ask(service, ids[:28], method="uncapped", gamesAdjusted=True)  # my picks 2 and 27
+    lineup = answer["lineup"]
+    assert [slot["slot"] for slot in lineup["slots"]] == ["PG", "SG", "G", "SF", "PF", "F", "C", "C", "Util", "Util"]
+    filled = [slot["entry"] for slot in lineup["slots"] if slot["entry"] is not None]
+    assert sorted(filled) == [0, 1] and lineup["bench"] == []
+    assert set(lineup["canAdd"]) <= {"PG", "SG", "SF", "PF", "C"} and lineup["canAdd"]
+
+
+def test_an_outside_pick_of_mine_fills_a_slot_and_a_full_lineup_has_nothing_to_add(service: DraftService) -> None:
+    ids = _by_adp(service)
+    answer = _ask(service, [ids[0], {"kind": "outside"}], gamesAdjusted=True)  # pick 2 is mine and not in the list
+    assert len([slot for slot in answer["lineup"]["slots"] if slot["entry"] is not None]) == 1
+
+
+def test_best_available_fits_my_lineup_and_unseen_risk_is_zero_without_unseen_picks(service: DraftService) -> None:
+    ids = _by_adp(service)
+    plain = _ask(service, ids[:5])
+    assert plain["bestAvailable"]["id"] in {row["id"] for row in plain["pool"]}
+    assert {row["unseenRisk"] for row in plain["pool"]} == {0.0}
+    risky = _ask(service, ids[:20] + [UNSEEN] * 6)
+    risks = {row["id"]: row["unseenRisk"] for row in risky["pool"]}
+    assert max(risks.values()) > 0.3 and risks[ids[130]] < 0.01, "the risk is high near the unseen picks and nil far from them"
+
+
+def test_an_on_the_clock_alternative_that_takes_the_recommended_player_next_says_so(service: DraftService) -> None:
+    ids = _by_adp(service)
+    answer = _ask(service, ids[:26], method="uncapped", gamesAdjusted=True)  # my turn at 27
+    recommended = answer["recommendation"]["id"]
+    thens = [alt["then"] for alt in answer["alternatives"] if "then" in alt]
+    for then in thens:
+        assert then["id"] == recommended and then["pick"] == 30 and 0 <= then["availability"] <= 1
