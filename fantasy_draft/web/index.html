@@ -26,6 +26,7 @@
       <div class="clock">
         <p id="clock-line" class="clock-line">Loading</p>
         <p id="snake-note" class="note" hidden></p>
+        <p id="predict-line" class="predict-line" role="status" hidden></p>
       </div>
       <div id="snake" class="snake" role="img" aria-label="Pick order for the current round"></div>
       <div class="topbar-actions">
@@ -143,6 +144,11 @@
 
     <section class="panel log" data-panel="log">
       <h2>Draft log</h2>
+      <p id="prediction-summary" class="note prediction-summary" role="status" hidden></p>
+      <details id="managers" class="managers" hidden>
+        <summary>By manager</summary>
+        <div id="managers-table"></div>
+      </details>
       <ol id="log" class="log"></ol>
     </section>
     </div>

@@ -16,6 +16,7 @@ too, and POSTs must be `application/json`, which a foreign page cannot send with
     GET  /api/draft      the saved draft and its version
     POST /api/draft      save the draft, naming the version it is based on
     POST /api/league     the league projected with every team completed by the same planner (slow early on)
+    POST /api/predict    what each other team should have picked against what was logged (real draft only)
     POST /api/autopick   the pick the team on the clock would make (mock draft only)
 
 The same page and routes also exist under /mock/ (/mock, /mock/api/pool, ...). That is the mock draft: its own service
@@ -97,7 +98,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         draft, path = self._route()
-        if draft is None or path not in ("/api/analyze", "/api/league", "/api/draft", "/api/autopick"):
+        if draft is None or path not in ("/api/analyze", "/api/league", "/api/predict", "/api/draft", "/api/autopick"):
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "Not found"})
             return
         service, saved = draft
@@ -121,6 +122,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self._send_json(HTTPStatus.OK, {"version": version})
             elif path == "/api/autopick":
                 self._send_json(HTTPStatus.OK, service.autopick(request))
+            elif path == "/api/predict":
+                self._send_json(HTTPStatus.OK, service.predict_picks(request))
             elif path == "/api/league":
                 self._send_json(HTTPStatus.OK, service.project_league(request))
             else:

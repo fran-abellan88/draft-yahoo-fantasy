@@ -326,3 +326,12 @@ def test_the_planner_projection_has_its_own_route_in_both_drafts(both: Tuple[str
         status, answer = _post(f"{url}{prefix}/api/league", body)
         assert status == 200 and len(answer["teams"]) == 14 and answer["fallbacks"] == 0
     assert _post(url + "/api/league", b'{"categories": [], "picks": []}')[0] == 400
+
+
+def test_the_prediction_route_answers_in_the_real_draft_and_is_refused_in_the_mock_draft(both: Tuple[str, Path, Path]) -> None:
+    url, _, _ = both
+    body = json.dumps({"categories": ALL, "picks": [], "method": "uncapped", "gamesAdjusted": True}).encode()
+    status, answer = _post(url + "/api/predict", body)
+    assert status == 200 and answer["clock"]["pick"] == 1 and answer["picks"] == []
+    status, answer = _post(url + "/mock/api/predict", body)
+    assert status == 400 and "real draft" in answer["error"]

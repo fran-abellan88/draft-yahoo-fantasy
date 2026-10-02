@@ -603,3 +603,47 @@ def test_the_planner_projection_names_the_team_it_gives_the_user(service: DraftS
     table = _projection(service, logged)
     assert table["myPlayers"][0] == logged[1] and len(table["myPlayers"]) == 8, "my logged pick, then the seven simulated ones"
     assert set(table["myPlayers"][1:]) <= set(table["simulated"])
+
+
+def _predict(service: DraftService, picks: List[Any]) -> Dict[str, Any]:
+    return service.predict_picks({"categories": ALL, "picks": picks, "method": "uncapped", "gamesAdjusted": True})
+
+
+def test_the_prediction_for_the_team_on_the_clock_is_what_its_own_recommendation_says(service: DraftService) -> None:
+    clock = _predict(service, [])["clock"]
+    own = DraftService(service.players, slot=1).analyze({"categories": ALL, "picks": [], "method": "uncapped", "gamesAdjusted": True})
+    assert clock["pick"] == 1 and clock["slot"] == 1 and clock["planner"] == own["recommendation"]["id"]
+    assert clock["adp"] == _by_adp(service)[0]
+    assert _predict(service, _by_adp(service)[:1])["clock"] is None, "pick 2 is mine: the recommendation is the answer"
+
+
+def test_each_logged_pick_is_compared_with_the_planner_and_adp_choice_before_it(service: DraftService) -> None:
+    by_adp = _by_adp(service)
+    planner_first = _predict(service, [])["clock"]["planner"]
+    poor = by_adp[-1]
+    answer = _predict(service, [planner_first, by_adp[0] if by_adp[0] != planner_first else by_adp[1], poor])
+    first, third = answer["picks"][0], answer["picks"][1]
+    assert [row["pick"] for row in answer["picks"]] == [1, 3], "my pick 2 is not compared"
+    assert first["matchPlanner"] is True and first["planner"] == planner_first and first["scoreRank"] >= 1
+    assert third["id"] == poor and not third["matchPlanner"] and not third["matchAdp"]
+    assert third["reach"] > 100 and third["scoreRank"] > 20, "the worst-ADP player taken third is a huge reach"
+
+
+def test_the_prediction_summary_counts_matches_and_leaves_out_what_cannot_be_compared(service: DraftService) -> None:
+    by_adp = _by_adp(service)
+    log: List[Any] = [by_adp[0], by_adp[1], {"kind": "unseen"}, {"kind": "outside"}, by_adp[2]]
+    answer = _predict(service, log)
+    assert [row["pick"] for row in answer["picks"]] == [1, 5], "not mine (2), not unseen (3) or outside (4)"
+    summary = answer["summary"]
+    assert summary["counted"] == 2 and summary["adp"] >= 1 and summary["either"] >= summary["adp"]
+    assert len(summary["teams"]) == 13 and all(team["slot"] != service.slot for team in summary["teams"])
+    assert sum(team["counted"] for team in summary["teams"]) == 2
+    assert summary["meanReach"] is not None
+
+
+def test_predictions_exist_only_in_the_real_draft_and_refuse_a_bad_log(service: DraftService) -> None:
+    with pytest.raises(RequestError, match="real draft"):
+        _predict(DraftService(service.players, rehearsal=True), [])
+    with pytest.raises(RequestError):
+        _predict(service, ["nobody"])
+    assert _predict(service, [])["picks"] == [] and _predict(service, [])["summary"]["counted"] == 0

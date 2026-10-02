@@ -276,25 +276,7 @@ class DraftService:
         fallbacks = 0
         for number in range(len(picks) + 1, self.rounds * self.teams + 1):
             slot = slot_of_pick(number, self.teams)
-            chosen: Optional[str] = None
-            try:
-                found = plan_picks(
-                    self.players,
-                    self._state_for(slot, simulated),
-                    keys,
-                    self.method_bounds[method],
-                    rule,
-                    slot,
-                    self.rounds,
-                    top_k=DEFAULT_TOP_K,
-                    games_adjusted=games_adjusted,
-                    method=method,
-                    option_count=0,
-                )
-                if found.plans and found.plans[0].player_ids:
-                    chosen = found.plans[0].player_ids[0]
-            except ValueError:
-                chosen = None
+            chosen = self._planner_choice(slot, simulated, keys, rule, method, games_adjusted)
             if chosen is None:
                 chosen = next_for_clock(self.players, simulated, self.teams)
                 fallbacks += 1
@@ -308,6 +290,104 @@ class DraftService:
         table["simulated"] = [pick.player_id for pick in simulated[len(picks):]]
         table["myPlayers"] = [pid for pid in rosters[self.slot] if pid is not None]  # the team this projection gives the user
         return table
+
+    def _planner_choice(
+        self, slot: int, picks: List[Pick], keys: List[str], rule: AvailabilityRule, method: str, games_adjusted: bool
+    ) -> Optional[str]:
+        """The first player of team `slot`'s best plan after `picks`: what the recommendation would say for that team.
+
+        None when the search finds no plan (the team has no pick left in the planning horizon, or nobody fits).
+        """
+        try:
+            found = plan_picks(
+                self.players,
+                self._state_for(slot, picks),
+                keys,
+                self.method_bounds[method],
+                rule,
+                slot,
+                self.rounds,
+                top_k=DEFAULT_TOP_K,
+                games_adjusted=games_adjusted,
+                method=method,
+                option_count=0,
+            )
+        except ValueError:
+            return None
+        return found.plans[0].player_ids[0] if found.plans and found.plans[0].player_ids else None
+
+    def predict_picks(self, request: Dict[str, Any]) -> Dict[str, Any]:
+        """What each other team should have picked, and what the team on the clock should pick, compared with what was logged.
+
+        "Should" is given two ways, because they answer different questions: the planner (the first player of that team's
+        own best plan for the ticked categories, the search the recommendation uses) and ADP (the best-ADP player who keeps
+        that team's lineup startable). A pick that differs from them is not a mistake: the managers may be drafting for
+        other categories or by Yahoo's ranking. The comparison is made from the log alone, each pick against the picks
+        before it, so editing the log keeps it consistent. Only the real draft: in the mock draft the other teams pick by
+        ADP, so the comparison says nothing. Unseen, gone and outside picks and my own picks are not compared.
+        """
+        if self.rehearsal:
+            raise RequestError("Pick predictions are only available in the real draft")
+        keys, picks, rule, method, games_adjusted = self._parse_settings(request)
+        scores = composite_score(self.players, keys, self.method_bounds[method], games_adjusted, method).to_numpy(dtype=float)
+        adp = self.players["adp_est"].to_numpy(dtype=float)
+        index = {pid: position for position, pid in enumerate(self.players["player_id"])}
+        available = np.ones(len(index), dtype=bool)
+        horizon = self.rounds * self.teams
+        rows: List[Dict[str, Any]] = []
+        for number, pick in enumerate(picks, start=1):
+            slot = slot_of_pick(number, self.teams)
+            if pick.kind == "player" and pick.player_id is not None and slot != self.slot:
+                before = picks[: number - 1]
+                planner = self._planner_choice(slot, before, keys, rule, method, games_adjusted) if number <= horizon else None
+                crowd = next_for_clock(self.players, before, self.teams)
+                position = index[pick.player_id]
+                rows.append(
+                    {
+                        "pick": number,
+                        "slot": slot,
+                        "id": pick.player_id,
+                        "planner": planner,
+                        "adp": crowd,
+                        "matchPlanner": planner is not None and planner == pick.player_id,
+                        "matchAdp": crowd is not None and crowd == pick.player_id,
+                        "reach": _num(adp[position] - number, 1),  # positive: taken that many picks before his ADP
+                        "scoreRank": int(1 + (scores[available] > scores[position]).sum()),
+                    }
+                )
+            if pick.player_id is not None:
+                available[index[pick.player_id]] = False
+        number = len(picks) + 1
+        clock: Optional[Dict[str, Any]] = None
+        slot = slot_of_pick(number, self.teams)
+        if number <= self.teams * ROSTER_SIZE and slot != self.slot:
+            clock = {
+                "pick": number,
+                "slot": slot,
+                "planner": self._planner_choice(slot, picks, keys, rule, method, games_adjusted) if number <= horizon else None,
+                "adp": next_for_clock(self.players, picks, self.teams),
+            }
+        return {"clock": clock, "picks": rows, "summary": self._prediction_summary(rows)}
+
+    def _prediction_summary(self, rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """How often the compared picks matched the planner or ADP, and how early or late players went, overall and per team."""
+
+        def tally(group: List[Dict[str, Any]]) -> Dict[str, Any]:
+            reaches = [row["reach"] for row in group if row["reach"] is not None]
+            return {
+                "counted": len(group),
+                "planner": sum(1 for row in group if row["matchPlanner"]),
+                "adp": sum(1 for row in group if row["matchAdp"]),
+                "either": sum(1 for row in group if row["matchPlanner"] or row["matchAdp"]),
+                "meanReach": _num(sum(reaches) / len(reaches), 1) if reaches else None,
+            }
+
+        teams = [
+            {"slot": slot, "name": TEAM_NAMES[slot - 1], **tally([row for row in rows if row["slot"] == slot])}
+            for slot in range(1, self.teams + 1)
+            if slot != self.slot
+        ]
+        return {**tally(rows), "teams": teams}
 
     def _league(self, picks: List[Pick], keys: List[str], best: Optional[Plan]) -> Dict[str, Any]:
         """All 14 teams: the picks so far, and projected to the end of the planning horizon.

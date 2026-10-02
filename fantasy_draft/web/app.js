@@ -329,6 +329,7 @@ async function refresh() {
   poolRowById = new Map(data.pool.map((row) => [row.id, row]));
   render();
   fetchPlannerLeague(requestId, body);
+  fetchPredictions(requestId, body);
   if (state.rehearsal && !rehearsing && !autoPlayFailed && !data.clock.isMine && !data.clock.draftComplete) autoPlayOthers();
 }
 
@@ -360,6 +361,85 @@ async function fetchPlannerLeague(requestId, body) {
   plannerPending = false;
   renderLeague();
   renderStanding();
+}
+
+// What each other team should have picked (the planner's choice and the best ADP that fits) against what was logged. Real
+// draft only. Asked for apart from the analysis, like the league projection, and tied to the log it was computed for.
+let predictions = null;
+let predictionsFor = '';
+const picksSignature = () => state.picks.map((pick) => `${pick.kind}:${pick.id || ''}`).join(',');
+
+async function fetchPredictions(requestId, body) {
+  if (state.rehearsal) return;
+  const signature = picksSignature();
+  try {
+    const response = await fetch(API + '/predict', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+    const data = await response.json();
+    if (requestId !== latestRequest) return;
+    predictions = response.ok ? data : null;
+    predictionsFor = signature;
+  } catch (error) {
+    if (requestId !== latestRequest) return;
+    predictions = null;
+  }
+  renderPredictions();
+  renderLog();
+}
+
+const predictionRows = () => (predictions !== null && predictionsFor === picksSignature() ? predictions : null);
+
+function reachText(reach) {
+  if (reach === null || reach === undefined) return '';
+  const size = Math.abs(reach);
+  if (size < 0.05) return 'taken at his ADP';
+  return `${oneDecimal(size)} picks ${reach > 0 ? 'before' : 'after'} his ADP`;
+}
+
+function renderPredictions() {
+  const line = $('predict-line');
+  const summary = $('prediction-summary');
+  const managers = $('managers');
+  const current = predictionRows();
+  const clock = predictions !== null && analysis.clock.pick === predictions.clock?.pick ? predictions.clock : null;
+  if (state.rehearsal || !clock || analysis.clock.isMine || analysis.clock.draftComplete) {
+    line.hidden = true;
+  } else {
+    const planner = clock.planner ? nameOf(clock.planner) : null;
+    const crowd = clock.adp ? nameOf(clock.adp) : null;
+    let text;
+    if (planner && crowd && clock.planner === clock.adp) text = `${teamName(clock.slot)} should pick ${planner}: the planner and ADP agree.`;
+    else if (planner && crowd) text = `${teamName(clock.slot)} should pick ${planner} by the planner, ${crowd} by ADP.`;
+    else text = `${teamName(clock.slot)} should pick ${planner || crowd || 'whoever fits'}.`;
+    line.textContent = text;
+    line.hidden = false;
+  }
+  if (state.rehearsal || !current || current.summary.counted === 0) {
+    summary.hidden = true;
+    managers.hidden = true;
+    return;
+  }
+  const all = current.summary;
+  summary.textContent = `Of ${plural(all.counted, 'pick')} by the others: ${all.planner} the planner's choice, ${all.adp} the best ADP that fits, ${all.either} either. On average players went ${reachText(all.meanReach)}. A pick that differs is not a mistake: the manager may draft for other categories.`;
+  summary.hidden = false;
+  const rows = all.teams.filter((team) => team.counted > 0).map((team) =>
+    h('tr', {}, h('td', { class: 'left' }, team.name), h('td', {}, team.counted), h('td', {}, team.planner), h('td', {}, team.adp), h('td', {}, team.meanReach === null ? '' : signed(team.meanReach))));
+  put($('managers-table'), h('table', { class: 'league-table' },
+    h('thead', {}, h('tr', {}, h('th', { class: 'left' }, 'Team'), h('th', { title: 'Picks compared' }, 'Picks'), h('th', { title: "Matched the planner's choice" }, 'Planner'), h('th', { title: 'Matched the best ADP that fits' }, 'ADP'), h('th', { title: 'Average picks before (+) or after (-) his ADP' }, 'Reach'))),
+    h('tbody', {}, ...rows)));
+  managers.hidden = false;
+}
+
+// The mark on a log row: matched the planner, the best ADP, both, or differs (details on hover)
+function predictionMark(entry) {
+  const current = predictionRows();
+  const row = current && current.picks.find((item) => item.pick === entry.pick && item.id === entry.id);
+  if (!row) return null;
+  let label = 'differs';
+  if (row.matchPlanner && row.matchAdp) label = 'planner and ADP';
+  else if (row.matchPlanner) label = 'planner';
+  else if (row.matchAdp) label = 'ADP';
+  const hover = `Planner: ${row.planner ? nameOf(row.planner) : 'none'}. ADP: ${row.adp ? nameOf(row.adp) : 'none'}. Taken ${reachText(row.reach)}; ${ordinal(row.scoreRank)} by score among those left.`;
+  return h('span', { class: `predict-mark ${label === 'differs' ? 'differs' : 'match'}`, title: hover }, label);
 }
 
 function scheduleRefresh() {
@@ -547,6 +627,7 @@ function render() {
   renderStanding();
   renderLeague();
   renderLog();
+  renderPredictions();
   renderChoosing();
 }
 
@@ -1359,7 +1440,7 @@ function renderLog() {
       editing = editing && editing.pick === entry.pick ? null : { pick: entry.pick, pending: null, error: null };
       renderLog();
     } }, 'Edit'));
-    const row = h('li', { class: entry.mine ? 'mine' : '' }, h('span', {}, `#${entry.pick}`), h('span', {}, logLabel(entry), entry.id ? h('span', { class: 'team-name' }, playerById.get(entry.id).positions.join('/')) : null, h('span', { class: 'team-name' }, entry.team), ...buttons));
+    const row = h('li', { class: entry.mine ? 'mine' : '' }, h('span', {}, `#${entry.pick}`), h('span', {}, logLabel(entry), entry.id ? h('span', { class: 'team-name' }, playerById.get(entry.id).positions.join('/')) : null, h('span', { class: 'team-name' }, entry.team), predictionMark(entry), ...buttons));
     return editing && editing.pick === entry.pick ? [row, editPanel(entry)] : [row];
   });
   put(list, ...rows);

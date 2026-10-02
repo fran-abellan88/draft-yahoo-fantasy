@@ -427,3 +427,13 @@ td.dim { opacity: 0.45; }
 .app[data-mode="mock"] .topbar { border-bottom: 2px solid var(--flag); }
 .app[data-mode="mock"] .modes a[aria-current="page"] { background: var(--flag); border-color: var(--flag); color: var(--paper); }
 .league-views + .range, .range { margin: 0 0 8px; font-weight: 600; }
+
+/* What the team on the clock should pick, and how each logged pick compared */
+.topbar .predict-line { margin: 2px 0 0; font-size: 14px; color: var(--cool); font-weight: 600; }
+.prediction-summary { margin: 0 0 8px; max-width: none; }
+.managers { margin: 0 0 8px; font-size: 13px; }
+.managers summary { cursor: pointer; color: var(--muted); }
+.managers .league-wrap { margin-top: 6px; }
+.predict-mark { margin-left: 6px; padding: 0 6px; border-radius: 999px; font-size: 11px; white-space: nowrap; }
+.predict-mark.match { background: color-mix(in srgb, var(--cool) 16%, transparent); color: var(--cool); }
+.predict-mark.differs { background: var(--flag-soft); color: var(--flag); }
