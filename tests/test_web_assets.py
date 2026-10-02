@@ -48,6 +48,13 @@ TEXT_PAIRS: List[Tuple[str, str, str]] = [
     ("mine", "mine-soft", "snake cells for my picks already made"),
     ("mine", "surface", "snake cells for my coming picks, roster pick numbers"),
     ("muted", "surface", "secondary text on cards"),
+    ("muted", "raised", "table headers, labels inside a card"),
+    ("ink", "raised", "inputs, league tables, buttons"),
+    ("cool", "surface", "odds and ranks as text"),
+    ("flag", "surface", "warnings as text"),
+    ("danger", "surface", "errors as text"),
+    ("flag", "flag-soft", "badges and the search note"),
+    ("danger", "danger-soft", "the error banner"),
     ("ink", "hover", "the row under the pointer, the main click target"),
     ("muted", "hover", "player details on the hovered row"),
     ("paper", "ink", "snake cell on the clock, active filter chip"),
@@ -297,7 +304,7 @@ def test_text_stays_readable_on_the_strongest_tint_of_a_table_cell(theme: str) -
 
 def test_green_means_only_mine_and_the_odds_and_stats_use_the_second_hue() -> None:
     tints = [line for line in JS.splitlines() if "color-mix" in line]
-    assert tints and all("var(--cool)" in line and "var(--mine)" not in line for line in tints)
+    assert tints and all(("var(--cool)" in line or "var(--score)" in line) and "var(--mine)" not in line for line in tints)
     assert ".meter .fill { height: 100%; background: var(--cool); }" in CSS
     assert "accent-color: var(--cool)" in CSS
 
@@ -337,7 +344,8 @@ def test_the_planner_projection_is_asked_for_apart_from_the_analysis_and_shown_w
     league = JS[JS.index("function renderLeague()"): JS.index("// A gone entry back to an unseen pick")]
     assert "h3', {}, 'Projected'" in league and "h3', {}, 'So far'" in league, "both tables at once, no switch between them"
     assert "ADP order" in league and "Same planner" in league and "projectedTable()" in JS[JS.index("function renderStanding()"):]
-    assert "400px minmax(0, 1fr) 380px 540px" in CSS and ".league-table td.left { max-width" in CSS
+    assert "minmax(400px, 400fr) minmax(900px, 1045fr) minmax(360px, 380fr) minmax(520px, 540fr)" in CSS
+    assert ".league-table td.left { max-width" in CSS
 
 
 def test_the_theme_follows_the_system_unless_chosen_and_is_set_before_the_first_paint() -> None:
@@ -374,3 +382,71 @@ def test_the_pick_predictions_are_real_draft_only_asked_apart_and_tied_to_the_lo
     assert "predictionsFor === picksSignature()" in JS, "a stale answer is never shown for another log"
     assert "item.pick === entry.pick && item.id === entry.id" in JS, "a log row is marked only by the pick it was computed for"
     assert "not a mistake" in JS
+
+
+def test_the_columns_grow_together_the_table_starts_on_adp_and_the_score_has_its_own_colour_map() -> None:
+    columns = re.findall(r"grid-template-columns:([^;]*);", CSS)
+    assert columns and not any(re.search(r"(?<![\w(,] )\b(?:380|400|420|540)px\s*(?:minmax|;|$)", value) for value in columns)
+    assert "sort: { key: 'adp', direction: 1 }" in JS
+    score_tint = JS[JS.index("const scoreFill"): JS.index("// A stat tinted")]
+    assert "scoreTint(row)" in JS and "var(--score)" in score_tint and "var(--cool)" not in score_tint
+    for kind in ("planner", "adp", "both"):
+        assert f".predict-mark.{kind}" in CSS
+    assert "'both'" in JS
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_ink_stays_readable_on_the_score_map_and_the_log_tags(theme: str) -> None:
+    tokens = _themes()[theme]
+    # the strongest each fill reaches, and what it can sit on: the Score cell on a hovered row, a tag only in the log
+    for name, share, bases in (("score", 0.40, ("surface", "hover")), ("tag-planner", 0.42, ("surface",)), ("tag-adp", 0.42, ("surface",))):
+        for base in bases:
+            ratio = _contrast(tokens["ink"], _blend(tokens[name], tokens[base], share))
+            assert ratio >= WCAG_TEXT, f"ink on the strongest {name} fill over {base} in {theme} mode is {ratio:.2f}:1"
+    assert _contrast(tokens["muted"], _blend(tokens["cool"], tokens["surface"], 0.22)) >= 4.0, "dim text on the strongest stat tint"
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_panels_stand_apart_from_the_page_and_the_inside_of_a_card_from_the_card(theme: str) -> None:
+    tokens = _themes()[theme]
+    assert _contrast(tokens["paper"], tokens["surface"]) >= 1.15, "a card must be visible against the page"
+    assert _contrast(tokens["surface"], tokens["raised"]) >= 1.07, "a table header or input must be visible inside a card"
+    assert _contrast(tokens["line"], tokens["surface"]) >= 1.4, "hairlines must be visible"
+    assert "#ffffff" not in {value.lower() for key, value in tokens.items() if key in ("paper", "surface", "raised")}, "no pure white"
+
+
+def test_every_panel_is_a_card() -> None:
+    cards = re.search(r"(\.team, [^{]*)\{([^}]*)\}", CSS)
+    assert cards and all(name in cards.group(1) for name in (".panel.log", ".seam-standing", ".teams"))
+    assert "background: var(--surface)" in cards.group(2) and "border-radius" in cards.group(2)
+
+
+def test_a_notice_is_not_dressed_as_an_error_and_hidden_log_buttons_do_not_take_room() -> None:
+    assert "classList.add('notice')" in JS and "classList.remove('notice')" in JS
+    assert ".banner.notice { background: var(--raised)" in CSS
+    assert ".row-actions { position: absolute;" in CSS, "out of the flow: hidden buttons once made rows wrap"
+    assert "h('span', { class: 'row-actions' }, ...buttons)" in JS
+    assert CSS.count("Follow the system unless the theme button chose one") == 1
+
+
+def test_the_score_column_defaults_to_a_bar_of_the_gap_to_the_best_player_left_and_offers_two_colour_maps() -> None:
+    html = (WEB / "index.html").read_text()
+    assert html.count('name="scorestyle"') == 3 and 'value="bar" checked' in html
+    assert "let scoreStyle = 'bar';" in JS and "SCORE_STYLES = ['bar', 'rank', 'range']" in JS
+    tint = JS[JS.index("function scoreTint(row)"): JS.index("function scoreTitle")]
+    assert "linear-gradient(to right" in tint and "scoreTop - score" in tint and "SCORE_BAR_SPAN" in tint
+    assert "row.rank <= limit" in tint, "colour by rank uses the rank among the players left, not the score"
+    assert "localStorage.setItem(SCORE_STYLE_KEY" in JS and "scorestyle" in JS[JS.index("function wireControls()"):], "a browser preference"
+    assert "behind the best score left" in JS
+
+
+def test_the_second_thing_on_the_clock_is_in_the_recommendation_box_and_the_odds_column_marks_only_the_risky() -> None:
+    html = (WEB / "index.html").read_text()
+    assert 'id="alternatives"' not in html
+    hero = JS[JS.index("function renderHero()"): JS.index("function meter(")]
+    assert "alternativesBlock()" in hero
+    block = JS[JS.index("function alternativesBlock()"): JS.index("function renderPlan()")]
+    assert "analysis.alternativesMode === 'gone'" in block and "alternativesWorthShowing()" in block
+    odds = JS[JS.index("function oddsCell"): JS.index("// The Score column")]
+    assert "color-mix" not in odds and "wont-last" in odds and "value < 0.5" in odds
+    assert "td.wont-last { color: var(--flag)" in CSS

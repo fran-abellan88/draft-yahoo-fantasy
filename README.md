@@ -33,6 +33,11 @@ Your picks are kept in the browser, so reloading the page mid-draft loses nothin
   entry in the log has **Unmark**. Every log row has **Edit**: swap two picks, say "I do not know what this pick was"
   (it becomes unseen, a player logged there returns to the pool), or place a gone player at an unseen pick. Each edit
   is confirmed first, cannot put an unseen or gone pick on one of your own pick numbers, and cannot be undone with Undo.
+- **Score column**: a bar of how far each player is behind the best score left (empty at 15 points behind), so the players
+  that matter, a few points apart, show their gaps. Settings offers two colour maps instead (by rank: top 5, 15, 30, 60; by
+  range: 5th to 95th percentile of the scores left, which saturates the top players and shifts as the pool drains). The
+  choice is a display preference of this browser. **Odds** are plain numbers; only a player who will probably not last (under
+  half) is marked in amber. On the clock, **Or take instead** sits in the recommendation box under the name.
 - **Scoring categories**: untick one to leave it out of every score and plan. The score is the average of the ticked
   categories, so ticking fewer does not lower anyone's score. Once a pick is logged, a change to any setting waits in
   the panel with **Apply** and **Keep current**, so a stray click cannot change the recommendation; several clicks

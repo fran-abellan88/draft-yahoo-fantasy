@@ -44,7 +44,7 @@ const state = {
   rule: { ...DEFAULT_RULE },
   search: '',
   position: 'ALL',
-  sort: { key: 'rank', direction: 1 },
+  sort: { key: 'adp', direction: 1 }, // ADP order; the # column is the rank by score
 };
 const playerById = new Map();
 let pool = null;
@@ -237,6 +237,7 @@ function showError(message, retryable = false, sticky = false) {
   $('error-text').textContent = message;
   $('error-retry').hidden = !retryable;
   $('error-dismiss').hidden = true;
+  $('error').classList.remove('notice');
   $('error').hidden = false;
 }
 
@@ -244,6 +245,7 @@ function showError(message, retryable = false, sticky = false) {
 function showNotice(message) {
   showError(message, false, true);
   $('error-dismiss').hidden = false;
+  $('error').classList.add('notice');
 }
 
 function hideError(force = false) {
@@ -435,11 +437,12 @@ function predictionMark(entry) {
   const row = current && current.picks.find((item) => item.pick === entry.pick && item.id === entry.id);
   if (!row) return null;
   let label = 'differs';
-  if (row.matchPlanner && row.matchAdp) label = 'planner and ADP';
-  else if (row.matchPlanner) label = 'planner';
-  else if (row.matchAdp) label = 'ADP';
+  let kind = 'differs';
+  if (row.matchPlanner && row.matchAdp) [label, kind] = ['planner and ADP', 'both'];
+  else if (row.matchPlanner) [label, kind] = ['planner', 'planner'];
+  else if (row.matchAdp) [label, kind] = ['ADP', 'adp'];
   const hover = `Planner: ${row.planner ? nameOf(row.planner) : 'none'}. ADP: ${row.adp ? nameOf(row.adp) : 'none'}. Taken ${reachText(row.reach)}; ${ordinal(row.scoreRank)} by score among those left.`;
-  return h('span', { class: `predict-mark ${label === 'differs' ? 'differs' : 'match'}`, title: hover }, label);
+  return h('span', { class: `predict-mark ${kind}`, title: hover }, label);
 }
 
 function scheduleRefresh() {
@@ -809,6 +812,7 @@ function renderHero() {
     reason ? h('p', { class: 'facts' }, reason) : null,
     analysis.search.truncated ? h('p', { class: 'facts' }, 'Approximate: the search was cut short. See the note under Plan.') : null,
     laterSteps.length ? h('p', { class: 'then' }, `Then ${laterSteps.join(', ')}.`) : null,
+    alternativesBlock(),
     lookFirst.length
       ? h('p', { class: 'facts' }, 'If still on the board, look first at: ', ...lookFirst.flatMap((entry) => [
         h('button', { type: 'button', class: 'gone', title: `Log ${nameOf(entry.id)} as the pick on the clock`, onclick: () => { cancelChoosing(); draft(entry.id); } }, `${nameOf(entry.id)} (${pct(entry.availability)})`),
@@ -847,11 +851,6 @@ function alternativesWorthShowing() {
   return !analysis.search.truncated && analysis.alternatives.some((alt) => alt.behind >= TIE_POINTS);
 }
 
-// "Kawhi Leonard (1.2 lower)"; a plan that is the same team in the other order says when the recommended player comes
-function alternativeText(alt) {
-  return `${nameOf(alt.id)} (${alt.behind >= TIE_POINTS ? `${oneDecimal(alt.behind)} lower` : 'same score'})`;
-}
-
 // When the alternatives are the same team in the other order, say once that the recommended player comes next
 function thenSentence() {
   const thens = analysis.alternatives.filter((alt) => alt.then).map((alt) => alt.then);
@@ -861,12 +860,28 @@ function thenSentence() {
   return same ? ` Each of those plans takes ${nameOf(first.id)} at ${first.pick} if he lasts (${pct(first.availability)}).` : '';
 }
 
+// The second thing needed on the clock is who else to take: it sits in the recommendation box, under the name
+function alternativesBlock() {
+  if (!alternativesWorthShowing() || !analysis.recommendation) return null;
+  const lead = analysis.alternativesMode === 'gone'
+    ? `If ${nameOf(analysis.recommendation.id)} is gone by pick ${analysis.recommendation.pick}, take instead`
+    : 'Or take instead';
+  const items = analysis.alternatives.map((alt) =>
+    h('li', {}, h('strong', {}, nameOf(alt.id)), h('span', { class: 'meta' }, detailOf(alt.id)), h('span', { class: 'gap' }, alt.behind >= TIE_POINTS ? `${oneDecimal(alt.behind)} lower` : 'same score')),
+  );
+  return h(
+    'div',
+    { class: 'hero-alts' },
+    h('h3', {}, lead),
+    h('ul', {}, ...items),
+    h('p', { class: 'note' }, `How far the whole plan falls behind the best one.${thenSentence()}`),
+  );
+}
+
 function renderPlan() {
   const container = $('plan');
-  const alternatives = $('alternatives');
   if (analysis.plans.length === 0) {
     put(container, h('p', { class: 'note' }, 'No plan to show.'));
-    put(alternatives, );
     return;
   }
   const [best] = analysis.plans;
@@ -883,21 +898,11 @@ function renderPlan() {
   });
   const foot = h('div', { class: 'plan-foot' }, `Roster score ${oneDecimal(best.totalScore)}. The plan is recomputed after each pick.`);
   put(container, h('div', { class: 'plan' }, rows, foot));
-
-  if (alternativesWorthShowing() && analysis.recommendation) {
-    const text = analysis.alternatives.map(alternativeText).join(', ');
-    const lead = analysis.alternativesMode === 'gone'
-      ? `If ${nameOf(analysis.recommendation.id)} is gone by pick ${analysis.recommendation.pick}, take instead: `
-      : 'Or take instead: ';
-    put(alternatives, h('span', {}, lead), h('strong', {}, text), h('span', {}, `. In brackets: how far the whole plan falls behind the best one.${thenSentence()}`));
-  } else {
-    put(alternatives, );
-  }
 }
 
 // --- pool table ---
 const POOL_COLUMNS = [
-  { key: 'rank', label: '#', left: false, defaultDirection: 1 },
+  { key: 'rank', label: '#', left: false, defaultDirection: 1, title: 'Rank by score among the players left' },
   { key: 'name', label: 'Player', left: true, defaultDirection: 1 },
   { key: 'score', label: 'Score', left: false, defaultDirection: -1 },
   { key: 'availability', label: 'At your pick', left: false, defaultDirection: -1, title: 'Chance he is still available when you next pick' },
@@ -968,19 +973,67 @@ function notesFor(row, player) {
 const UNSEEN_RISK_SHOWN = 0.05;
 
 // The odds as a tint of the cell (the same mechanism as the stats), text at full contrast
+// Plain numbers: only a player who will probably not last (under half) is marked, so the column shows few signals
 function oddsCell(value) {
   if (value === null || value === undefined) return h('td', {}, '-');
-  const style = value >= 0.5
-    ? `background: color-mix(in srgb, var(--cool) ${Math.round(value * 28)}%, transparent)`
-    : '';
-  return h('td', { style }, pct(value));
+  return h('td', value < 0.5 ? { class: 'wont-last', title: 'Probably gone by then' } : {}, pct(value));
+}
+
+// The Score column: three ways to show it, chosen in Settings (a display preference of this browser, not part of the
+// draft). The default is a bar of how far he is behind the best player left, over a fixed span of points, because the
+// players that matter are within a few points of each other and a colour scale over the whole pool cannot tell them apart.
+const SCORE_STYLES = ['bar', 'rank', 'range'];
+const SCORE_STYLE_KEY = 'draft-assistant-score-style';
+const SCORE_BAR_SPAN = 15; // points behind the best player left at which the bar is empty
+const SCORE_TINT_MIN = 8;
+const SCORE_TINT_MAX = 40;
+const SCORE_RANK_TIERS = [[5, 40], [15, 30], [30, 22], [60, 14]]; // up to this rank, this share; everyone else 7%
+let scoreStyle = 'bar';
+let scoreRange = { low: 0, high: 1 };
+let scoreTop = 0;
+
+function updateScoreRange() {
+  const scores = analysis.pool.map((row) => row.score).filter((score) => score !== null && score !== undefined).sort((a, b) => a - b);
+  if (scores.length === 0) return;
+  scoreRange = { low: scores[Math.floor(0.05 * (scores.length - 1))], high: scores[Math.ceil(0.95 * (scores.length - 1))] };
+  scoreTop = scores[scores.length - 1];
+}
+
+const scoreFill = (share) => `color-mix(in srgb, var(--score) ${share}%, transparent)`;
+
+function scoreTint(row) {
+  const score = row.score;
+  if (score === null || score === undefined) return '';
+  if (scoreStyle === 'bar') {
+    const width = Math.round(100 * Math.max(0, Math.min(1, 1 - (scoreTop - score) / SCORE_BAR_SPAN)));
+    return `background: linear-gradient(to right, ${scoreFill(SCORE_TINT_MAX)} ${width}%, transparent ${width}%)`;
+  }
+  if (scoreStyle === 'rank') {
+    const tier = SCORE_RANK_TIERS.find(([limit]) => row.rank <= limit);
+    return `background: ${scoreFill(tier ? tier[1] : 7)}`;
+  }
+  const span = scoreRange.high - scoreRange.low;
+  const share = span > 0 ? Math.max(0, Math.min(1, (score - scoreRange.low) / span)) : 0.5;
+  return `background: ${scoreFill(Math.round(SCORE_TINT_MIN + share * (SCORE_TINT_MAX - SCORE_TINT_MIN)))}`;
+}
+
+function scoreTitle(row) {
+  const gap = scoreTop - row.score;
+  const behind = gap < 0.05 ? 'The best score left.' : `${oneDecimal(gap)} behind the best score left.`;
+  return `Score for your ticked categories. ${behind}`;
+}
+
+function applyScoreStyle(choice) {
+  scoreStyle = SCORE_STYLES.includes(choice) ? choice : 'bar';
+  const input = document.querySelector(`input[name="scorestyle"][value="${scoreStyle}"]`);
+  if (input) input.checked = true;
 }
 
 // A stat tinted by how good it is in its category (0 to 100 on the capped scale); unticked categories are dimmed
 function statCell(column, player, row) {
   const score = row.categoryScores[column.key];
   const ticked = state.categories.includes(column.key);
-  const style = ticked && score !== null && score !== undefined ? `background: color-mix(in srgb, var(--cool) ${Math.round(Math.max(0, Math.min(100, score)) * 0.28)}%, transparent)` : '';
+  const style = ticked && score !== null && score !== undefined ? `background: color-mix(in srgb, var(--cool) ${Math.round(Math.max(0, Math.min(100, score)) * 0.22)}%, transparent)` : '';
   return h('td', { class: ticked ? '' : 'dim', style }, column.kind === 'rate' ? formatRate(player.stats[column.key]) : oneDecimal(player.stats[column.key]));
 }
 
@@ -1023,6 +1076,7 @@ let visibleIds = [];
 let plannedPicks = new Map();
 
 function renderPool() {
+  updateScoreRange();
   plannedPicks = new Map(analysis.plans.length ? analysis.plans[0].steps.map((step) => [step.id, step.pick]) : []);
   const pickLabel = columnPick();
   const availabilityHead = $('pool-head').querySelector('button[data-key="availability"]');
@@ -1056,7 +1110,7 @@ function renderPool() {
         ...notesFor(row, player),
         ...(hasUnseenPicks() && row.unseenRisk >= UNSEEN_RISK_SHOWN ? [goneButton(player)] : []),
       ])),
-      h('td', { class: 'score' }, oneDecimal(row.score)),
+      h('td', { class: 'score score-cell', style: scoreTint(row), title: scoreTitle(row) }, oneDecimal(row.score)),
       oddsCell(oddsAtColumn(row)),
       h('td', { title: player.adpEstimated ? 'Yahoo shows no ADP for him; estimated from nearby ranks' : '' }, `${player.adpEstimated ? '~' : ''}${player.adp.toFixed(1)}`),
       h('td', {}, player.xrank),
@@ -1440,7 +1494,7 @@ function renderLog() {
       editing = editing && editing.pick === entry.pick ? null : { pick: entry.pick, pending: null, error: null };
       renderLog();
     } }, 'Edit'));
-    const row = h('li', { class: entry.mine ? 'mine' : '' }, h('span', {}, `#${entry.pick}`), h('span', {}, logLabel(entry), entry.id ? h('span', { class: 'team-name' }, playerById.get(entry.id).positions.join('/')) : null, h('span', { class: 'team-name' }, entry.team), predictionMark(entry), ...buttons));
+    const row = h('li', { class: entry.mine ? 'mine' : '' }, h('span', {}, `#${entry.pick}`), h('span', {}, logLabel(entry), entry.id ? h('span', { class: 'team-name' }, playerById.get(entry.id).positions.join('/')) : null, h('span', { class: 'team-name' }, entry.team), predictionMark(entry), h('span', { class: 'row-actions' }, ...buttons)));
     return editing && editing.pick === entry.pick ? [row, editPanel(entry)] : [row];
   });
   put(list, ...rows);
@@ -1584,6 +1638,17 @@ function wireControls() {
   $('behind-form').addEventListener('submit', submitBehind);
   $('reset').addEventListener('click', reset);
   $('theme').addEventListener('click', cycleTheme);
+  for (const input of document.querySelectorAll('input[name="scorestyle"]')) {
+    input.addEventListener('change', () => {
+      applyScoreStyle(input.value);
+      try {
+        localStorage.setItem(SCORE_STYLE_KEY, scoreStyle);
+      } catch (error) {
+        // Storage blocked: the choice lasts until the page is reloaded
+      }
+      renderPool();
+    });
+  }
   $('search').addEventListener('input', (event) => {
     state.search = event.target.value;
     renderPool();
@@ -1652,6 +1717,11 @@ async function init() {
     // follow the system
   }
   applyTheme();
+  try {
+    applyScoreStyle(localStorage.getItem(SCORE_STYLE_KEY));
+  } catch (error) {
+    applyScoreStyle('bar');
+  }
   buildCategories();
   buildPositionChips();
   buildPoolHead();
