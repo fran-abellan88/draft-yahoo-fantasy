@@ -49,6 +49,17 @@ Your picks are kept in the browser, so reloading the page mid-draft loses nothin
 - **Worth knowing** badges under a name: the injury tag, no or few games last season, a projection that differs a lot
   from last season, or a projection of few games played. They never change the score; they tell you when to look twice.
 
+### Where the draft is saved
+
+Every change is saved to `saved_draft.json` in the project folder (not tracked by git), and also in the browser as a
+backup. The file survives a closed tab, cleared browser data and a different port, so the draft is still there if the
+dashboard starts on 8002 instead of 8001. Two things to know:
+
+- If you open the dashboard in two windows, the one that saves second is refused ("changed in another window"); reload it.
+- If the saved draft cannot be loaded (an unknown player, an unseen pick on one of yours), the page says so and keeps
+  the file as it is; nothing is saved until you press **Reset**. A file that is not valid at all is renamed to
+  `saved_draft.unreadable.json` on the next save.
+
 ## How a score is built
 
 For each category, a player's per-game projection is placed between the 5th and 95th percentile of the 150-player pool
