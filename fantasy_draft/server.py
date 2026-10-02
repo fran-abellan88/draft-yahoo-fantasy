@@ -15,7 +15,12 @@ too, and POSTs must be `application/json`, which a foreign page cannot send with
     POST /api/analyze    recommendation for a draft state
     GET  /api/draft      the saved draft and its version
     POST /api/draft      save the draft, naming the version it is based on
-    POST /api/autopick   the pick the team on the clock would make (rehearsal)
+    POST /api/league     the league projected with every team completed by the same planner (slow early on)
+    POST /api/autopick   the pick the team on the clock would make (mock draft only)
+
+The same page and routes also exist under /mock/ (/mock, /mock/api/pool, ...). That is the mock draft: its own service
+and its own saved draft file, where the other 13 teams pick automatically. The real draft's routes never answer
+/api/autopick, and nothing under /mock/ can read or write the real draft file, so a practice cannot mix with it.
 """
 
 import hashlib
@@ -34,6 +39,9 @@ WEB_DIR = Path(__file__).resolve().parent / "web"
 MAX_BODY_BYTES = 1_000_000
 HOST = "127.0.0.1"
 LOCAL_NAMES = ("127.0.0.1", "localhost")
+MOCK_PREFIX = "/mock"
+
+Draft = Tuple[DraftService, SavedDraft]  # a draft is served by its analysis service and its saved file
 
 # Only these files are ever served from disk, so a crafted path cannot reach anything else
 STATIC_FILES: Dict[str, Tuple[str, str]] = {
@@ -47,9 +55,9 @@ STATIC_FILES: Dict[str, Tuple[str, str]] = {
 class DashboardHandler(BaseHTTPRequestHandler):
     """Routes requests to the static files and the draft service."""
 
-    def __init__(self, service: DraftService, saved: SavedDraft, *args: Any, **kwargs: Any) -> None:
-        self.service = service
-        self.saved = saved
+    def __init__(self, real: Draft, mock: Optional[Draft], *args: Any, **kwargs: Any) -> None:
+        self.real = real
+        self.mock = mock
         super().__init__(*args, **kwargs)
 
     def parse_request(self) -> bool:
@@ -60,27 +68,39 @@ class DashboardHandler(BaseHTTPRequestHandler):
         """
         return super().parse_request() and self._is_local_request()
 
-    def do_GET(self) -> None:  # noqa: N802 (name fixed by BaseHTTPRequestHandler)
+    def _route(self) -> Tuple[Optional[Draft], str]:
+        """The draft a path belongs to (None if there is none) and the path without its /mock prefix."""
         path = self.path.split("?", 1)[0]
-        if path in STATIC_FILES:
+        if path == MOCK_PREFIX or path.startswith(MOCK_PREFIX + "/"):
+            return self.mock, path[len(MOCK_PREFIX):] or "/"
+        return self.real, path
+
+    def do_GET(self) -> None:  # noqa: N802 (name fixed by BaseHTTPRequestHandler)
+        draft, path = self._route()
+        if draft is None:
+            self._send_json(HTTPStatus.NOT_FOUND, {"error": "Not found"})
+            return
+        service, saved = draft
+        if path in STATIC_FILES and (draft is self.real or path == "/"):  # under /mock only the page itself
             filename, content_type = STATIC_FILES[path]
             self._send(HTTPStatus.OK, (WEB_DIR / filename).read_bytes(), content_type)
         elif path == "/api/pool":
-            self._send_json(HTTPStatus.OK, self.service.pool_payload())
+            self._send_json(HTTPStatus.OK, service.pool_payload())
         elif path == "/api/draft":
-            version, state, problem = self.saved.load()
+            version, state, problem = saved.load()
             # The id names this draft file in this mode, so the page can keep its browser copy per draft, not per port:
-            # a rehearsal and the live draft may share a port one after the other and must never share a copy
-            ident = hashlib.sha1(f"{self.saved.path.resolve()}|{self.service.rehearsal}".encode()).hexdigest()[:12]
+            # a mock draft and the real one may share a port and must never share a copy
+            ident = hashlib.sha1(f"{saved.path.resolve()}|{service.rehearsal}".encode()).hexdigest()[:12]
             self._send_json(HTTPStatus.OK, {"id": ident, "version": version, "state": state, "problem": problem})
         else:
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "Not found"})
 
     def do_POST(self) -> None:  # noqa: N802
-        path = self.path.split("?", 1)[0]
-        if path not in ("/api/analyze", "/api/draft", "/api/autopick"):
+        draft, path = self._route()
+        if draft is None or path not in ("/api/analyze", "/api/league", "/api/draft", "/api/autopick"):
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "Not found"})
             return
+        service, saved = draft
         if self.headers.get_content_type() != "application/json":
             self._send_json(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, {"error": "Send the request as application/json"})
             return
@@ -97,12 +117,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if not isinstance(request, dict):
                 raise RequestError("The request body must be a JSON object")
             if path == "/api/draft":
-                version = self.saved.save(request.get("state"), request.get("baseVersion"))
+                version = saved.save(request.get("state"), request.get("baseVersion"))
                 self._send_json(HTTPStatus.OK, {"version": version})
             elif path == "/api/autopick":
-                self._send_json(HTTPStatus.OK, self.service.autopick(request))
+                self._send_json(HTTPStatus.OK, service.autopick(request))
+            elif path == "/api/league":
+                self._send_json(HTTPStatus.OK, service.project_league(request))
             else:
-                self._send_json(HTTPStatus.OK, self.service.analyze(request))
+                self._send_json(HTTPStatus.OK, service.analyze(request))
         except Conflict as conflict:
             self._send_json(HTTPStatus.CONFLICT, {"error": str(conflict), "version": conflict.current})
         except (RequestError, SavedDraftError, json.JSONDecodeError, ValueError) as error:
@@ -148,6 +170,8 @@ class LocalServer(ThreadingHTTPServer):
         self.server_port = port
 
 
-def make_server(service: DraftService, port: int = 0, saved: Optional[SavedDraft] = None) -> ThreadingHTTPServer:
-    """Create (but do not start) a server on 127.0.0.1; port 0 picks a free one."""
-    return LocalServer((HOST, port), partial(DashboardHandler, service, saved or SavedDraft()))
+def make_server(
+    service: DraftService, port: int = 0, saved: Optional[SavedDraft] = None, mock: Optional[Draft] = None
+) -> ThreadingHTTPServer:
+    """Create (but do not start) a server on 127.0.0.1; port 0 picks a free one. `mock` adds the /mock/ draft."""
+    return LocalServer((HOST, port), partial(DashboardHandler, (service, saved or SavedDraft()), mock))

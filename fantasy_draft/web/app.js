@@ -3,8 +3,11 @@
 // Draft assistant front end. The server holds no state: this page keeps the ordered list of picks
 // (also in localStorage, so a refresh mid-draft loses nothing) and asks the server what to do next.
 
-// Browser copies are keyed by the draft file's id (from the server), not only by this address: a rehearsal and the live
-// draft can take turns on one port and must never share a copy
+// Browser copies are keyed by the draft file's id (from the server), not only by this address: a mock draft and the real
+// draft can sit on one port and must never share a copy
+// The real draft is served at / and a mock draft at /mock (its own file, automatic picks); the routes follow the address
+const MOCK = location.pathname === '/mock' || location.pathname.startsWith('/mock/');
+const API = MOCK ? '/mock/api' : '/api';
 const STORAGE_KEY = 'draft-assistant-v2';
 const ASIDE_KEY = 'draft-assistant-unconfirmed'; // a browser copy the file replaced, kept so nothing is lost
 const TAB_KEY = 'draft-assistant-tab'; // the tab last open, a per-browser convenience
@@ -32,7 +35,7 @@ const state = {
   picks: [],
   history: [], // the actions Undo reverts, newest last (see logic.js)
   needs: false, // weight the categories by team need (an option, off by default)
-  rehearsal: false, // set from the server (started with --rehearsal), never from a saved draft
+  rehearsal: false, // set from the server (the draft served at /mock), never from a saved draft
   seed: 0, // makes one rehearsal repeatable and the next one different
   categories: [],
   gamesAdjusted: true,
@@ -129,7 +132,8 @@ function saveState() {
 // One save at a time, always of the latest state, each naming the version the last one produced
 function showSaved(text, ok) {
   const badge = $('saved-state');
-  badge.textContent = text;
+  // A new draft with nothing logged has nothing to be saved: say nothing rather than "Saved"
+  badge.textContent = text === 'Saved' && state.picks.length === 0 && serverVersion === 0 ? '' : text;
   badge.classList.toggle('bad', !ok);
 }
 
@@ -147,7 +151,7 @@ async function saveToServer() {
   try {
     do {
       serverSaveAgain = false;
-      const response = await fetch('/api/draft', {
+      const response = await fetch(API + '/draft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ baseVersion: serverVersion, state: currentSavedState() }),
@@ -179,7 +183,7 @@ async function saveToServer() {
 // What the server has saved: {version, state, problem}. A failed read is an error like a failed read of the pool: the
 // page stops, because starting without knowing the file's version would later overwrite it.
 async function loadServerDraft() {
-  const response = await fetch('/api/draft');
+  const response = await fetch(API + '/draft');
   if (!response.ok) throw new Error(`the server answered ${response.status}`);
   return response.json();
 }
@@ -280,6 +284,7 @@ function setBusy(busy) {
 }
 
 async function refresh() {
+  if (!$('setting-confirm').hidden) keepSettings(); // a pending change was worded for the draft as it was
   editing = null; // an open edit was built from the log as it was
   choosing = null;
   const requestId = ++latestRequest;
@@ -292,7 +297,7 @@ async function refresh() {
       if (requestId !== latestRequest) return;
     }
     try {
-      response = await fetch('/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+      response = await fetch(API + '/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
     } catch (error) {
       response = null;
     }
@@ -322,7 +327,36 @@ async function refresh() {
   analysis = data;
   poolRowById = new Map(data.pool.map((row) => [row.id, row]));
   render();
+  fetchPlannerLeague(requestId, body);
   if (state.rehearsal && !rehearsing && !autoPlayFailed && !data.clock.isMine && !data.clock.draftComplete) autoPlayOthers();
+}
+
+// The league projected with every team completed by the same planner. It takes longer than the analysis (up to a few
+// seconds early in the draft), so it is asked for apart from it and the recommendation never waits for it. Until it
+// arrives the table shows the quick ADP projection, and a result for an older log or other categories is dropped.
+async function fetchPlannerLeague(requestId, body) {
+  const keysAsked = JSON.stringify(state.categories);
+  if (plannerKeys !== keysAsked) plannerLeague = null; // other categories: the old table has other columns
+  plannerPending = true;
+  plannerFailed = false;
+  renderLeague();
+  try {
+    const response = await fetch(API + '/league', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+    const data = await response.json();
+    if (requestId !== latestRequest) return;
+    if (response.ok) {
+      plannerLeague = data;
+      plannerKeys = keysAsked;
+    } else {
+      plannerFailed = true;
+    }
+  } catch (error) {
+    if (requestId !== latestRequest) return;
+    plannerFailed = true;
+  }
+  plannerPending = false;
+  renderLeague();
+  renderStanding();
 }
 
 function scheduleRefresh() {
@@ -449,7 +483,7 @@ async function autoPlayOthers() {
   try {
     const total = pool.league.teams * pool.league.rosterSize;
     while (state.picks.length < total && !pool.myPicks.includes(state.picks.length + 1)) {
-      const response = await fetch('/api/autopick', {
+      const response = await fetch(API + '/autopick', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ picks: state.picks, noise: true, seed: state.seed + state.picks.length }),
@@ -556,8 +590,10 @@ function renderSettingsSummary() {
 }
 
 function renderTopBar() {
-  $('mode').textContent = state.rehearsal ? 'Rehearsal: other teams automatic' : 'Live';
-  $('mode').classList.toggle('rehearsal', state.rehearsal);
+  $('app').dataset.mode = state.rehearsal ? 'mock' : 'real';
+  $('mode-real').setAttribute('aria-current', state.rehearsal ? 'false' : 'page');
+  $('mode-mock').setAttribute('aria-current', state.rehearsal ? 'page' : 'false');
+  document.title = state.rehearsal ? 'Mock draft - Draft assistant' : 'Draft assistant';
   renderLastPick();
   renderSettingsSummary();
 }
@@ -602,6 +638,7 @@ function wireTabs() {
 function toggleSettings() {
   const panel = $('settings');
   panel.hidden = !panel.hidden;
+  if (panel.hidden && !$('setting-confirm').hidden) keepSettings(); // closing without Apply keeps what was in use
   $('settings-toggle').setAttribute('aria-expanded', String(!panel.hidden));
 }
 
@@ -1034,9 +1071,9 @@ function renderStanding() {
   const league = analysis.league;
   const keys = pool.categories.map((category) => category.key).filter((key) => state.categories.includes(key));
   const labels = Object.fromEntries(pool.categories.map((category) => [category.key, category.label]));
-  const haveNow = league.size > 0;
+  const haveNow = Object.keys(league.standing).length > 0;
   const rows = keys.map((key) => {
-    const projected = league.projected.standing[key];
+    const projected = projectedTable().standing[key];
     const now = league.standing[key];
     return h(
       'div',
@@ -1047,22 +1084,32 @@ function renderStanding() {
     );
   });
   const groups = { Winning: [], Close: [], Behind: [] };
-  for (const key of keys) groups[standingGroup(league.projected.standing[key].beaten)].push(labels[key]);
+  for (const key of keys) groups[standingGroup(projectedTable().standing[key].beaten)].push(labels[key]);
   const summary = Object.entries(groups).filter(([, names]) => names.length).map(([name, names]) => `${name}: ${names.join(', ')}`).join('. ');
   put(
     container,
     h('p', { class: 'note standing-summary' }, summary ? `${summary}.` : ''),
     ...rows,
-    h('p', { class: 'note' }, `Bar: the share of the other 13 teams you beat, ${league.projected.basis}. "Now" counts ${league.size} complete round${league.size === 1 ? '' : 's'}.`),
+    h('p', { class: 'note' }, `Bar: the share of the other 13 teams you beat, ${projectedTable().basis}. "Now" counts the first ${league.size} pick${league.size === 1 ? '' : 's'} of each team, against ${plural(Math.max(league.compared - 1, 0), 'other team')}.`),
     renderWeightsNote(keys, labels),
   );
 }
 
 // ---------- the 14 teams ----------
-let leagueView = 'projected';
+let projectedBasis = 'planner'; // which projection the 14 teams and Standing show: 'planner' or 'adp'
+let plannerLeague = null; // the planner-completed projection for the log last asked about
+let plannerKeys = ''; // the categories it was computed for
+let plannerPending = false;
+let plannerFailed = false;
+
+// The projected table in use: the planner's when chosen and ready, otherwise the quick ADP fill that comes with the analysis
+function projectedTable() {
+  const planner = projectedBasis === 'planner' && plannerLeague !== null && plannerKeys === JSON.stringify(state.categories);
+  return planner ? plannerLeague : analysis.league.projected;
+}
 
 function tintFor(rank, teams) {
-  const good = (teams - rank) / (teams - 1); // 1 for the best, 0 for the worst
+  const good = teams > 1 ? (teams - rank) / (teams - 1) : 0.5; // 1 for the best, 0 for the worst
   return `background: color-mix(in srgb, var(--cool) ${Math.round(good * 30)}%, transparent)`;
 }
 
@@ -1070,33 +1117,68 @@ function cellValue(key, value) {
   return key === 'fg_pct' || key === 'ft_pct' ? formatRate(value) : oneDecimal(value);
 }
 
-function renderLeague() {
-  const container = $('league');
-  const table = leagueView === 'projected' ? analysis.league.projected : analysis.league;
-  const keys = pool.categories.map((category) => category.key).filter((key) => state.categories.includes(key));
-  const labels = Object.fromEntries(pool.categories.map((category) => [category.key, category.label]));
-  const views = h(
-    'div',
-    { class: 'league-views', role: 'group', 'aria-label': 'Which totals' },
-    ...[['projected', 'Projected'], ['now', 'So far']].map(([view, label]) =>
-      h('button', { type: 'button', 'aria-pressed': String(leagueView === view), onclick: () => { leagueView = view; renderLeague(); } }, label),
-    ),
+function leagueTable(table, keys, labels) {
+  const head = h(
+    'tr',
+    {},
+    h('th', { title: 'Place by team score' }, '#'),
+    h('th', { class: 'left' }, 'Team'),
+    h('th', { title: 'Expected categories won against a random team: the share of the other teams beaten, added over the ticked categories' }, 'Score'),
+    h('th', { title: 'Players counted' }, 'n'),
+    ...keys.map((key) => h('th', {}, labels[key])),
   );
-  const head = h('tr', {}, h('th', { class: 'left' }, 'Team'), h('th', {}, 'n'), ...keys.map((key) => h('th', {}, labels[key])));
   const rows = table.teams.map((team) =>
     h(
       'tr',
       { class: team.mine ? 'mine-row' : '' },
-      h('td', { class: 'left', title: `Slot ${team.slot}` }, team.name),
+      h('td', {}, team.place === null ? '' : team.place),
+      h('td', { class: 'left', title: `${team.name}, slot ${team.slot}` }, team.name),
+      h('td', { class: 'score' }, team.score === null ? '' : `${oneDecimal(team.score)}/${keys.length}`),
       h('td', {}, team.players),
-      ...keys.map((key) => h('td', { style: tintFor(team.ranks[key], table.teams.length), title: `${ordinal(team.ranks[key])} of ${table.teams.length}` }, cellValue(key, team.totals[key]))),
+      ...keys.map((key) =>
+        team.totals === null
+          ? h('td', { class: 'dim' }, '')
+          : h('td', { style: tintFor(team.ranks[key], table.compared), title: `${ordinal(team.ranks[key])} of ${table.compared}` }, cellValue(key, team.totals[key])),
+      ),
     ),
   );
-  const note = leagueView === 'projected'
-    ? `${table.basis}: logged picks, your best plan for your team, and the other teams filled in ADP order with lineup limits. A guess at the league, not who will be available.`
-    : `So far: the first ${table.size} pick${table.size === 1 ? '' : 's'} of every team. Totals per game; FG% and FT% are real ratios; fewer turnovers is better.`;
-  const uncounted = table.notCounted ? ` ${plural(table.notCounted, 'pick')} not counted (unseen, gone or not in the list).` : '';
-  put(container, views, h('div', { class: 'league-wrap' }, h('table', { class: 'league-table' }, h('thead', {}, head), h('tbody', {}, ...rows))), h('p', { class: 'note' }, note + uncounted));
+  return h('div', { class: 'league-wrap' }, h('table', { class: 'league-table' }, h('thead', {}, head), h('tbody', {}, ...rows)));
+}
+
+// Projected and So far, one above the other, both updated with every pick and sorted by team score
+function renderLeague() {
+  const container = $('league');
+  const keys = pool.categories.map((category) => category.key).filter((key) => state.categories.includes(key));
+  const labels = Object.fromEntries(pool.categories.map((category) => [category.key, category.label]));
+  const projected = projectedTable();
+  const usingPlanner = projected === plannerLeague;
+  const switcher = h(
+    'div',
+    { class: 'league-views', role: 'group', 'aria-label': 'How the other teams are completed' },
+    ...[['planner', 'Same planner'], ['adp', 'ADP order']].map(([view, label]) =>
+      h('button', { type: 'button', 'aria-pressed': String(projectedBasis === view), onclick: () => { projectedBasis = view; renderLeague(); renderStanding(); } }, label),
+    ),
+  );
+  let status = '';
+  if (projectedBasis === 'planner' && !usingPlanner) status = plannerFailed ? 'The planner projection failed: showing ADP order.' : 'Updating: showing ADP order meanwhile.';
+  else if (usingPlanner && plannerPending) status = 'Updating.';
+  const projectedNote = usingPlanner
+    ? `${projected.basis}: logged picks, then every team, yours too, takes the first player of its own best plan in turn. It shows what well-informed teams would end up with, not who will be available, and your league is probably easier.${projected.fallbacks ? ` ${plural(projected.fallbacks, 'pick')} fell back to ADP order.` : ''}`
+    : `${projected.basis}: logged picks, your best plan for your team, and the other teams filled in ADP order with lineup limits. Your team is built to these categories and the others are not, so it tends to come first.`;
+  const now = analysis.league;
+  const nowNote = `The first ${now.size} pick${now.size === 1 ? '' : 's'} of every team. Totals per game; FG% and FT% are real ratios; fewer turnovers is better.${now.waiting ? ` ${plural(now.waiting, 'team')} yet to make pick ${now.size} ${now.waiting === 1 ? 'is' : 'are'} scaled up to it, and a scaled team usually drops a little when it picks.` : ''}${now.leftOut ? ` ${plural(now.leftOut, 'team')} with no player yet ${now.leftOut === 1 ? 'is' : 'are'} left out.` : ''}`;
+  const uncounted = now.notCounted ? ` ${plural(now.notCounted, 'pick')} not counted (unseen, gone or not in the list).` : '';
+  put(
+    container,
+    h('h3', {}, 'Projected'),
+    switcher,
+    status ? h('p', { class: 'note league-status', role: 'status' }, status) : null,
+    leagueTable(projected, keys, labels),
+    h('p', { class: 'note' }, projectedNote),
+    h('h3', {}, 'So far'),
+    leagueTable(now, keys, labels),
+    h('p', { class: 'note' }, nowNote + uncounted),
+  );
 }
 
 // A gone entry back to an unseen pick, for a mistake noticed after other picks were logged
@@ -1263,16 +1345,71 @@ function buildCategories() {
 }
 
 function onCategoryChange(event) {
-  const selected = [...$('categories').querySelectorAll('input:checked')].map((input) => input.value);
-  if (selected.length === 0) {
+  if ($('categories').querySelectorAll('input:checked').length === 0) {
     event.target.checked = true;
     showError('Keep at least one category ticked.');
     return;
   }
   hideError();
-  state.categories = selected;
+  settingChanged();
+}
+
+// ---------- settings changes ----------
+// Before the first pick a change applies at once. After it, every score and the plan would change under the user's
+// hands on one stray click, so the change waits in the panel until Apply (several clicks become one confirmation)
+// and Keep current puts the controls back.
+function controlSettings() {
+  return {
+    categories: [...$('categories').querySelectorAll('input:checked')].map((input) => input.value),
+    method: document.querySelector('input[name="method"]:checked').value,
+    gamesAdjusted: $('games-adjusted').checked,
+    needs: $('needs').checked,
+    rule: sanitizeRule(
+      {
+        type: document.querySelector('input[name="rule"]:checked').value,
+        baseSd: $('rule-base-sd').value,
+        sdPerAdp: $('rule-sd-per-adp').value,
+        threshold: $('rule-threshold').value,
+        slack: $('rule-slack').value,
+      },
+      pool.ruleLimits,
+    ),
+  };
+}
+
+function settingChanged() {
+  const proposed = controlSettings();
+  syncRuleFields(proposed.rule);
+  const labels = Object.fromEntries(pool.categories.map((category) => [category.key, category.label]));
+  const changes = settingChanges(state, proposed, labels);
+  if (state.picks.length === 0 || changes.length === 0) {
+    applySettings();
+    return;
+  }
+  $('setting-confirm-text').textContent = `${plural(state.picks.length, 'pick')} logged. Apply: ${changes.join('; ')}? Every score and your plan are recomputed.`;
+  $('setting-confirm').hidden = false;
+}
+
+function applySettings() {
+  const next = controlSettings();
+  state.categories = next.categories;
+  state.method = next.method;
+  state.gamesAdjusted = next.gamesAdjusted;
+  state.needs = next.needs;
+  state.rule = next.rule;
+  $('setting-confirm').hidden = true;
+  syncRuleInputs();
   saveState();
   scheduleRefresh(); // several quick clicks become one request
+}
+
+function keepSettings() {
+  $('setting-confirm').hidden = true;
+  buildCategories();
+  document.querySelector(`input[name="method"][value="${state.method}"]`).checked = true;
+  $('games-adjusted').checked = state.gamesAdjusted;
+  $('needs').checked = state.needs;
+  syncRuleInputs();
 }
 
 function buildPositionChips() {
@@ -1295,6 +1432,11 @@ function buildPositionChips() {
   put($('positions'), ...chips);
 }
 
+function syncRuleFields(rule) {
+  $('rule-probability').hidden = rule.type !== 'probability';
+  $('rule-window').hidden = rule.type !== 'window';
+}
+
 function syncRuleInputs() {
   const rule = state.rule;
   for (const [key, id] of [['baseSd', 'rule-base-sd'], ['sdPerAdp', 'rule-sd-per-adp'], ['threshold', 'rule-threshold'], ['slack', 'rule-slack']]) {
@@ -1306,25 +1448,7 @@ function syncRuleInputs() {
   $('rule-sd-per-adp').value = rule.sdPerAdp;
   $('rule-threshold').value = rule.threshold;
   $('rule-slack').value = rule.slack;
-  $('rule-probability').hidden = rule.type !== 'probability';
-  $('rule-window').hidden = rule.type !== 'window';
-}
-
-function onRuleChange() {
-  // Typed values are held inside the allowed range and written back, so the box shows what is being used
-  state.rule = sanitizeRule(
-    {
-      type: document.querySelector('input[name="rule"]:checked').value,
-      baseSd: $('rule-base-sd').value,
-      sdPerAdp: $('rule-sd-per-adp').value,
-      threshold: $('rule-threshold').value,
-      slack: $('rule-slack').value,
-    },
-    pool.ruleLimits,
-  );
-  syncRuleInputs();
-  saveState();
-  scheduleRefresh();
+  syncRuleFields(rule);
 }
 
 function wireControls() {
@@ -1348,33 +1472,21 @@ function wireControls() {
     if (event.key === 'Enter' && visibleIds.length === 1) rowPicked(visibleIds[0]);
   });
   document.querySelector(`input[name="method"][value="${state.method}"]`).checked = true;
-  for (const input of document.querySelectorAll('input[name="method"]')) {
-    input.addEventListener('change', () => {
-      state.method = document.querySelector('input[name="method"]:checked').value;
-      saveState();
-      scheduleRefresh();
-    });
-  }
+  for (const input of document.querySelectorAll('input[name="method"]')) input.addEventListener('change', settingChanged);
   $('games-adjusted').checked = state.gamesAdjusted;
-  $('games-adjusted').addEventListener('change', (event) => {
-    state.gamesAdjusted = event.target.checked;
-    saveState();
-    scheduleRefresh();
-  });
+  $('games-adjusted').addEventListener('change', settingChanged);
   $('needs').checked = state.needs;
-  $('needs').addEventListener('change', (event) => {
-    state.needs = event.target.checked;
-    saveState();
-    scheduleRefresh();
-  });
+  $('needs').addEventListener('change', settingChanged);
   for (const input of document.querySelectorAll('input[name="rule"], #rule-base-sd, #rule-sd-per-adp, #rule-threshold, #rule-slack')) {
-    input.addEventListener('change', onRuleChange);
+    input.addEventListener('change', settingChanged);
   }
+  $('setting-apply').addEventListener('click', applySettings);
+  $('setting-keep').addEventListener('click', keepSettings);
 }
 
 async function init() {
   try {
-    const response = await fetch('/api/pool');
+    const response = await fetch(API + '/pool');
     pool = await response.json();
   } catch (error) {
     showError("Can't reach the draft server. Check that run_dashboard.py is running, then reload.");
@@ -1394,7 +1506,7 @@ async function init() {
   draftId = server.id || '';
   const local = readStored(storageKey());
   const source = chooseSource(server.version, server.state, local, readStored(syncKey()));
-  const keptAside = discardsUnconfirmed(source, local, readStored(syncKey()));
+  const keptAside = discardsUnconfirmed(source, local, readStored(syncKey()), server.state);
   if (keptAside) {
     try {
       localStorage.setItem(asideKey(), JSON.stringify(local));
@@ -1407,10 +1519,11 @@ async function init() {
   if (source === 'browser' && state.picks.length > 0) {
     showNotice(`Loaded ${plural(state.picks.length, 'pick')} from this browser's copy; the draft file had none. If this is not the draft you expect, press Reset.`);
   } else if (state.picks.length > 0 && !draftRefused && !server.problem && !keptAside) {
-    showNotice(`Continuing a saved draft: ${plural(state.picks.length, 'pick')}${state.rehearsal ? ' (a rehearsal)' : ''}. Reset starts a new one.`);
+    showNotice(`Continuing a saved draft: ${plural(state.picks.length, 'pick')}${state.rehearsal ? ' (a mock draft)' : ''}. Reset starts a new one.`);
   }
   if (server.problem) showError(server.problem, false, true);
-  else if (source === 'browser' && !draftRefused && state.picks.length > 0) saveToServer(); // a draft the file does not have yet
+  else if (serverVersion > 0 && !draftRefused) showSaved('Saved', true); // the file is what was loaded: say so until the next save
+  if (!server.problem && source === 'browser' && !draftRefused && state.picks.length > 0) saveToServer(); // a draft the file does not have yet
   buildCategories();
   buildPositionChips();
   buildPoolHead();

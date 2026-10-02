@@ -9,8 +9,11 @@
 <body>
   <div class="app" id="app" data-tab="plan">
     <header class="topbar">
-      <div class="mode" id="mode" title="Live: you log every pick yourself">Live</div>
-      <div class="saved" id="saved-state" role="status" title="Whether the draft is saved in the draft file">Saved</div>
+      <nav class="modes" id="modes" aria-label="Which draft">
+        <a id="mode-real" href="/" title="The real draft: you log every pick yourself">Real draft</a>
+        <a id="mode-mock" href="/mock" title="A mock draft: the other 13 teams pick automatically, with its own saved file">Mock draft</a>
+      </nav>
+      <div class="saved" id="saved-state" role="status" title="Whether the draft is saved in the draft file"></div>
       <div class="clock">
         <p id="clock-line" class="clock-line">Loading</p>
         <p id="snake-note" class="note" hidden></p>
@@ -34,6 +37,11 @@
     </div>
 
     <section id="settings" class="settings" aria-label="Settings" hidden>
+      <div id="setting-confirm" class="setting-confirm" role="alert" hidden>
+        <span id="setting-confirm-text"></span>
+        <button id="setting-apply" type="button" class="primary">Apply</button>
+        <button id="setting-keep" type="button">Keep current</button>
+      </div>
       <div class="settings-grid">
         <div>
           <h2>Scoring categories</h2>
@@ -120,6 +128,7 @@
       <p class="note table-note">Click a player to log the pick that is on the clock. Picks log in order, and the snake order decides which ones are yours.</p>
     </main>
 
+    <div class="rail">
     <section class="panel team" data-panel="team">
       <h2>Your roster</h2>
       <ol id="roster" class="roster"></ol>
@@ -130,6 +139,7 @@
       <h2>Draft log</h2>
       <ol id="log" class="log"></ol>
     </section>
+    </div>
 
     <section class="panel teams" data-panel="teams">
       <h2>14 teams</h2>

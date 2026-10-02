@@ -76,7 +76,7 @@ def test_rank_one_is_best_and_turnovers_are_reversed(players: pd.DataFrame) -> N
 
 def test_the_share_beaten_counts_ties_as_half_and_an_empty_league_is_even(players: pd.DataFrame) -> None:
     empty = league_table(players, rosters_by_slot([], 14), ["pts"], 0, 2, TEAM_NAMES)
-    assert empty["standing"]["pts"] == {"rank": 1, "beaten": 0.5}, "everyone ties at zero"
+    assert empty["standing"] == {} and all(row["score"] is None and row["totals"] is None for row in empty["teams"]), "nobody has a player"
     ids = _ids(players)
     table = league_table(players, rosters_by_slot(_picks(ids[:28]), 14), ["pts"], 2, 2, TEAM_NAMES)
     totals = [row["totals"]["pts"] for row in table["teams"]]
@@ -100,3 +100,40 @@ def test_a_team_with_an_uncredited_pick_is_scaled_so_the_gap_does_not_make_it_lo
     others_whole = {row["slot"]: row["totals"]["pts"] for row in whole["teams"] if not row["mine"]}
     others_partial = {row["slot"]: row["totals"]["pts"] for row in partial["teams"] if not row["mine"]}
     assert others_whole == others_partial, "other teams are untouched"
+
+
+def test_the_team_score_is_the_expected_categories_won_and_the_rows_come_best_first(players: pd.DataFrame) -> None:
+    ids = _ids(players)
+    table = league_table(players, rosters_by_slot(_picks(ids[:28]), 14), ["pts", "reb", "to"], 2, 2, TEAM_NAMES)
+    scores = [row["score"] for row in table["teams"]]
+    assert scores == sorted(scores, reverse=True) and all(0 <= score <= 3 for score in scores)
+    assert sum(scores) == pytest.approx(3 * 14 / 2, abs=0.05), "every pair of teams splits one win per category"
+    assert table["teams"][0]["place"] == 1 and [row["place"] for row in table["teams"]] == sorted(row["place"] for row in table["teams"])
+    mine = next(row for row in table["teams"] if row["mine"])
+    assert mine["score"] == pytest.approx(sum(value["beaten"] for value in table["standing"].values()), abs=0.01)
+
+
+def test_a_team_that_has_not_picked_yet_is_left_out_and_listed_last(players: pd.DataFrame) -> None:
+    ids = _ids(players)
+    table = league_table(players, rosters_by_slot(_picks(ids[:3]), 14), ["pts", "to"], 1, 2, TEAM_NAMES)
+    credited = [row for row in table["teams"] if row["players"]]
+    assert len(credited) == 3 and table["teams"][:3] == credited
+    assert table["waiting"] == 0 and table["leftOut"] == 11, "teams with no player are left out, not scaled"
+    assert all(row["score"] is None and row["ranks"] is None for row in table["teams"][3:])
+    assert sorted(row["ranks"]["pts"] for row in credited) == [1, 2, 3], "ranked among the three"
+
+
+def test_a_team_one_pick_short_in_the_round_in_progress_is_scaled_up(players: pd.DataFrame) -> None:
+    ids = _ids(players)
+    table = league_table(players, rosters_by_slot(_picks(ids[:15]), 14), ["pts"], 2, 2, TEAM_NAMES)
+    short = next(row for row in table["teams"] if row["slot"] == 5)
+    one = players.set_index("player_id").loc[ids[4]]
+    assert short["players"] == 1 and short["totals"]["pts"] == pytest.approx(one["pts"] * 2, abs=1e-3)
+    assert table["waiting"] == 13, "pick 15 went to slot 14, the rest are one short"
+
+
+def test_a_lone_team_has_no_score_and_no_place(players: pd.DataFrame) -> None:
+    ids = _ids(players)
+    table = league_table(players, rosters_by_slot(_picks(ids[:1]), 14), ["pts", "to"], 1, 2, TEAM_NAMES)
+    assert table["compared"] == 1 and table["leftOut"] == 13
+    assert all(row["score"] is None and row["place"] is None for row in table["teams"])

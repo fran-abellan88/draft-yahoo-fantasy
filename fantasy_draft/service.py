@@ -86,7 +86,7 @@ class DraftService:
     slot: int = MY_SLOT
     rounds: int = 8
     teams: int = TEAMS
-    rehearsal: bool = False  # started with --rehearsal: the other teams may pick automatically
+    rehearsal: bool = False  # the mock draft: the other teams may pick automatically
     keys: List[str] = field(init=False)
     bounds: Bounds = field(init=False)
     method_bounds: Dict[str, Bounds] = field(init=False)
@@ -142,28 +142,12 @@ class DraftService:
 
     def analyze(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """Everything the page shows for one draft state and one choice of categories and availability rule."""
-        keys = self._parse_categories(request.get("categories"))
-        picks = self._parse_picks(request.get("picks"))
-        rule = parse_rule(request.get("rule"))
+        keys, picks, rule, method, games_adjusted = self._parse_settings(request)
         top_k = int(_bounded(request, "topK", DEFAULT_TOP_K, 1, MAX_TOP_K))
-        method = request.get("method", "capped")
-        if method not in METHODS:
-            raise RequestError(f"method must be one of {list(METHODS)}")
-        games_adjusted = request.get("gamesAdjusted", False)
-        if not isinstance(games_adjusted, bool):
-            raise RequestError("gamesAdjusted must be true or false")
 
         mine_numbers = set(my_picks(self.slot, ROSTER_SIZE, self.teams))
         numbered = list(enumerate(picks, start=1))
-        mine = tuple(pick.player_id for number, pick in numbered if number in mine_numbers and pick.player_id is not None)
-        taken = frozenset(pick.player_id for number, pick in numbered if number not in mine_numbers and pick.player_id is not None)
-        state = DraftState(
-            taken=taken,
-            mine=mine,
-            mine_outside=sum(1 for number, pick in numbered if number in mine_numbers and pick.kind == "outside"),
-            other_outside=sum(1 for number, pick in numbered if number not in mine_numbers and pick.kind == "outside"),
-            unseen=tuple(number for number, pick in numbered if pick.kind == "unseen"),
-        )
+        state = self._state_for(self.slot, picks)
         clock = self._clock(state)
 
         needs_on = request.get("needs", False)
@@ -239,8 +223,8 @@ class DraftService:
                 for number, pick in numbered
             ],
             "profile": {
-                "roster": self._profile(list(mine), keys),
-                "plan": self._profile(list(mine) + list(best.player_ids), keys) if best else None,
+                "roster": self._profile(list(state.mine), keys),
+                "plan": self._profile(list(state.mine) + list(best.player_ids), keys) if best else None,
             },
             "horizonDone": next_mine is None,
             "league": self._league(picks, keys, best),
@@ -251,14 +235,91 @@ class DraftService:
             },
         }
 
+    def _parse_settings(self, request: Dict[str, Any]) -> Tuple[List[str], List[Pick], AvailabilityRule, str, bool]:
+        """The choices every analysis shares: categories, the pick log, the availability rule, the score method and games."""
+        keys = self._parse_categories(request.get("categories"))
+        picks = self._parse_picks(request.get("picks"))
+        rule = parse_rule(request.get("rule"))
+        method = request.get("method", "capped")
+        if method not in METHODS:
+            raise RequestError(f"method must be one of {list(METHODS)}")
+        games_adjusted = request.get("gamesAdjusted", False)
+        if not isinstance(games_adjusted, bool):
+            raise RequestError("gamesAdjusted must be true or false")
+        return keys, picks, rule, method, games_adjusted
+
+    def _state_for(self, slot: int, picks: List[Pick]) -> DraftState:
+        """The draft as team `slot` sees it: its own players, everyone else's picks, and the picks nobody reported."""
+        numbers = set(my_picks(slot, ROSTER_SIZE, self.teams))
+        numbered = list(enumerate(picks, start=1))
+        return DraftState(
+            taken=frozenset(pick.player_id for number, pick in numbered if number not in numbers and pick.player_id is not None),
+            mine=tuple(pick.player_id for number, pick in numbered if number in numbers and pick.player_id is not None),
+            mine_outside=sum(1 for number, pick in numbered if number in numbers and pick.kind == "outside"),
+            other_outside=sum(1 for number, pick in numbered if number not in numbers and pick.kind == "outside"),
+            unseen=tuple(number for number, pick in numbered if pick.kind == "unseen"),
+        )
+
+    def project_league(self, request: Dict[str, Any]) -> Dict[str, Any]:
+        """Every team completed by the same planner: what well-informed teams would end up with from this log.
+
+        In snake order each team takes the first player of its own best plan (the same search the recommendation uses,
+        for its slot), given every pick so far including the ones this projection made. So a poor logged pick lowers
+        its team's projection and leaves more for the others, and nobody is first by construction. It is a pessimistic
+        picture of a league of well-informed managers, not a forecast of this one. The need weights are not used.
+        A team whose search finds no plan takes the best-ADP player that fits (`fallbacks` counts them).
+        Slow at the start of the draft (about 0.1 s per pick still to make), so the page asks for it apart from `analyze`.
+        """
+        keys, picks, rule, method, games_adjusted = self._parse_settings(request)
+        rosters = rosters_by_slot(picks, self.teams)
+        simulated = list(picks)
+        fallbacks = 0
+        for number in range(len(picks) + 1, self.rounds * self.teams + 1):
+            slot = slot_of_pick(number, self.teams)
+            chosen: Optional[str] = None
+            try:
+                found = plan_picks(
+                    self.players,
+                    self._state_for(slot, simulated),
+                    keys,
+                    self.method_bounds[method],
+                    rule,
+                    slot,
+                    self.rounds,
+                    top_k=DEFAULT_TOP_K,
+                    games_adjusted=games_adjusted,
+                    method=method,
+                    option_count=0,
+                )
+                if found.plans and found.plans[0].player_ids:
+                    chosen = found.plans[0].player_ids[0]
+            except ValueError:
+                chosen = None
+            if chosen is None:
+                chosen = next_for_clock(self.players, simulated, self.teams)
+                fallbacks += 1
+            if chosen is None:
+                break
+            simulated.append(Pick("player", chosen))
+            rosters[slot].append(chosen)
+        table = league_table(self.players, rosters, keys, self.rounds, self.slot, TEAM_NAMES)
+        table["basis"] = f"projected, every team completed by the same planner, {self.rounds} players each"
+        table["fallbacks"] = fallbacks
+        table["simulated"] = [pick.player_id for pick in simulated[len(picks):]]
+        return table
+
     def _league(self, picks: List[Pick], keys: List[str], best: Optional[Plan]) -> Dict[str, Any]:
-        """All 14 teams: over the complete rounds so far, and projected to the end of the planning horizon.
+        """All 14 teams: the picks so far, and projected to the end of the planning horizon.
+
+        "So far" updates with every pick: it compares the first n picks of each team, n being the round now in progress,
+        and a team that has not made its n-th pick yet is scaled up (see league.py), so it never looks weak only because
+        its turn has not come.
 
         The projection keeps every logged pick, adds my best plan to my team and fills the other teams' missing picks
         automatically (autopick.py), protecting the players my plan counts on. It answers "what will the league look
         like", not "who will be available".
         """
-        size = len(picks) // self.teams
+        size = -(-len(picks) // self.teams)
         rosters = rosters_by_slot(picks, self.teams)
         table = league_table(self.players, rosters, keys, size, self.slot, TEAM_NAMES)
         table["basis"] = "so far"
@@ -273,7 +334,7 @@ class DraftService:
     def autopick(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """The pick the team on the clock would make, for rehearsal: ADP with lineup limits, optionally blurred and seeded."""
         if not self.rehearsal:
-            raise RequestError("Automatic picks are only available in a rehearsal: start the dashboard with --rehearsal")
+            raise RequestError("Automatic picks are only available in the mock draft (open /mock): the real draft never picks for others")
         picks = self._parse_picks(request.get("picks"))
         if len(picks) >= self.teams * ROSTER_SIZE:
             raise RequestError("The draft is complete")

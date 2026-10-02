@@ -34,7 +34,9 @@ Your picks are kept in the browser, so reloading the page mid-draft loses nothin
   (it becomes unseen, a player logged there returns to the pool), or place a gone player at an unseen pick. Each edit
   is confirmed first, cannot put an unseen or gone pick on one of your own pick numbers, and cannot be undone with Undo.
 - **Scoring categories**: untick one to leave it out of every score and plan. The score is the average of the ticked
-  categories, so ticking fewer does not lower anyone's score.
+  categories, so ticking fewer does not lower anyone's score. Once a pick is logged, a change to any setting waits in
+  the panel with **Apply** and **Keep current**, so a stray click cannot change the recommendation; several clicks
+  become one confirmation, and closing the panel keeps what was in use.
 - **Reward big numbers / Cap at the top 5%**: the uncapped score (default) lets a 32-point scorer outrank a 26-point one.
   The capped score is the `nba-yahoo-fantasy-daily-dose` formula, where everyone past the 95th percentile in a category
   scores the same. A z-score method also exists in `fantasy_draft/scoring.py`; it ranks almost the same as uncapped.
@@ -55,29 +57,43 @@ The page never scrolls: it is exactly the window, and a panel that needs more ro
 for a window of about 2500 x 1476 placed on the right half of a wide screen, with Yahoo's draft room on the left, so
 the recommendation column is on the dashboard's left edge, next to the seam. From left to right: recommendation, plan
 and category strength; the table (search, position chips, the last logged pick with Undo, then the players); your
-roster and the log; the 14-team box (reserved, filled in a later step). Settings (categories, score, who will still
+roster and the log; the 14 teams (Projected above So far). Settings (categories, score, who will still
 be there, Reset) open from the button in the top bar, which also shows the choices in one line.
 
 Narrower windows keep the same panels and fold them into a tab strip, in this order as the window shrinks: 14 teams
 and log at 2349 px, then your roster and category strength at 1719 px, then the plan and the table at 1239 px. The
 recommendation never goes into a tab.
 
-### The league, the other teams and rehearsal
+### The league, the other teams and the mock draft
 
 The 14 teams are named from Yahoo's draft order (slot 2 is Fran'stastic Team, the user's), in the clock, the log, the
 last-pick line and the snake strip (hover a slot).
 
-- **Standing** shows, for each category, how your team ranks and the share of the other 13 teams it beats: "so far"
-  over the complete rounds, and projected to 8 players each. Winning, close and behind are listed on top.
-- **14 teams** shows every team's totals per game (FG% and FT% as real ratios, turnovers reversed), tinted by rank.
-  Projected means the logged picks, your best plan for your team and the other teams filled in ADP order with lineup
-  limits. It is a picture of the league, not a prediction of who will be available.
-- **Rehearsal** is a separate instance, never a button in the live draft: start it with
-  `python run_dashboard.py --rehearsal --draft-file /tmp/rehearsal.json` (it refuses the real draft file). The other 13
-  teams then pick automatically: best ADP left that keeps their lineup startable, blurred a little by the same spread
-  as the availability model and seeded, so a rehearsal can be repeated and the next one differs. The top bar says
-  "Rehearsal", the startup line says so too, and the live instance refuses automatic picks. Undo goes back to just
-  before your last pick and its label says how many picks that removes. Reset starts a new seed.
+- **Standing** shows, for each category, how your team ranks and the share of the other 13 teams it beats: "so far",
+  and projected to 8 players each. Winning, close and behind are listed on top.
+- **14 teams** shows every team's totals per game (FG% and FT% as real ratios, turnovers reversed), tinted by rank. The
+  **Score** column is the expected number of categories the team wins against a random opponent (the share of the other
+  teams it beats in each ticked category, added up: 5.8/9), and the table is always sorted by it, best first, after every
+  pick. A team with no player yet is listed last and left out of the ranks. *So far* counts the first n picks of every
+  team, n being the round in progress, and scales up a team that has not made its n-th pick yet. Projected and So far are both shown, one above the other, and both
+  follow every pick. Projected has two ways to complete the other teams (the switch above it):
+  *Same planner* (the default) takes the logged picks and then, in snake order, lets every team, yours too, take the first
+  player of its own best plan, the search the recommendation uses. A poor pick by one manager lowers his projected stats and
+  leaves more for the rest, and nobody is first by construction. It shows what well-informed teams would end up with, not
+  who will be available, and a real league is probably easier. It takes about half a second from an empty draft, is
+  asked for apart from the analysis so the recommendation never waits, and shows the ADP projection until it arrives.
+  *ADP order* fills the other teams in ADP order with lineup limits; your team is built to these categories and theirs are
+  not, so it tends to come first (88% of simulated drafts against ADP rivals, about 30% against rivals that use the
+  planner: `python tools/rival_strength.py` reproduces it). The need weights are not used in either projection.
+- **Mock draft** is a second draft in the same program, at `http://127.0.0.1:8001/mock`. The top bar's **Real draft | Mock
+  draft** switch moves between them; the mock one has an orange rule under the top bar and its own saved file
+  (`saved_mock_draft.json`). In it the other 13 teams pick automatically: best ADP left that keeps their lineup startable,
+  blurred a little by the same spread as the availability model and seeded, so a mock can be repeated and the next one
+  differs. You click your own picks. Undo goes back to just before your last pick and its label says how many picks that
+  removes. Reset starts a new seed. It is a separate route and file, not a switch inside the real draft: the real draft
+  refuses automatic picks, and nothing under `/mock` can read or write the real file.
+- In the real draft you log every pick yourself, the ones the other teams make included: click the player Yahoo shows
+  as taken (**Pick not in the list**, **I am behind** and **Edit** cover the rest).
 - **Favour the categories I can still win** (Settings, off by default) weights each ticked category by how close you
   are to the other teams in it: more where you are close, less where you dominate or cannot catch up. It starts after
   the first complete round, reaches full effect after four, keeps every weight within 40% of 1, and never
@@ -89,15 +105,15 @@ last-pick line and the snake strip (hover a slot).
 
 ### Where the draft is saved
 
-The startup line says how many picks the file holds ("Continuing a saved draft: 3 picks") and the page says so when it
+The startup lines say how many picks each file holds ("Continuing the real draft: 3 picks") and the page says so when it
 loads, so a leftover draft is never a surprise.
 
-Every change is saved to `saved_draft.json` in the project folder (not tracked by git), and also in the browser as a
+Every change is saved to `saved_draft.json` in the project folder (the mock draft to `saved_mock_draft.json`; neither is tracked by git), and also in the browser as a
 backup. The file survives a closed tab, cleared browser data and a different port, so the draft is still there if the
 dashboard starts on 8002 instead of 8001. Two things to know:
 
 - To try things out without touching the real draft, start a second instance with its own file:
-  `python run_dashboard.py --port 8002 --draft-file /tmp/trial.json`. The startup line prints the file in use. Instances
+  `python run_dashboard.py --port 8002 --draft-file /tmp/trial.json --mock-file /tmp/trial-mock.json`. The startup lines print the files in use. The two files must differ. Instances
   that share a file share one draft.
 - A save that would empty a draft with picks (Reset, for one) first copies the old file to `saved_draft.previous-v<N>.json` (one per version, never replaced by a later one).
 - If the server could not be reached for a while, the browser copy can be newer than the file; the page notices (it

@@ -224,7 +224,7 @@ def test_the_tab_strip_keeps_a_valid_active_tab_when_the_window_changes_width() 
 
 def test_the_last_pick_and_the_settings_summary_are_shown_in_the_page() -> None:
     html = (WEB / "index.html").read_text()
-    for element in ('id="last-pick"', 'id="settings-summary"', 'id="settings-toggle"', 'id="tabs"', 'id="mode"'):
+    for element in ('id="last-pick"', 'id="settings-summary"', 'id="settings-toggle"', 'id="tabs"', 'id="modes"'):
         assert element in html
     assert "renderTopBar();" in JS[JS.index("function render()"):]
     assert html.index('id="reset"') > html.index('id="settings"'), "Reset lives in the settings panel"
@@ -234,14 +234,16 @@ def test_the_page_shows_the_standing_and_the_14_teams_and_can_rehearse() -> None
     html = (WEB / "index.html").read_text()
     for element in ('id="league"', 'id="profile"'):
         assert element in html
-    assert 'id="rehearsal"' not in html, "there is no button: a rehearsal is a separate instance, started with --rehearsal"
+    assert 'id="rehearsal"' not in html, "a mock draft is its own page and file, never a button that turns the real draft automatic"
+    assert 'href="/mock"' in html and 'href="/"' in html and "const API = MOCK ?" in JS
     assert "state.rehearsal = pool.rehearsal === true" in JS and "saved.rehearsal" not in JS
     render = JS[JS.index("function render()"):]
     assert "renderStanding();" in render and "renderLeague();" in render
-    assert "'/api/autopick'" in JS and "noise: true" in JS and "seed: state.seed + state.picks.length" in JS
+    assert "API + '/autopick'" in JS and "'/api/" not in JS and "noise: true" in JS and "seed: state.seed + state.picks.length" in JS
     undo = JS[JS.index("function undo()"): JS.index("// ---------- rehearsal")]
     assert "state.rehearsal" in undo, "in a rehearsal Undo goes back to just before my last pick"
-    assert "autoPlayFailed" in JS and "!autoPlayFailed" in JS[JS.index("render();\n  if (state.rehearsal"):][:200]
+    after_render = JS[JS.index("fetchPlannerLeague(requestId, body);\n  if (state.rehearsal"):][:300]
+    assert "autoPlayFailed" in JS and "!autoPlayFailed" in after_render
     assert "seed: state.seed" in JS and "rehearsal: state.rehearsal" not in JS, "the mode is never saved with a draft"
 
 
@@ -295,3 +297,41 @@ def test_green_means_only_mine_and_the_odds_and_stats_use_the_second_hue() -> No
     assert tints and all("var(--cool)" in line and "var(--mine)" not in line for line in tints)
     assert ".meter .fill { height: 100%; background: var(--cool); }" in CSS
     assert "accent-color: var(--cool)" in CSS
+
+
+def test_a_settings_change_after_the_first_pick_waits_for_a_confirmation() -> None:
+    change = JS[JS.index("function settingChanged()"): JS.index("function applySettings()")]
+    assert "state.picks.length === 0" in change and "setting-confirm" in change, "applies at once only before the first pick"
+    assert JS.count("settingChanged") >= 6, "every settings control goes through the one gate"
+    assert "onRuleChange" not in JS and "state.method = " not in JS[JS.index("function wireControls()"):]
+    closing = JS[JS.index("function toggleSettings()"): JS.index("function whyNotTheTopScore")]
+    assert "keepSettings()" in closing, "closing the panel keeps what was in use"
+    assert 'id="setting-apply"' in (WEB / "index.html").read_text()
+
+
+def test_the_small_colour_and_badge_fixes_stay() -> None:
+    assert ".mode " not in CSS and ".modes a[aria-current" in CSS, "the draft switch does not use green"
+    assert ".log li button { color: var(--ink)" in CSS
+    assert "container-type: inline-size" in CSS and "@container" in CSS
+    assert "state.picks.length === 0 && serverVersion === 0" in JS
+    assert 'title="Whether the draft is saved in the draft file"></div>' in (WEB / "index.html").read_text()
+
+
+def test_the_review_fixes_of_step_8_stay() -> None:
+    assert "showSaved('Saved', true); // the file is what was loaded" in JS, "a reloaded draft says it is saved"
+    assert "keepSettings(); // a pending change was worded for the draft as it was" in JS[JS.index("async function refresh()"):][:200]
+    assert "server.state)" in JS and "a scaled team usually drops a little when it picks" in JS
+    assert '<div class="rail">' in (WEB / "index.html").read_text() and ".rail { display: contents; }" in CSS
+
+
+def test_the_planner_projection_is_asked_for_apart_from_the_analysis_and_shown_with_so_far() -> None:
+    refresh = JS[JS.index("async function refresh()"): JS.index("function scheduleRefresh()")]
+    assert "fetchPlannerLeague(requestId, body);" in refresh
+    assert refresh.index("render();") < refresh.index("fetchPlannerLeague"), "the analysis never waits"
+    fetch_league = JS[JS.index("async function fetchPlannerLeague"): JS.index("function scheduleRefresh()")]
+    assert "API + '/league'" in fetch_league and "requestId !== latestRequest" in fetch_league, "an answer for an older log is dropped"
+    assert "plannerKeys !== keysAsked" in fetch_league, "a table for other categories is never shown"
+    league = JS[JS.index("function renderLeague()"): JS.index("// A gone entry back to an unseen pick")]
+    assert "h3', {}, 'Projected'" in league and "h3', {}, 'So far'" in league, "both tables at once, no switch between them"
+    assert "ADP order" in league and "Same planner" in league and "projectedTable()" in JS[JS.index("function renderStanding()"):]
+    assert "400px minmax(0, 1fr) 380px 540px" in CSS and ".league-table td.left { max-width" in CSS

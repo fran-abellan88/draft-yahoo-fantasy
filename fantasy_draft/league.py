@@ -74,22 +74,41 @@ def league_table(
     my_slot: int,
     names: Sequence[str],
 ) -> Dict[str, Any]:
-    """Totals, ranks and the user's standing over the first `size` picks of every team."""
+    """Totals, ranks, team scores and the user's standing over the first `size` picks of every team.
+
+    A team with no credited player yet (it has not picked, or only unseen or outside picks) has nothing to compare:
+    it is left out of every rank and share, shown last, and its totals are None. With a single team compared there is no
+    score or place at all. The team score is the expected number
+    of categories the team wins against a random opponent: the sum over the ticked categories of the share of the other
+    compared teams it beats. Rows come back best score first, so the page needs no sorting of its own.
+    """
     by_id = players.set_index("player_id")
     totals: Dict[int, Dict[str, float]] = {}
     counts: Dict[int, int] = {}
     missing: Dict[int, int] = {}
+    waiting = 0
     for slot, picks in rosters.items():
         window = picks[:size]
         ids = [pid for pid in window if pid is not None]
         frame = by_id.loc[ids] if ids else by_id.iloc[0:0]
-        totals[slot] = {key: _total(frame, key, size) for key in keys}
         counts[slot] = len(ids)
         missing[slot] = len(window) - len(ids)
+        if ids:
+            waiting += 1 if len(window) < size else 0
+            totals[slot] = {key: _total(frame, key, size) for key in keys}
+    compared = {key: {slot: totals[slot][key] for slot in totals} for key in keys}
+
+    scored: Dict[int, Dict[str, Any]] = {}
+    for slot in totals:
+        ranks = {key: _rank(compared[key], slot, CATEGORIES[key].lower_is_better) for key in keys}
+        beaten = {key: _beaten(compared[key], slot, CATEGORIES[key].lower_is_better) for key in keys}
+        scored[slot] = {"ranks": ranks, "beaten": beaten, "score": sum(beaten.values())}
+    comparable = len(scored) >= 2  # a lone team has nothing to be compared with: no score, no place
+    place = {slot: 1 + sum(1 for other in scored.values() if other["score"] > item["score"] + 1e-9) for slot, item in scored.items()}
 
     rows = []
     for slot in sorted(rosters):
-        ranks = {key: _rank({s: totals[s][key] for s in rosters}, slot, CATEGORIES[key].lower_is_better) for key in keys}
+        item = scored.get(slot)
         rows.append(
             {
                 "slot": slot,
@@ -97,15 +116,24 @@ def league_table(
                 "mine": slot == my_slot,
                 "players": counts[slot],
                 "notCounted": missing[slot],
-                "totals": {key: round(totals[slot][key], 3) for key in keys},
-                "ranks": ranks,
+                "totals": {key: round(totals[slot][key], 3) for key in keys} if item else None,
+                "ranks": item["ranks"] if item else None,
+                "score": round(item["score"], 2) if item and comparable else None,
+                "place": place[slot] if item and comparable else None,
             }
         )
-    standing = {
-        key: {
-            "rank": _rank({s: totals[s][key] for s in rosters}, my_slot, CATEGORIES[key].lower_is_better),
-            "beaten": round(_beaten({s: totals[s][key] for s in rosters}, my_slot, CATEGORIES[key].lower_is_better), 3),
-        }
-        for key in keys
+    rows.sort(key=lambda row: (row["score"] is None, -(row["score"] or 0.0), row["slot"]))
+    standing = (
+        {key: {"rank": scored[my_slot]["ranks"][key], "beaten": round(scored[my_slot]["beaten"][key], 3)} for key in keys}
+        if my_slot in scored
+        else {}
+    )
+    return {
+        "size": size,
+        "teams": rows,
+        "standing": standing,
+        "notCounted": sum(missing.values()),
+        "waiting": waiting,
+        "compared": len(scored),
+        "leftOut": len(rosters) - len(scored),
     }
-    return {"size": size, "teams": rows, "standing": standing, "notCounted": sum(missing.values())}

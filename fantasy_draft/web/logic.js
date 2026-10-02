@@ -76,9 +76,12 @@ function chooseSource(serverVersion, serverState, localState, sync) {
 }
 
 // True when the file won although the browser copy had never been confirmed by the server: that copy is then kept aside
-// and the user is told, so nothing is lost without a word.
-function discardsUnconfirmed(source, localState, sync) {
-  return source === 'server' && Boolean(localState) && Boolean(sync) && sync.confirmed === false;
+// and the user is told, so nothing is lost without a word. A copy with the very picks the file holds lost nothing (the
+// page left before the answer came), so it needs no notice.
+function discardsUnconfirmed(source, localState, sync, serverState) {
+  if (source !== 'server' || !localState || !sync || sync.confirmed !== false) return false;
+  const same = serverState && JSON.stringify(localState.picks) === JSON.stringify(serverState.picks);
+  return !same;
 }
 
 // ---------- catching up ----------
@@ -294,6 +297,26 @@ function unmarkGone(picks, history, index) {
   return { picks: unseenAgain(picks, index), history: history.filter((action) => !(action.type === 'gone' && action.index === index)) };
 }
 
+// What a pending settings change would do, in words, so the confirmation names it. `labels` maps a category key to
+// its short name; the result is empty when nothing differs.
+function settingChanges(current, proposed, labels) {
+  const changes = [];
+  const name = (key) => labels[key] || key;
+  const dropped = current.categories.filter((key) => !proposed.categories.includes(key));
+  const added = proposed.categories.filter((key) => !current.categories.includes(key));
+  if (dropped.length) changes.push(`leave out ${dropped.map(name).join(', ')}`);
+  if (added.length) changes.push(`count ${added.map(name).join(', ')}`);
+  if (current.method !== proposed.method) changes.push(proposed.method === 'capped' ? 'cap scores at the top 5%' : 'reward big numbers');
+  if (current.gamesAdjusted !== proposed.gamesAdjusted) changes.push(proposed.gamesAdjusted ? 'count games missed' : 'ignore games missed');
+  if (current.needs !== proposed.needs) changes.push(proposed.needs ? 'favour the categories you can still win' : 'weight every category equally');
+  const ruleNames = { baseSd: 'early-round spread', sdPerAdp: 'spread per ADP place', threshold: 'plan-on odds', slack: 'ADP window' };
+  if (current.rule.type !== proposed.rule.type) changes.push(proposed.rule.type === 'window' ? 'judge availability with the ADP window' : 'judge availability with odds from ADP');
+  for (const [key, label] of Object.entries(ruleNames)) {
+    if (current.rule[key] !== proposed.rule[key]) changes.push(`set the ${label} to ${proposed.rule[key]}`);
+  }
+  return changes;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { clampRuleValue, sanitizeRule, normalizePicks, pickSavedState, planBehind, markGone, sanitizeHistory, undoLast, unmarkGone, swapPicks, forgetPick, placeGone, choosePlayer, describePick, swapText, forgetText, placeText, chooseText, undoLabel, chooseSource, discardsUnconfirmed, PICK_KINDS };
+  module.exports = { clampRuleValue, sanitizeRule, normalizePicks, pickSavedState, planBehind, markGone, sanitizeHistory, undoLast, unmarkGone, swapPicks, forgetPick, placeGone, choosePlayer, describePick, swapText, forgetText, placeText, chooseText, undoLabel, chooseSource, discardsUnconfirmed, settingChanges, PICK_KINDS };
 }
