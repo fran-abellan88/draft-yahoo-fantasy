@@ -395,3 +395,23 @@ def test_a_browser_copy_the_file_replaces_is_kept_aside_only_when_it_was_never_c
     assert discards("server", "null", "{basedOn: 3, confirmed: false}") is False
     assert discards("browser", "{picks: []}", "{basedOn: 3, confirmed: false}") is False, "that copy is the one being used"
     assert discards("server", "{picks: []}", "null") is False
+
+
+def test_a_pending_settings_change_is_described_in_words() -> None:
+    base = "{categories: ['pts', 'to'], method: 'uncapped', gamesAdjusted: true, needs: false, rule: {slack: 3}}"
+    labels = "{pts: 'PTS', to: 'TO', ast: 'AST'}"
+
+    def changes(proposed: str) -> List[str]:
+        return _run(f"L.settingChanges({base}, {proposed}, {labels})")
+
+    assert changes(base) == []
+    assert changes("{categories: ['pts', 'ast'], method: 'uncapped', gamesAdjusted: true, needs: false, rule: {slack: 3}}") == [
+        "leave out TO",
+        "count AST",
+    ]
+    assert changes("{categories: ['pts', 'to'], method: 'capped', gamesAdjusted: false, needs: true, rule: {slack: 4}}") == [
+        "cap scores at the top 5%",
+        "ignore games missed",
+        "favour the categories you can still win",
+        "change who will still be there",
+    ]

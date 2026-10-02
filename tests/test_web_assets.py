@@ -295,3 +295,21 @@ def test_green_means_only_mine_and_the_odds_and_stats_use_the_second_hue() -> No
     assert tints and all("var(--cool)" in line and "var(--mine)" not in line for line in tints)
     assert ".meter .fill { height: 100%; background: var(--cool); }" in CSS
     assert "accent-color: var(--cool)" in CSS
+
+
+def test_a_settings_change_after_the_first_pick_waits_for_a_confirmation() -> None:
+    change = JS[JS.index("function settingChanged()"): JS.index("function applySettings()")]
+    assert "state.picks.length === 0" in change and "setting-confirm" in change, "applies at once only before the first pick"
+    assert JS.count("settingChanged") >= 6, "every settings control goes through the one gate"
+    assert "onRuleChange" not in JS and "state.method = " not in JS[JS.index("function wireControls()"):]
+    closing = JS[JS.index("function toggleSettings()"): JS.index("function whyNotTheTopScore")]
+    assert "keepSettings()" in closing, "closing the panel keeps what was in use"
+    assert 'id="setting-apply"' in (WEB / "index.html").read_text()
+
+
+def test_the_small_colour_and_badge_fixes_stay() -> None:
+    assert ".mode { padding: 3px 10px; border-radius: 999px; background: color-mix(in srgb, var(--cool)" in CSS
+    assert ".log li button { color: var(--ink)" in CSS
+    assert "container-type: inline-size" in CSS and "@container" in CSS
+    assert "state.picks.length === 0 && serverVersion === 0" in JS
+    assert 'title="Whether the draft is saved in the draft file"></div>' in (WEB / "index.html").read_text()

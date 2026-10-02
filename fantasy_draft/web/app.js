@@ -129,7 +129,8 @@ function saveState() {
 // One save at a time, always of the latest state, each naming the version the last one produced
 function showSaved(text, ok) {
   const badge = $('saved-state');
-  badge.textContent = text;
+  // A new draft with nothing logged has nothing to be saved: say nothing rather than "Saved"
+  badge.textContent = text === 'Saved' && state.picks.length === 0 && serverVersion === 0 ? '' : text;
   badge.classList.toggle('bad', !ok);
 }
 
@@ -602,6 +603,7 @@ function wireTabs() {
 function toggleSettings() {
   const panel = $('settings');
   panel.hidden = !panel.hidden;
+  if (panel.hidden && !$('setting-confirm').hidden) keepSettings(); // closing without Apply keeps what was in use
   $('settings-toggle').setAttribute('aria-expanded', String(!panel.hidden));
 }
 
@@ -1263,16 +1265,71 @@ function buildCategories() {
 }
 
 function onCategoryChange(event) {
-  const selected = [...$('categories').querySelectorAll('input:checked')].map((input) => input.value);
-  if (selected.length === 0) {
+  if ($('categories').querySelectorAll('input:checked').length === 0) {
     event.target.checked = true;
     showError('Keep at least one category ticked.');
     return;
   }
   hideError();
-  state.categories = selected;
+  settingChanged();
+}
+
+// ---------- settings changes ----------
+// Before the first pick a change applies at once. After it, every score and the plan would change under the user's
+// hands on one stray click, so the change waits in the panel until Apply (several clicks become one confirmation)
+// and Keep current puts the controls back.
+function controlSettings() {
+  return {
+    categories: [...$('categories').querySelectorAll('input:checked')].map((input) => input.value),
+    method: document.querySelector('input[name="method"]:checked').value,
+    gamesAdjusted: $('games-adjusted').checked,
+    needs: $('needs').checked,
+    rule: sanitizeRule(
+      {
+        type: document.querySelector('input[name="rule"]:checked').value,
+        baseSd: $('rule-base-sd').value,
+        sdPerAdp: $('rule-sd-per-adp').value,
+        threshold: $('rule-threshold').value,
+        slack: $('rule-slack').value,
+      },
+      pool.ruleLimits,
+    ),
+  };
+}
+
+function settingChanged() {
+  const proposed = controlSettings();
+  syncRuleFields(proposed.rule);
+  const labels = Object.fromEntries(pool.categories.map((category) => [category.key, category.label]));
+  const changes = settingChanges(state, proposed, labels);
+  if (state.picks.length === 0 || changes.length === 0) {
+    applySettings();
+    return;
+  }
+  $('setting-confirm-text').textContent = `${plural(state.picks.length, 'pick')} logged. Apply: ${changes.join('; ')}? Every score and your plan are recomputed.`;
+  $('setting-confirm').hidden = false;
+}
+
+function applySettings() {
+  const next = controlSettings();
+  state.categories = next.categories;
+  state.method = next.method;
+  state.gamesAdjusted = next.gamesAdjusted;
+  state.needs = next.needs;
+  state.rule = next.rule;
+  $('setting-confirm').hidden = true;
+  syncRuleInputs();
   saveState();
   scheduleRefresh(); // several quick clicks become one request
+}
+
+function keepSettings() {
+  $('setting-confirm').hidden = true;
+  buildCategories();
+  document.querySelector(`input[name="method"][value="${state.method}"]`).checked = true;
+  $('games-adjusted').checked = state.gamesAdjusted;
+  $('needs').checked = state.needs;
+  syncRuleInputs();
 }
 
 function buildPositionChips() {
@@ -1295,6 +1352,11 @@ function buildPositionChips() {
   put($('positions'), ...chips);
 }
 
+function syncRuleFields(rule) {
+  $('rule-probability').hidden = rule.type !== 'probability';
+  $('rule-window').hidden = rule.type !== 'window';
+}
+
 function syncRuleInputs() {
   const rule = state.rule;
   for (const [key, id] of [['baseSd', 'rule-base-sd'], ['sdPerAdp', 'rule-sd-per-adp'], ['threshold', 'rule-threshold'], ['slack', 'rule-slack']]) {
@@ -1306,25 +1368,7 @@ function syncRuleInputs() {
   $('rule-sd-per-adp').value = rule.sdPerAdp;
   $('rule-threshold').value = rule.threshold;
   $('rule-slack').value = rule.slack;
-  $('rule-probability').hidden = rule.type !== 'probability';
-  $('rule-window').hidden = rule.type !== 'window';
-}
-
-function onRuleChange() {
-  // Typed values are held inside the allowed range and written back, so the box shows what is being used
-  state.rule = sanitizeRule(
-    {
-      type: document.querySelector('input[name="rule"]:checked').value,
-      baseSd: $('rule-base-sd').value,
-      sdPerAdp: $('rule-sd-per-adp').value,
-      threshold: $('rule-threshold').value,
-      slack: $('rule-slack').value,
-    },
-    pool.ruleLimits,
-  );
-  syncRuleInputs();
-  saveState();
-  scheduleRefresh();
+  syncRuleFields(rule);
 }
 
 function wireControls() {
@@ -1348,28 +1392,16 @@ function wireControls() {
     if (event.key === 'Enter' && visibleIds.length === 1) rowPicked(visibleIds[0]);
   });
   document.querySelector(`input[name="method"][value="${state.method}"]`).checked = true;
-  for (const input of document.querySelectorAll('input[name="method"]')) {
-    input.addEventListener('change', () => {
-      state.method = document.querySelector('input[name="method"]:checked').value;
-      saveState();
-      scheduleRefresh();
-    });
-  }
+  for (const input of document.querySelectorAll('input[name="method"]')) input.addEventListener('change', settingChanged);
   $('games-adjusted').checked = state.gamesAdjusted;
-  $('games-adjusted').addEventListener('change', (event) => {
-    state.gamesAdjusted = event.target.checked;
-    saveState();
-    scheduleRefresh();
-  });
+  $('games-adjusted').addEventListener('change', settingChanged);
   $('needs').checked = state.needs;
-  $('needs').addEventListener('change', (event) => {
-    state.needs = event.target.checked;
-    saveState();
-    scheduleRefresh();
-  });
+  $('needs').addEventListener('change', settingChanged);
   for (const input of document.querySelectorAll('input[name="rule"], #rule-base-sd, #rule-sd-per-adp, #rule-threshold, #rule-slack')) {
-    input.addEventListener('change', onRuleChange);
+    input.addEventListener('change', settingChanged);
   }
+  $('setting-apply').addEventListener('click', applySettings);
+  $('setting-keep').addEventListener('click', keepSettings);
 }
 
 async function init() {

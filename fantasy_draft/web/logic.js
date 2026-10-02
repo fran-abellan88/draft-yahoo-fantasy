@@ -294,6 +294,22 @@ function unmarkGone(picks, history, index) {
   return { picks: unseenAgain(picks, index), history: history.filter((action) => !(action.type === 'gone' && action.index === index)) };
 }
 
+// What a pending settings change would do, in words, so the confirmation names it. `labels` maps a category key to
+// its short name; the result is empty when nothing differs.
+function settingChanges(current, proposed, labels) {
+  const changes = [];
+  const name = (key) => labels[key] || key;
+  const dropped = current.categories.filter((key) => !proposed.categories.includes(key));
+  const added = proposed.categories.filter((key) => !current.categories.includes(key));
+  if (dropped.length) changes.push(`leave out ${dropped.map(name).join(', ')}`);
+  if (added.length) changes.push(`count ${added.map(name).join(', ')}`);
+  if (current.method !== proposed.method) changes.push(proposed.method === 'capped' ? 'cap scores at the top 5%' : 'reward big numbers');
+  if (current.gamesAdjusted !== proposed.gamesAdjusted) changes.push(proposed.gamesAdjusted ? 'count games missed' : 'ignore games missed');
+  if (current.needs !== proposed.needs) changes.push(proposed.needs ? 'favour the categories you can still win' : 'weight every category equally');
+  if (JSON.stringify(current.rule) !== JSON.stringify(proposed.rule)) changes.push('change who will still be there');
+  return changes;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { clampRuleValue, sanitizeRule, normalizePicks, pickSavedState, planBehind, markGone, sanitizeHistory, undoLast, unmarkGone, swapPicks, forgetPick, placeGone, choosePlayer, describePick, swapText, forgetText, placeText, chooseText, undoLabel, chooseSource, discardsUnconfirmed, PICK_KINDS };
+  module.exports = { clampRuleValue, sanitizeRule, normalizePicks, pickSavedState, planBehind, markGone, sanitizeHistory, undoLast, unmarkGone, swapPicks, forgetPick, placeGone, choosePlayer, describePick, swapText, forgetText, placeText, chooseText, undoLabel, chooseSource, discardsUnconfirmed, settingChanges, PICK_KINDS };
 }

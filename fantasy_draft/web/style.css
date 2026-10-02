@@ -234,7 +234,7 @@ body { margin: 0; }
 .topbar .clock { flex: 1 1 260px; min-width: 0; }
 .topbar .clock .note { display: none; }
 .topbar-actions { display: flex; gap: 8px; margin-left: auto; }
-.mode { padding: 3px 10px; border-radius: 999px; background: var(--mine-soft); color: var(--mine); font-weight: 650; font-size: 13px; white-space: nowrap; }
+.mode { padding: 3px 10px; border-radius: 999px; background: color-mix(in srgb, var(--cool) 14%, transparent); color: var(--cool); font-weight: 650; font-size: 13px; white-space: nowrap; }
 .topbar .behind-form { flex-basis: 100%; margin: 0; }
 .topbar .clock-line { font-size: 16px; }
 .banner { margin: 0; border: 1px solid var(--danger); border-radius: 6px; }
@@ -371,3 +371,16 @@ td.dim { opacity: 0.45; }
 .roster .slot .pick { color: var(--muted); font-weight: 650; font-size: 13px; }
 .roster .slot.filled .pick { color: var(--mine); }
 .roster .slot.bench .pick { color: var(--muted); }
+
+/* Settings changed after the first pick wait here */
+.setting-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--flag); border-radius: 8px; background: var(--flag-soft); color: var(--flag); font-weight: 600; }
+.setting-confirm span { flex: 1 1 320px; }
+
+/* Log buttons keep the ink colour on my own rows, which are green */
+.log li button { color: var(--ink); font-weight: 400; }
+
+/* A wide My team (a tab panel in a narrow window) lists the ten slots and the bench in two columns */
+.team { container-type: inline-size; }
+@container (min-width: 760px) {
+  .roster { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(7, auto); grid-auto-flow: column; column-gap: 32px; }
+}
