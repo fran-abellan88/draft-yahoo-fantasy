@@ -1,0 +1,371 @@
+/* Draft assistant. System fonts only, so the page works with no network. */
+
+:root {
+  color-scheme: light dark;
+  --paper: #edf0f3;
+  --surface: #ffffff;
+  --ink: #142033;
+  --muted: #5b6778;
+  --line: #d8dee6;
+  --mine: #0f7b55;
+  --mine-soft: #dff3ea;
+  --on-mine: #ffffff; /* text on a --mine background */
+  --flag: #9a4a05;
+  --flag-soft: #fdf0dc;
+  --danger: #b42318;
+  --danger-soft: #fde8e6;
+  --taken: #8a94a3;
+  --hover: #dde6f1;
+  --focus: #1d4ed8;
+  --font: ui-sans-serif, "Avenir Next", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #0f1722;
+    --surface: #17212f;
+    --ink: #e7ecf3;
+    --muted: #9aa7b8;
+    --line: #2b3949;
+    --mine: #3ecf9b;
+    --mine-soft: #143a2e;
+    --on-mine: #06281d;
+    --flag: #f0a95a;
+    --flag-soft: #3a2a14;
+    --danger: #ff8a80;
+    --danger-soft: #3b1a18;
+    --taken: #6c7a8c;
+    --hover: #263a52;
+    --focus: #8ab4ff;
+  }
+}
+
+* { box-sizing: border-box; }
+
+/* An author display rule such as `.fields { display: grid }` would otherwise keep a hidden element on screen */
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 15px/1.45 var(--font);
+  font-variant-numeric: tabular-nums;
+}
+
+h2 { margin: 0 0 10px; font-size: 16px; font-weight: 650; letter-spacing: 0.005em; }
+p { margin: 0; }
+ol { margin: 0; padding: 0; list-style: none; }
+
+button, input, select { font: inherit; color: inherit; }
+button:focus-visible, input:focus-visible, summary:focus-visible, tr:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+button {
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--muted); }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button.quiet { color: var(--muted); }
+button.primary { background: var(--mine); border-color: var(--mine); color: var(--on-mine); font-weight: 650; padding: 10px 18px; }
+
+/* Its own row under the top bar: the page does not scroll, so nothing needs it fixed */
+.banner {
+  grid-area: err;
+  display: flex; gap: 12px; align-items: center; justify-content: center;
+  padding: 10px 16px; background: var(--danger-soft); color: var(--danger); font-weight: 600;
+  border-bottom: 1px solid var(--danger);
+}
+.banner button { color: var(--danger); border-color: var(--danger); background: transparent; }
+tr.unconfirmed { opacity: 0.6; }
+
+.note { color: var(--muted); font-size: 13px; margin-top: 8px; max-width: 62ch; }
+
+/* On the clock */
+.clock-line { font-size: 17px; font-weight: 600; line-height: 1.3; }
+
+.snake { display: grid; grid-template-columns: repeat(14, 24px); gap: 3px; }
+.snake .cell {
+  aspect-ratio: 1 / 1.2;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  border-radius: 3px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+.snake .cell.done { background: var(--line); color: var(--ink); border-color: var(--line); }
+.snake .cell.me { border-color: var(--mine); color: var(--mine); font-weight: 700; }
+.snake .cell.done.me { background: var(--mine-soft); }
+.snake .cell.now { background: var(--ink); color: var(--paper); border-color: var(--ink); font-weight: 700; }
+.snake .cell.now.me { background: var(--mine); color: var(--on-mine); border-color: var(--mine); }
+
+/* Controls */
+.categories { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; }
+.categories label, .choice { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.categories input[type="checkbox"], .choice input { width: 17px; height: 17px; accent-color: var(--mine); }
+
+.choice.method { margin-top: 10px; }
+.choice.games { margin-top: 12px; font-weight: 600; }
+
+.rule { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.rule summary { cursor: pointer; font-weight: 600; }
+.rule-body { display: grid; gap: 10px; margin-top: 12px; }
+.fields { display: grid; gap: 10px; }
+.fields label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+.fields input { width: 90px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); }
+
+/* Recommendation */
+.hero { background: var(--surface); border: 1px solid var(--line); border-left: 6px solid var(--taken); border-radius: 8px; padding: 20px 22px; }
+.hero.yours { border-left-color: var(--mine); }
+.hero h2 { font-size: 15px; color: var(--muted); font-weight: 600; margin-bottom: 4px; }
+.hero .name { font-size: 36px; line-height: 1.1; font-weight: 750; letter-spacing: -0.01em; }
+.hero.yours .name { color: var(--mine); }
+.hero .facts { margin-top: 6px; color: var(--muted); }
+.hero .then { margin-top: 14px; max-width: 70ch; }
+.hero .cta { margin-top: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+
+/* Plan */
+.plan { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.step { display: grid; grid-template-columns: 52px minmax(0, 1fr) 48px 110px; gap: 12px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--line); }
+.step:first-child { border-top: 0; }
+.step .pick { font-weight: 700; }
+.step .who { min-width: 0; }
+.step .who strong { font-weight: 650; }
+.step .meta { color: var(--muted); font-size: 13px; }
+.plan-foot { padding: 10px 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+details.others { margin-top: 10px; }
+details.others summary { cursor: pointer; color: var(--muted); }
+.other-plan { margin-top: 8px; padding: 8px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
+.behind-form { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; margin-top: 10px; }
+.behind-form label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+.behind-form input { width: 90px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); }
+button.gone { padding: 1px 8px; font-size: 12px; margin-left: 6px; }
+.search-note { margin: 0 0 10px; padding: 8px 12px; background: var(--flag-soft); color: var(--flag); border-radius: 6px; font-size: 13px; max-width: 80ch; }
+/* Shown when a reply takes longer than a moment, so a slow answer is not mistaken for a frozen page */
+#app.busy .hero, #app.busy #plan, #app.busy #alternatives { opacity: 0.5; transition: opacity 0.15s; }
+.alternatives { margin-top: 10px; color: var(--muted); font-size: 13px; }
+.alternatives strong { color: var(--ink); font-weight: 600; }
+
+.meter { display: grid; gap: 3px; font-size: 12px; color: var(--muted); }
+.meter .track { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.meter .fill { height: 100%; background: var(--mine); }
+.meter .fill.low { background: var(--flag); }
+
+/* Pool */
+.filters { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; align-items: center; }
+.filters input[type="search"] { flex: 1 1 220px; max-width: 320px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chips button { padding: 5px 11px; border-radius: 999px; }
+.chips button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+.table-wrap { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow: auto; flex: 1 1 0; min-height: 0; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { padding: 4px 7px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+th { position: sticky; top: 0; background: var(--surface); z-index: 1; font-weight: 600; color: var(--muted); font-size: 13px; padding: 0; }
+th button { width: 100%; border: 0; border-radius: 0; background: transparent; padding: 9px 7px; text-align: right; color: inherit; font-weight: inherit; }
+th.left, td.left { text-align: left; }
+th.left button { text-align: left; }
+th[aria-sort] button { color: var(--ink); }
+th[aria-sort="ascending"] button::after { content: " \25B2"; font-size: 10px; }
+th[aria-sort="descending"] button::after { content: " \25BC"; font-size: 10px; }
+tbody tr { cursor: pointer; }
+tbody tr:hover { background: var(--hover); }
+td.player { min-width: 260px; white-space: nowrap; }
+td.player strong { font-weight: 650; }
+td.player .meta { display: inline; margin-left: 8px; color: var(--muted); font-size: 12px; }
+td.player .notes { display: inline; margin-left: 4px; }
+.score { font-weight: 700; }
+
+.badge { display: inline-block; margin: 1px 4px 1px 0; padding: 1px 7px; border-radius: 999px; font-size: 12px; background: var(--flag-soft); color: var(--flag); }
+.badge.injury { background: var(--danger-soft); color: var(--danger); font-weight: 650; }
+.badge.info { background: var(--paper); color: var(--muted); }
+
+/* Right rail */
+.roster li { display: grid; grid-template-columns: 44px 1fr; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.roster .pick { color: var(--mine); font-weight: 700; }
+.roster li.empty-row, .log li.empty-row { display: block; color: var(--muted); font-size: 14px; border-bottom: 0; }
+.profile-row { display: grid; grid-template-columns: 44px 1fr 34px; gap: 8px; align-items: center; margin-bottom: 8px; font-size: 13px; }
+.profile-row .bars { display: grid; gap: 3px; }
+.profile-row .bar { height: 7px; background: var(--line); border-radius: 4px; overflow: hidden; }
+.profile-row .bar > span { display: block; height: 100%; }
+.profile-row .bar.roster > span { background: var(--mine); }
+.profile-row .bar.plan > span { background: var(--taken); }
+.profile-legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+.profile-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; }
+.log li { display: grid; grid-template-columns: 38px 1fr; gap: 8px; padding: 4px 0; font-size: 13px; color: var(--muted); }
+.team-name { margin: 0 6px; color: var(--muted); font-weight: 400; font-size: 12px; }
+.log li.mine { color: var(--mine); font-weight: 650; }
+.log li.edit-panel { display: block; padding: 8px; margin: 2px 0 6px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); }
+.edit-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 6px; }
+.edit-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; font-weight: 600; }
+.pick-number { width: 64px; }
+.error-note { color: var(--danger); }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* ---------- Layout ----------
+   The page never scrolls: the app is exactly the window, and a panel that needs more room scrolls inside itself.
+   Every panel is a child of one grid at every width; only the named areas change, and the panels that have no area of
+   their own share one ("tabp") with a tab strip above it. Left to right on a wide window: the recommendation column
+   (next to the seam with Yahoo, which sits to the left of the dashboard), the table, the team, the 14 teams.
+   Panels leave the tabs in this order as the window widens: 14 teams and log, then team and standing, then plan. */
+html, body { height: 100%; overflow: hidden; }
+body { margin: 0; }
+.app {
+  position: relative;
+  height: 100vh;
+  display: grid;
+  gap: 10px 14px;
+  padding: 10px 14px;
+  grid-template-rows: auto auto auto minmax(0, auto) auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+}
+.topbar { grid-area: top; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.topbar .clock { flex: 1 1 260px; min-width: 0; }
+.topbar .clock .note { display: none; }
+.topbar-actions { display: flex; gap: 8px; margin-left: auto; }
+.mode { padding: 3px 10px; border-radius: 999px; background: var(--mine-soft); color: var(--mine); font-weight: 650; font-size: 13px; white-space: nowrap; }
+.topbar .behind-form { flex-basis: 100%; margin: 0; }
+.topbar .clock-line { font-size: 16px; }
+.banner { margin: 0; border: 1px solid var(--danger); border-radius: 6px; }
+.settings { position: absolute; top: 56px; right: 14px; z-index: 15; width: min(1100px, calc(100vw - 28px)); max-height: calc(100vh - 80px); overflow: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25); }
+.settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
+
+.panel { min-width: 0; min-height: 0; overflow: auto; }
+.seam-rec { grid-area: rec; overflow: visible; }
+.seam-plan { grid-area: plan; max-height: 45vh; } /* the plan scrolls inside itself so the panel below it keeps room */
+.seam-standing { grid-area: standing; }
+.tablecol { grid-area: table; display: flex; flex-direction: column; overflow: hidden; }
+.team { grid-area: team; }
+.panel.log { grid-area: log; }
+.teams { grid-area: teams; }
+.tabs { grid-area: tabs; display: none; gap: 4px; flex-wrap: wrap; }
+.tabs button { display: none; border-radius: 6px 6px 0 0; }
+.tabs button[aria-selected="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.table-head { flex: none; }
+.table-note { flex: none; margin-top: 6px; }
+.last-pick { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; color: var(--muted); font-size: 14px; }
+.last-pick span { flex: 1 1 auto; min-width: 0; }
+.hero { padding: 14px 16px; }
+.hero:not(.yours) .name { font-size: 24px; }
+.hero:not(.yours) .then { margin-top: 8px; }
+.hero:not(.yours) .cta { margin-top: 8px; }
+
+/* Sticky first two columns so # and Player stay when the table scrolls sideways */
+#pool th:nth-child(1), #pool td:nth-child(1) { position: sticky; left: 0; z-index: 2; min-width: 42px; background: var(--surface); }
+#pool th:nth-child(2), #pool td:nth-child(2) { position: sticky; left: 42px; z-index: 2; background: var(--surface); }
+#pool tbody tr:hover td:nth-child(1), #pool tbody tr:hover td:nth-child(2) { background: var(--hover); }
+#pool th { z-index: 3; }
+
+/* 2350 and up: every panel has its own place */
+@media (min-width: 2350px) {
+  .app {
+    grid-template-columns: 420px minmax(0, 1fr) 380px 540px;
+    grid-template-areas:
+      "top top top top"
+      "err err err err"
+      "rec table team teams"
+      "plan table team teams"
+      "tabs table team log"
+      "standing table team log";
+  }
+  /* the strip is not drawn, but the row it would have taken stays as small as it can */
+  .app { grid-template-rows: auto auto auto minmax(0, auto) 0 minmax(0, 1fr); }
+  .seam-standing { grid-row: 5 / 7; }
+}
+
+/* 1720 to 2349: 14 teams and the log share a tab panel under the team */
+@media (min-width: 1720px) and (max-width: 2349.98px) {
+  .app {
+    grid-template-columns: 420px minmax(0, 1fr) 380px;
+    grid-template-areas:
+      "top top top"
+      "err err err"
+      "rec table team"
+      "plan table team"
+      "standing table tabs"
+      "standing table tabp";
+    grid-template-rows: auto auto auto minmax(0, auto) auto minmax(0, 1fr);
+  }
+  .seam-standing { grid-row: 5 / 7; }
+  .tabs { display: flex; }
+  .tabs button[data-tab="teams"], .tabs button[data-tab="log"] { display: inline-block; }
+  .teams, .panel.log { grid-area: tabp; }
+  .app:not([data-tab="teams"]) .teams, .app:not([data-tab="log"]) .panel.log { display: none; }
+}
+
+/* 1240 to 1719: the table and one rail; team, standing, 14 teams and log share the tab panel under the plan */
+@media (min-width: 1240px) and (max-width: 1719.98px) {
+  .app {
+    grid-template-columns: minmax(0, 1fr) 400px;
+    grid-template-areas:
+      "top top"
+      "err err"
+      "table rec"
+      "table plan"
+      "table tabs"
+      "table tabp";
+    grid-template-rows: auto auto auto minmax(0, auto) auto minmax(0, 1fr);
+  }
+  .tabs { display: flex; }
+  .tabs button[data-tab="team"], .tabs button[data-tab="standing"], .tabs button[data-tab="teams"], .tabs button[data-tab="log"] { display: inline-block; }
+  .team, .seam-standing, .teams, .panel.log { grid-area: tabp; }
+  .app:not([data-tab="team"]) .team, .app:not([data-tab="standing"]) .seam-standing,
+  .app:not([data-tab="teams"]) .teams, .app:not([data-tab="log"]) .panel.log { display: none; }
+}
+
+/* Below 1240: one column. The recommendation stays on top; everything else is a tab */
+@media (max-width: 1239.98px) {
+  .app {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "top"
+      "err"
+      "rec"
+      "tabs"
+      "tabp";
+    grid-template-rows: auto auto auto auto minmax(0, 1fr);
+  }
+  .tabs { display: flex; }
+  .tabs button { display: inline-block; }
+  .tablecol, .seam-plan, .team, .seam-standing, .teams, .panel.log { grid-area: tabp; }
+  .app:not([data-tab="table"]) .tablecol, .app:not([data-tab="plan"]) .seam-plan, .app:not([data-tab="team"]) .team,
+  .app:not([data-tab="standing"]) .seam-standing, .app:not([data-tab="teams"]) .teams,
+  .app:not([data-tab="log"]) .panel.log { display: none; }
+  .seam-plan { max-height: none; }
+  .hero .name { font-size: 22px; }
+  .step { grid-template-columns: 44px 1fr; }
+  .step .meter, .step .score-col { grid-column: 2; }
+}
+
+/* Standing and the 14 teams */
+.standing-row { grid-template-columns: 44px 1fr 120px; }
+.standing-row .rank { text-align: right; color: var(--muted); font-size: 12px; }
+.standing-summary { margin: 0 0 10px; color: var(--ink); }
+.league-views { display: flex; gap: 6px; margin-bottom: 8px; }
+.league-views button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.league-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.league-table { font-size: 12px; }
+.league-table th { position: static; padding: 6px 5px; }
+.league-table td { padding: 5px 5px; }
+.league-table td.left { max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+.league-table tr.mine-row td { font-weight: 700; box-shadow: inset 0 1px 0 var(--mine), inset 0 -1px 0 var(--mine); }
+.league-table tr.mine-row td.left { color: var(--mine); }
+.mode.rehearsal { background: var(--flag-soft); color: var(--flag); }
+#rehearsal[aria-pressed="true"] { background: var(--flag-soft); color: var(--flag); border-color: var(--flag); }
+.saved { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.saved.bad { color: var(--danger); font-weight: 650; }
+td.dim { opacity: 0.45; }
+.roster .slot { display: grid; grid-template-columns: 52px 1fr; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line); }
+.roster .slot.open { color: var(--muted); }
+.roster .slot .pick { color: var(--muted); font-weight: 650; font-size: 13px; }
+.roster .slot.filled .pick { color: var(--mine); }
+.roster .slot.bench .pick { color: var(--muted); }

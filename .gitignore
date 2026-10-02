@@ -24,3 +24,12 @@ sample_top_teams_*.csv
 teams_data.json
 players_data.json
 *.log
+
+# Raw Yahoo pages downloaded by fetch_yahoo_players.py (large, re-creatable)
+data/cache/
+
+# The draft the dashboard saves while it runs
+saved_draft.json
+saved_draft.unreadable.json
+.saved_draft_*.tmp
+saved_draft.previous-v*.json

@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Draft assistant</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app" id="app" data-tab="plan">
+    <header class="topbar">
+      <div class="mode" id="mode" title="Live: you log every pick yourself">Live</div>
+      <div class="saved" id="saved-state" role="status" title="Whether the draft is saved in the draft file">Saved</div>
+      <div class="clock">
+        <p id="clock-line" class="clock-line">Loading</p>
+        <p id="snake-note" class="note" hidden></p>
+      </div>
+      <div id="snake" class="snake" role="img" aria-label="Pick order for the current round"></div>
+      <div class="topbar-actions">
+        <button id="behind" type="button" aria-expanded="false" title="You missed some picks. Say which pick Yahoo is at and the picks in between are marked unseen.">I am behind</button>
+        <button id="settings-toggle" type="button" aria-expanded="false" aria-controls="settings"><span id="settings-summary">Settings</span></button>
+      </div>
+      <form id="behind-form" class="behind-form" hidden>
+        <label>Yahoo is at pick <input id="behind-pick" type="number" min="2" step="1" inputmode="numeric"></label>
+        <button type="submit">Add the missed picks</button>
+        <span id="behind-note" class="note" role="status"></span>
+      </form>
+    </header>
+
+    <div id="error" class="banner" role="alert" hidden>
+      <span id="error-text"></span>
+      <button id="error-retry" type="button" hidden>Retry</button>
+      <button id="error-dismiss" type="button" hidden>Dismiss</button>
+    </div>
+
+    <section id="settings" class="settings" aria-label="Settings" hidden>
+      <div class="settings-grid">
+        <div>
+          <h2>Scoring categories</h2>
+          <div id="categories" class="categories"></div>
+          <p class="note">Untick a category to leave it out of every score and plan.</p>
+        </div>
+        <div>
+          <h2>Score</h2>
+          <label class="choice method"><input type="radio" name="method" value="uncapped"> Reward big numbers</label>
+          <label class="choice method"><input type="radio" name="method" value="capped"> Cap at the top 5%</label>
+          <p class="note">Uncapped counts a 32-point scorer as better than a 26-point one. Capped treats everyone past the top 5% in a category as equal.</p>
+          <label class="choice games"><input id="needs" type="checkbox"> Favour the categories I can still win</label>
+          <p class="note">Off, every category counts equally. On, a category where you are close to the other teams counts a little more and one you already dominate or cannot catch a little less, after a few rounds. The weights in use are listed under Standing. Only ticked categories count.</p>
+          <label class="choice games"><input id="games-adjusted" type="checkbox"> Count games missed</label>
+          <p class="note">Scales each score by the share of an 82-game season the player is projected to play, so a player projected for 59 games counts as 72%.</p>
+        </div>
+        <div>
+          <h2>Who will still be there?</h2>
+          <label class="choice"><input type="radio" name="rule" value="probability" checked> Odds from ADP</label>
+          <label class="choice"><input type="radio" name="rule" value="window"> ADP window</label>
+          <div id="rule-probability" class="fields">
+            <label>Early-round spread <input id="rule-base-sd" type="number" min="0.1" max="20" step="0.1" value="2"></label>
+            <label>Spread added per ADP place <input id="rule-sd-per-adp" type="number" min="0" max="1" step="0.05" value="0.2"></label>
+            <label>Plan on a player when his odds are at least <input id="rule-threshold" type="number" min="0.05" max="0.95" step="0.05" value="0.5"></label>
+          </div>
+          <div id="rule-window" class="fields" hidden>
+            <label>Plan on a player whose ADP is no more than this many picks earlier <input id="rule-slack" type="number" min="0" max="60" step="1" value="3"></label>
+          </div>
+          <p class="note">Spreads are starting guesses. Real drafts will tell us better values.</p>
+        </div>
+        <div>
+          <h2>Draft</h2>
+          <button id="reset" type="button" class="quiet">Reset draft</button>
+          <p class="note">Clears every pick. The old draft file is kept as a copy.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel seam-rec" data-panel="rec" aria-label="Recommendation">
+      <div id="hero" class="hero" aria-live="polite"></div>
+    </section>
+
+    <section class="panel seam-plan" data-panel="plan">
+      <h2>Plan for your remaining picks</h2>
+      <p id="search-note" class="search-note" role="status" hidden></p>
+      <div id="plan"></div>
+      <div id="alternatives" class="alternatives"></div>
+    </section>
+
+    <section class="panel seam-standing" data-panel="standing">
+      <h2>Standing</h2>
+      <div id="profile"></div>
+    </section>
+
+    <nav class="tabs" id="tabs" aria-label="Panels">
+      <button type="button" data-tab="table">Table</button>
+      <button type="button" data-tab="plan">Plan</button>
+      <button type="button" data-tab="team">My team</button>
+      <button type="button" data-tab="standing">Standing</button>
+      <button type="button" data-tab="teams">14 teams</button>
+      <button type="button" data-tab="log">Log</button>
+    </nav>
+
+    <main class="panel tablecol" data-panel="table">
+      <div class="table-head">
+        <div class="filters">
+          <input id="search" type="search" placeholder="Search by name or team" aria-label="Search players">
+          <div id="positions" class="chips" role="group" aria-label="Filter by position"></div>
+          <button id="outside" type="button" title="The pick on the clock was a player who is not in the list of 150. The pick is counted, no one leaves the pool.">Pick not in the list</button>
+        </div>
+        <div class="last-pick">
+          <span id="last-pick" role="status">Nothing logged yet.</span>
+          <button id="undo" type="button">Undo</button>
+        </div>
+        <p id="unseen-note" class="search-note" role="status" hidden></p>
+        <p id="choosing-note" class="search-note" role="status" hidden></p>
+      </div>
+      <div class="table-wrap">
+        <table id="pool">
+          <thead id="pool-head"></thead>
+          <tbody id="pool-body"></tbody>
+        </table>
+      </div>
+      <p class="note table-note">Click a player to log the pick that is on the clock. Picks log in order, and the snake order decides which ones are yours.</p>
+    </main>
+
+    <section class="panel team" data-panel="team">
+      <h2>Your roster</h2>
+      <ol id="roster" class="roster"></ol>
+      <p id="roster-positions" class="note"></p>
+    </section>
+
+    <section class="panel log" data-panel="log">
+      <h2>Draft log</h2>
+      <ol id="log" class="log"></ol>
+    </section>
+
+    <section class="panel teams" data-panel="teams">
+      <h2>14 teams</h2>
+      <div id="league"></div>
+    </section>
+  </div>
+
+  <script src="/logic.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
