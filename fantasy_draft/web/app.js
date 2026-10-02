@@ -3,11 +3,16 @@
 // Draft assistant front end. The server holds no state: this page keeps the ordered list of picks
 // (also in localStorage, so a refresh mid-draft loses nothing) and asks the server what to do next.
 
+// Browser copies are keyed by the draft file's id (from the server), not only by this address: a rehearsal and the live
+// draft can take turns on one port and must never share a copy
 const STORAGE_KEY = 'draft-assistant-v2';
 const ASIDE_KEY = 'draft-assistant-unconfirmed'; // a browser copy the file replaced, kept so nothing is lost
 const TAB_KEY = 'draft-assistant-tab'; // the tab last open, a per-browser convenience
 const SYNC_KEY = 'draft-assistant-sync'; // which file version the browser copy is based on, and whether the server has it
-const LEGACY_STORAGE_KEY = 'draft-assistant-v1'; // read once if v2 is absent, never rewritten, so a rollback has data
+let draftId = ''; // set from /api/draft before anything is read or written
+const storageKey = () => `${STORAGE_KEY}:${draftId}`;
+const syncKey = () => `${SYNC_KEY}:${draftId}`;
+const asideKey = () => `${ASIDE_KEY}:${draftId}`;
 const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'];
 const STAT_COLUMNS = [
   { key: 'pts', label: 'PTS', kind: 'number' },
@@ -92,7 +97,7 @@ let serverSaveAgain = false;
 
 function writeSync(confirmed) {
   try {
-    localStorage.setItem(SYNC_KEY, JSON.stringify({ basedOn: serverVersion, confirmed }));
+    localStorage.setItem(syncKey(), JSON.stringify({ basedOn: serverVersion, confirmed }));
   } catch (error) {
     // see saveState
   }
@@ -113,7 +118,7 @@ function currentSavedState() {
 function saveState() {
   if (draftRefused) return; // never write over a draft this page could not read
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(currentSavedState()));
+    localStorage.setItem(storageKey(), JSON.stringify(currentSavedState()));
     writeSync(false);
   } catch (error) {
     // Private mode or blocked storage: the draft still works, it just will not survive a refresh
@@ -183,7 +188,7 @@ function restoreState(fromServer) {
   let saved = fromServer;
   if (!saved) {
     try {
-      saved = pickSavedState(JSON.parse(localStorage.getItem(STORAGE_KEY)), JSON.parse(localStorage.getItem(LEGACY_STORAGE_KEY)));
+      saved = pickSavedState(JSON.parse(localStorage.getItem(storageKey())), null);
     } catch (error) {
       saved = null;
     }
@@ -1386,19 +1391,22 @@ async function init() {
     return;
   }
   serverVersion = server.version;
-  const local = readStored(STORAGE_KEY);
-  const source = chooseSource(server.version, server.state, local, readStored(SYNC_KEY));
-  const keptAside = discardsUnconfirmed(source, local, readStored(SYNC_KEY));
+  draftId = server.id || '';
+  const local = readStored(storageKey());
+  const source = chooseSource(server.version, server.state, local, readStored(syncKey()));
+  const keptAside = discardsUnconfirmed(source, local, readStored(syncKey()));
   if (keptAside) {
     try {
-      localStorage.setItem(ASIDE_KEY, JSON.stringify(local));
+      localStorage.setItem(asideKey(), JSON.stringify(local));
     } catch (error) {
       // nothing more can be done
     }
     showNotice(`The draft file was used. This browser had a copy with ${plural((local.picks || []).length, 'pick')} that the file never received, but the file changed since. That copy is kept aside in this browser.`);
   }
   restoreState(source === 'server' ? server.state : null);
-  if (state.picks.length > 0 && !draftRefused && !server.problem && !keptAside) {
+  if (source === 'browser' && state.picks.length > 0) {
+    showNotice(`Loaded ${plural(state.picks.length, 'pick')} from this browser's copy; the draft file had none. If this is not the draft you expect, press Reset.`);
+  } else if (state.picks.length > 0 && !draftRefused && !server.problem && !keptAside) {
     showNotice(`Continuing a saved draft: ${plural(state.picks.length, 'pick')}${state.rehearsal ? ' (a rehearsal)' : ''}. Reset starts a new one.`);
   }
   if (server.problem) showError(server.problem, false, true);

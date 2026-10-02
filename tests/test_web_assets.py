@@ -184,7 +184,7 @@ def test_the_page_saves_to_the_server_one_save_at_a_time_and_never_over_a_draft_
 
 def test_the_browser_copy_records_what_the_server_confirmed_and_an_ordinary_error_cannot_hide_a_sticky_one() -> None:
     assert "writeSync(false)" in JS and "writeSync(!serverSaveAgain)" in JS
-    assert "chooseSource(server.version, server.state, local, readStored(SYNC_KEY))" in JS
+    assert "chooseSource(server.version, server.state, local, readStored(syncKey()))" in JS
     show = JS[JS.index("function showError"): JS.index("function hideError")]
     assert "if (stickyError && !sticky) return;" in show
 
@@ -192,7 +192,7 @@ def test_the_browser_copy_records_what_the_server_confirmed_and_an_ordinary_erro
 def test_the_sync_record_follows_every_successful_save_and_a_replaced_browser_copy_is_kept_and_announced() -> None:
     assert "writeSync(!serverSaveAgain)" in JS
     init = JS[JS.index("async function init"):]
-    assert "discardsUnconfirmed(" in init and "ASIDE_KEY" in init and "showNotice(" in init
+    assert "discardsUnconfirmed(" in init and "asideKey()" in init and "showNotice(" in init
     assert 'id="error-dismiss"' in (WEB / "index.html").read_text()
 
 
@@ -265,3 +265,11 @@ def test_the_table_marks_the_plan_tints_the_stats_and_the_hero_explains_itself()
 def test_the_roster_shows_slots_and_the_tab_and_saved_state_are_kept() -> None:
     assert "analysis.lineup.slots" in JS and "canAdd" in JS and "Eligible at:" not in JS
     assert "TAB_KEY" in JS and "showSaved('Saved', true)" in JS and 'id="saved-state"' in (WEB / "index.html").read_text()
+
+
+def test_browser_copies_are_keyed_by_the_draft_file_not_only_the_address() -> None:
+    assert "draftId = server.id" in JS
+    for key in ("storageKey()", "syncKey()", "asideKey()"):
+        assert key in JS
+    assert "localStorage.getItem(STORAGE_KEY)" not in JS and "localStorage.setItem(STORAGE_KEY" not in JS
+    assert "the draft file had none" in JS
