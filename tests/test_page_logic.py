@@ -449,3 +449,29 @@ def test_the_inline_head_script_and_app_js_load_into_one_page_without_a_redeclar
     """
     result = subprocess.run([NODE, "-e", script], capture_output=True, text=True, timeout=30, check=True)
     assert json.loads(result.stdout) == "", "app.js must declare nothing the head script already declared"
+
+
+def _scores_after(picks: int) -> List[float]:
+    from fantasy_draft.data import load_players
+    from fantasy_draft.service import DraftService
+
+    service = DraftService(load_players())
+    by_adp = list(service.players.sort_values("adp_est")["player_id"])
+    answer = service.analyze({"categories": service.keys, "picks": by_adp[:picks], "method": "uncapped", "gamesAdjusted": True})
+    return [row["score"] for row in answer["pool"]]
+
+
+@pytest.mark.parametrize("picks", [0, 28, 56, 84, 112])
+def test_the_score_bar_tells_the_players_that_matter_apart_at_every_stage_of_the_draft(picks: int) -> None:
+    """At the start of a draft a fixed 15-point span left 147 of 150 bars empty; the bar is anchored by rank instead."""
+    scores = _scores_after(picks)
+    template = "(() => { const a = L.scoreBarAnchors(SCORES); return SCORES.map((x) => L.scoreBarShare(x, a)); })()"
+    expression = template.replace("SCORES", json.dumps(scores))
+    widths = _run(expression)
+    ordered = sorted(zip(scores, widths), reverse=True)
+    top_widths = [width for _, width in ordered]
+    assert all(width == 1 for width in top_widths[:5]), "the 5th best left is a full bar"
+    assert all(width > 0 for width in top_widths[:30]), "no player who could be picked next has an empty bar"
+    assert top_widths[19] < 0.9 or picks >= 28, "the top 20 are told apart at the start, when the gaps are widest"
+    assert top_widths == sorted(top_widths, reverse=True), "a better score never has a shorter bar"
+    assert len({round(width, 1) for width in top_widths[:30]}) >= 4, "the bars differ"

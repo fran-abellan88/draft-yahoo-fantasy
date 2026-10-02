@@ -434,7 +434,7 @@ def test_the_score_column_defaults_to_a_bar_of_the_gap_to_the_best_player_left_a
     assert html.count('name="scorestyle"') == 3 and 'value="bar" checked' in html
     assert "let scoreStyle = 'bar';" in JS and "SCORE_STYLES = ['bar', 'rank', 'range']" in JS
     tint = JS[JS.index("function scoreTint(row)"): JS.index("function scoreTitle")]
-    assert "linear-gradient(to right" in tint and "scoreTop - score" in tint and "SCORE_BAR_SPAN" in tint
+    assert "linear-gradient(to right" in tint and "scoreBarShare(score, scoreAnchors)" in tint and "SCORE_BAR_SPAN" not in JS
     assert "row.rank <= limit" in tint, "colour by rank uses the rank among the players left, not the score"
     assert "localStorage.setItem(SCORE_STYLE_KEY" in JS and "scorestyle" in JS[JS.index("function wireControls()"):], "a browser preference"
     assert "behind the best score left" in JS

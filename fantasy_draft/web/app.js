@@ -980,23 +980,24 @@ function oddsCell(value) {
 }
 
 // The Score column: three ways to show it, chosen in Settings (a display preference of this browser, not part of the
-// draft). The default is a bar of how far he is behind the best player left, over a fixed span of points, because the
-// players that matter are within a few points of each other and a colour scale over the whole pool cannot tell them apart.
+// draft). The default is a bar between two anchors by rank (see scoreBarAnchors in logic.js): the players that matter are
+// within a few points of each other and a colour scale over the whole pool cannot tell them apart.
 const SCORE_STYLES = ['bar', 'rank', 'range'];
 const SCORE_STYLE_KEY = 'draft-assistant-score-style';
-const SCORE_BAR_SPAN = 15; // points behind the best player left at which the bar is empty
 const SCORE_TINT_MIN = 8;
 const SCORE_TINT_MAX = 40;
 const SCORE_RANK_TIERS = [[5, 40], [15, 30], [30, 22], [60, 14]]; // up to this rank, this share; everyone else 7%
 let scoreStyle = 'bar';
 let scoreRange = { low: 0, high: 1 };
 let scoreTop = 0;
+let scoreAnchors = { ceiling: 1, floor: 0 };
 
 function updateScoreRange() {
   const scores = analysis.pool.map((row) => row.score).filter((score) => score !== null && score !== undefined).sort((a, b) => a - b);
   if (scores.length === 0) return;
   scoreRange = { low: scores[Math.floor(0.05 * (scores.length - 1))], high: scores[Math.ceil(0.95 * (scores.length - 1))] };
   scoreTop = scores[scores.length - 1];
+  scoreAnchors = scoreBarAnchors(scores);
 }
 
 const scoreFill = (share) => `color-mix(in srgb, var(--score) ${share}%, transparent)`;
@@ -1005,7 +1006,7 @@ function scoreTint(row) {
   const score = row.score;
   if (score === null || score === undefined) return '';
   if (scoreStyle === 'bar') {
-    const width = Math.round(100 * Math.max(0, Math.min(1, 1 - (scoreTop - score) / SCORE_BAR_SPAN)));
+    const width = Math.round(100 * scoreBarShare(score, scoreAnchors));
     return `background: linear-gradient(to right, ${scoreFill(SCORE_TINT_MAX)} ${width}%, transparent ${width}%)`;
   }
   if (scoreStyle === 'rank') {
@@ -1020,7 +1021,7 @@ function scoreTint(row) {
 function scoreTitle(row) {
   const gap = scoreTop - row.score;
   const behind = gap < 0.05 ? 'The best score left.' : `${oneDecimal(gap)} behind the best score left.`;
-  return `Score for your ticked categories. ${behind}`;
+  return `Score for your ticked categories. ${behind} Bar: full is as good as the 5th best left, empty as good as the 60th.`;
 }
 
 function applyScoreStyle(choice) {
