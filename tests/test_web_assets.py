@@ -297,7 +297,7 @@ def test_text_stays_readable_on_the_strongest_tint_of_a_table_cell(theme: str) -
 
 def test_green_means_only_mine_and_the_odds_and_stats_use_the_second_hue() -> None:
     tints = [line for line in JS.splitlines() if "color-mix" in line]
-    assert tints and all("var(--cool)" in line and "var(--mine)" not in line for line in tints)
+    assert tints and all(("var(--cool)" in line or "var(--score)" in line) and "var(--mine)" not in line for line in tints)
     assert ".meter .fill { height: 100%; background: var(--cool); }" in CSS
     assert "accent-color: var(--cool)" in CSS
 
@@ -337,7 +337,8 @@ def test_the_planner_projection_is_asked_for_apart_from_the_analysis_and_shown_w
     league = JS[JS.index("function renderLeague()"): JS.index("// A gone entry back to an unseen pick")]
     assert "h3', {}, 'Projected'" in league and "h3', {}, 'So far'" in league, "both tables at once, no switch between them"
     assert "ADP order" in league and "Same planner" in league and "projectedTable()" in JS[JS.index("function renderStanding()"):]
-    assert "400px minmax(0, 1fr) 380px 540px" in CSS and ".league-table td.left { max-width" in CSS
+    assert "minmax(400px, 400fr) minmax(900px, 1045fr) minmax(360px, 380fr) minmax(520px, 540fr)" in CSS
+    assert ".league-table td.left { max-width" in CSS
 
 
 def test_the_theme_follows_the_system_unless_chosen_and_is_set_before_the_first_paint() -> None:
@@ -374,3 +375,14 @@ def test_the_pick_predictions_are_real_draft_only_asked_apart_and_tied_to_the_lo
     assert "predictionsFor === picksSignature()" in JS, "a stale answer is never shown for another log"
     assert "item.pick === entry.pick && item.id === entry.id" in JS, "a log row is marked only by the pick it was computed for"
     assert "not a mistake" in JS
+
+
+def test_the_columns_grow_together_the_table_starts_on_adp_and_the_score_has_its_own_colour_map() -> None:
+    columns = re.findall(r"grid-template-columns:([^;]*);", CSS)
+    assert columns and not any(re.search(r"(?<![\w(,] )\b(?:380|400|420|540)px\s*(?:minmax|;|$)", value) for value in columns)
+    assert "sort: { key: 'adp', direction: 1 }" in JS
+    score_tint = JS[JS.index("function scoreTint"): JS.index("// A stat tinted")]
+    assert "scoreTint(row.score)" in JS and "var(--score)" in score_tint and "var(--cool)" not in score_tint
+    for kind in ("planner", "adp", "both"):
+        assert f".predict-mark.{kind}" in CSS
+    assert "'both'" in JS

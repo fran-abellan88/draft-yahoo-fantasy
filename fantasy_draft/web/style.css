@@ -11,6 +11,9 @@
   --mine-soft: #dff3ea;
   --cool: #2b6cb0; /* odds, stat tints, ranks, ticked controls: not green, which means yours */
   --on-mine: #ffffff; /* text on a --mine background */
+  --score: #7c4fc9; /* the Score column's map: its own hue, used nowhere else */
+  --tag-planner: #0f7f86; /* log tags: the planner's choice */
+  --tag-adp: #b83a76; /* log tags: the best ADP that fits */
   --flag: #9a4a05;
   --flag-soft: #fdf0dc;
   --danger: #b42318;
@@ -34,6 +37,9 @@
     --mine-soft: #143a2e;
     --cool: #6aa9ff;
     --on-mine: #06281d;
+    --score: #a98af2;
+    --tag-planner: #4fd0d8;
+    --tag-adp: #f08ab8;
     --flag: #f0a95a;
     --flag-soft: #3a2a14;
     --danger: #ff8a80;
@@ -57,6 +63,9 @@
   --mine-soft: #143a2e;
   --cool: #6aa9ff;
   --on-mine: #06281d;
+  --score: #a98af2;
+  --tag-planner: #4fd0d8;
+  --tag-adp: #f08ab8;
   --flag: #f0a95a;
   --flag-soft: #3a2a14;
   --danger: #ff8a80;
@@ -291,10 +300,11 @@ body { margin: 0; }
 #pool tbody tr:hover td:nth-child(1), #pool tbody tr:hover td:nth-child(2) { background: var(--hover); }
 #pool th { z-index: 3; }
 
-/* 2350 and up: every panel has its own place */
+/* 2350 and up: every panel has its own place. The columns share extra width in proportion (the fr numbers are their
+   widths at 2436 px), so a wider window enlarges every panel, not only the table */
 @media (min-width: 2350px) {
   .app {
-    grid-template-columns: 400px minmax(0, 1fr) 380px 540px;
+    grid-template-columns: minmax(400px, 400fr) minmax(900px, 1045fr) minmax(360px, 380fr) minmax(520px, 540fr);
     grid-template-areas:
       "top top top top"
       "err err err err"
@@ -316,7 +326,7 @@ body { margin: 0; }
 /* 1720 to 2349: 14 teams and the log share a tab panel under the team */
 @media (min-width: 1720px) and (max-width: 2349.98px) {
   .app {
-    grid-template-columns: 420px minmax(0, 1fr) 380px;
+    grid-template-columns: minmax(380px, 400fr) minmax(0, 1045fr) minmax(340px, 380fr);
     grid-template-areas:
       "top top top"
       "err err err"
@@ -336,7 +346,7 @@ body { margin: 0; }
 /* 1240 to 1719: the table and one rail; team, standing, 14 teams and log share the tab panel under the plan */
 @media (min-width: 1240px) and (max-width: 1719.98px) {
   .app {
-    grid-template-columns: minmax(0, 1fr) 400px;
+    grid-template-columns: minmax(0, 1045fr) minmax(360px, 420fr);
     grid-template-areas:
       "top top"
       "err err"
@@ -397,6 +407,7 @@ body { margin: 0; }
 .saved { font-size: 12px; color: var(--muted); white-space: nowrap; }
 .saved.bad { color: var(--danger); font-weight: 650; }
 td.dim { opacity: 0.45; }
+#pool td.score-cell { font-weight: 700; }
 .roster .slot { display: grid; grid-template-columns: 52px 1fr; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line); }
 .roster .slot.open { color: var(--muted); }
 .roster .slot .pick { color: var(--muted); font-weight: 650; font-size: 13px; }
@@ -435,5 +446,7 @@ td.dim { opacity: 0.45; }
 .managers summary { cursor: pointer; color: var(--muted); }
 .managers .league-wrap { margin-top: 6px; }
 .predict-mark { margin-left: 6px; padding: 0 6px; border-radius: 999px; font-size: 11px; white-space: nowrap; }
-.predict-mark.match { background: color-mix(in srgb, var(--cool) 16%, transparent); color: var(--cool); }
+.predict-mark.planner { background: color-mix(in srgb, var(--tag-planner) 20%, transparent); color: var(--tag-planner); }
+.predict-mark.adp { background: color-mix(in srgb, var(--tag-adp) 20%, transparent); color: var(--tag-adp); }
+.predict-mark.both { background: linear-gradient(90deg, color-mix(in srgb, var(--tag-planner) 24%, transparent) 50%, color-mix(in srgb, var(--tag-adp) 24%, transparent) 50%); color: var(--ink); }
 .predict-mark.differs { background: var(--flag-soft); color: var(--flag); }

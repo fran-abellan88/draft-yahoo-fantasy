@@ -44,7 +44,7 @@ const state = {
   rule: { ...DEFAULT_RULE },
   search: '',
   position: 'ALL',
-  sort: { key: 'rank', direction: 1 },
+  sort: { key: 'adp', direction: 1 }, // ADP order; the # column is the rank by score
 };
 const playerById = new Map();
 let pool = null;
@@ -435,11 +435,12 @@ function predictionMark(entry) {
   const row = current && current.picks.find((item) => item.pick === entry.pick && item.id === entry.id);
   if (!row) return null;
   let label = 'differs';
-  if (row.matchPlanner && row.matchAdp) label = 'planner and ADP';
-  else if (row.matchPlanner) label = 'planner';
-  else if (row.matchAdp) label = 'ADP';
+  let kind = 'differs';
+  if (row.matchPlanner && row.matchAdp) [label, kind] = ['planner and ADP', 'both'];
+  else if (row.matchPlanner) [label, kind] = ['planner', 'planner'];
+  else if (row.matchAdp) [label, kind] = ['ADP', 'adp'];
   const hover = `Planner: ${row.planner ? nameOf(row.planner) : 'none'}. ADP: ${row.adp ? nameOf(row.adp) : 'none'}. Taken ${reachText(row.reach)}; ${ordinal(row.scoreRank)} by score among those left.`;
-  return h('span', { class: `predict-mark ${label === 'differs' ? 'differs' : 'match'}`, title: hover }, label);
+  return h('span', { class: `predict-mark ${kind}`, title: hover }, label);
 }
 
 function scheduleRefresh() {
@@ -897,7 +898,7 @@ function renderPlan() {
 
 // --- pool table ---
 const POOL_COLUMNS = [
-  { key: 'rank', label: '#', left: false, defaultDirection: 1 },
+  { key: 'rank', label: '#', left: false, defaultDirection: 1, title: 'Rank by score among the players left' },
   { key: 'name', label: 'Player', left: true, defaultDirection: 1 },
   { key: 'score', label: 'Score', left: false, defaultDirection: -1 },
   { key: 'availability', label: 'At your pick', left: false, defaultDirection: -1, title: 'Chance he is still available when you next pick' },
@@ -976,6 +977,25 @@ function oddsCell(value) {
   return h('td', { style }, pct(value));
 }
 
+// The Score column has its own colour map, one hue across the whole range of scores still on the board (5th to 95th
+// percentile, so a few outliers do not flatten it). The stat columns keep the other hue and a fainter tint.
+const SCORE_TINT_MIN = 8;
+const SCORE_TINT_MAX = 46;
+let scoreRange = { low: 0, high: 1 };
+
+function updateScoreRange() {
+  const scores = analysis.pool.map((row) => row.score).filter((score) => score !== null && score !== undefined).sort((a, b) => a - b);
+  if (scores.length === 0) return;
+  scoreRange = { low: scores[Math.floor(0.05 * (scores.length - 1))], high: scores[Math.ceil(0.95 * (scores.length - 1))] };
+}
+
+function scoreTint(score) {
+  if (score === null || score === undefined) return '';
+  const span = scoreRange.high - scoreRange.low;
+  const share = span > 0 ? Math.max(0, Math.min(1, (score - scoreRange.low) / span)) : 0.5;
+  return `background: color-mix(in srgb, var(--score) ${Math.round(SCORE_TINT_MIN + share * (SCORE_TINT_MAX - SCORE_TINT_MIN))}%, transparent)`;
+}
+
 // A stat tinted by how good it is in its category (0 to 100 on the capped scale); unticked categories are dimmed
 function statCell(column, player, row) {
   const score = row.categoryScores[column.key];
@@ -1023,6 +1043,7 @@ let visibleIds = [];
 let plannedPicks = new Map();
 
 function renderPool() {
+  updateScoreRange();
   plannedPicks = new Map(analysis.plans.length ? analysis.plans[0].steps.map((step) => [step.id, step.pick]) : []);
   const pickLabel = columnPick();
   const availabilityHead = $('pool-head').querySelector('button[data-key="availability"]');
@@ -1056,7 +1077,7 @@ function renderPool() {
         ...notesFor(row, player),
         ...(hasUnseenPicks() && row.unseenRisk >= UNSEEN_RISK_SHOWN ? [goneButton(player)] : []),
       ])),
-      h('td', { class: 'score' }, oneDecimal(row.score)),
+      h('td', { class: 'score score-cell', style: scoreTint(row.score), title: 'Score: how good he is for your ticked categories. The colour runs from the lowest to the highest score left.' }, oneDecimal(row.score)),
       oddsCell(oddsAtColumn(row)),
       h('td', { title: player.adpEstimated ? 'Yahoo shows no ADP for him; estimated from nearby ranks' : '' }, `${player.adpEstimated ? '~' : ''}${player.adp.toFixed(1)}`),
       h('td', {}, player.xrank),
