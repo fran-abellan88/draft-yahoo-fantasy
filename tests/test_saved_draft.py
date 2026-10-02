@@ -108,3 +108,8 @@ def test_each_emptying_keeps_its_own_previous_file_so_a_later_one_never_replaces
     kept = sorted(path.name for path in saved.path.parent.glob("*.previous-*"))
     assert kept == ["saved_draft.previous-v1.json", "saved_draft.previous-v3.json"]
     assert json.loads((saved.path.parent / kept[0]).read_text())["state"]["picks"] == STATE["picks"]
+
+
+def test_the_rehearsal_settings_are_saved_with_the_draft(saved: SavedDraft) -> None:
+    assert saved.save({**STATE, "rehearsal": True, "seed": 12345}, 0) == 1
+    assert saved.load()[1]["rehearsal"] is True and saved.load()[1]["seed"] == 12345

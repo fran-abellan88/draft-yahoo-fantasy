@@ -344,3 +344,19 @@ body { margin: 0; }
   .step { grid-template-columns: 44px 1fr; }
   .step .meter, .step .score-col { grid-column: 2; }
 }
+
+/* Standing and the 14 teams */
+.standing-row { grid-template-columns: 44px 1fr 120px; }
+.standing-row .rank { text-align: right; color: var(--muted); font-size: 12px; }
+.standing-summary { margin: 0 0 10px; color: var(--ink); }
+.league-views { display: flex; gap: 6px; margin-bottom: 8px; }
+.league-views button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.league-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.league-table { font-size: 12px; }
+.league-table th { position: static; padding: 6px 5px; }
+.league-table td { padding: 5px 5px; }
+.league-table td.left { max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+.league-table tr.mine-row td { font-weight: 700; box-shadow: inset 0 1px 0 var(--mine), inset 0 -1px 0 var(--mine); }
+.league-table tr.mine-row td.left { color: var(--mine); }
+.mode.rehearsal { background: var(--flag-soft); color: var(--flag); }
+#rehearsal[aria-pressed="true"] { background: var(--flag-soft); color: var(--flag); border-color: var(--flag); }

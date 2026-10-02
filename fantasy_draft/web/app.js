@@ -25,6 +25,8 @@ const DEFAULT_RULE = { type: 'probability', baseSd: 2, sdPerAdp: 0.2, threshold:
 const state = {
   picks: [],
   history: [], // the actions Undo reverts, newest last (see logic.js)
+  rehearsal: false, // the other teams pick automatically
+  seed: 0, // makes one rehearsal repeatable and the next one different
   categories: [],
   gamesAdjusted: true,
   method: 'uncapped',
@@ -103,7 +105,7 @@ function readStored(key) {
 }
 
 function currentSavedState() {
-  return { version: 2, picks: state.picks, history: state.history, categories: state.categories, gamesAdjusted: state.gamesAdjusted, method: state.method, rule: state.rule };
+  return { version: 2, picks: state.picks, history: state.history, rehearsal: state.rehearsal, seed: state.seed, categories: state.categories, gamesAdjusted: state.gamesAdjusted, method: state.method, rule: state.rule };
 }
 
 function saveState() {
@@ -181,6 +183,8 @@ function restoreState(fromServer) {
   }
   state.picks = picks || [];
   state.history = sanitizeHistory(saved.history, state.picks);
+  state.rehearsal = saved.rehearsal === true;
+  state.seed = Number.isInteger(saved.seed) ? saved.seed : 0;
   if (Array.isArray(saved.categories) && saved.categories.length > 0 && saved.categories.every((key) => allKeys.includes(key))) {
     state.categories = allKeys.filter((key) => saved.categories.includes(key));
   }
@@ -297,6 +301,7 @@ async function refresh() {
   analysis = data;
   poolRowById = new Map(data.pool.map((row) => [row.id, row]));
   render();
+  if (state.rehearsal && !rehearsing && !autoPlayFailed && !data.clock.isMine && !data.clock.draftComplete) autoPlayOthers();
 }
 
 function scheduleRefresh() {
@@ -322,6 +327,7 @@ function draft(id) {
     if (refreshFailed) refresh(); // clicking a pick the server has not confirmed tries again
     return;
   }
+  autoPlayFailed = false;
   state.picks.push({ kind: 'player', id });
   state.history.push({ type: 'log', count: 1 });
   state.search = '';
@@ -386,12 +392,65 @@ function hasUnseenPicks() {
 }
 
 function undo() {
+  if (state.rehearsal && state.picks.length > 0) {
+    // The other teams' picks are automatic, so Undo goes back to just before my last pick
+    const mine = pool.myPicks.filter((number) => number <= state.picks.length);
+    state.picks = state.picks.slice(0, mine.length ? mine[mine.length - 1] - 1 : 0);
+    state.history = [];
+    saveState();
+    refresh();
+    return;
+  }
   const result = undoLast(state.picks, state.history);
   if (!result) return;
   state.picks = result.picks;
   state.history = result.history;
   saveState();
   refresh();
+}
+
+// ---------- rehearsal ----------
+let rehearsing = false;
+let autoPlayFailed = false; // stops a failing automatic pick from retrying forever; the next action clears it
+
+// Log the other teams' automatic picks until it is my turn, then refresh once
+async function autoPlayOthers() {
+  if (rehearsing || !state.rehearsal) return;
+  rehearsing = true;
+  try {
+    const total = pool.league.teams * pool.league.rosterSize;
+    while (state.picks.length < total && !pool.myPicks.includes(state.picks.length + 1)) {
+      const response = await fetch('/api/autopick', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ picks: state.picks, noise: true, seed: state.seed + state.picks.length }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        showError(data.error || 'The automatic pick failed.');
+        autoPlayFailed = true;
+        break;
+      }
+      state.picks.push({ kind: 'player', id: data.id });
+    }
+  } catch (error) {
+    showError("Can't reach the draft server for the automatic picks.");
+    autoPlayFailed = true;
+  } finally {
+    rehearsing = false;
+  }
+  state.history = [];
+  saveState();
+  await refresh();
+}
+
+function toggleRehearsal() {
+  autoPlayFailed = false;
+  state.rehearsal = !state.rehearsal;
+  if (state.rehearsal && !state.seed) state.seed = Math.floor(Math.random() * 1000000) + 1;
+  saveState();
+  renderTopBar();
+  if (state.rehearsal) autoPlayOthers();
 }
 
 function reset() {
@@ -409,6 +468,7 @@ function reset() {
   button.textContent = 'Reset draft';
   state.picks = [];
   state.history = [];
+  if (state.rehearsal) state.seed = Math.floor(Math.random() * 1000000) + 1; // a new rehearsal is a different draft
   draftRefused = false;
   hideError(true);
   saveState();
@@ -425,7 +485,8 @@ function render() {
   renderUnseenNote();
   renderPool();
   renderRoster();
-  renderProfile();
+  renderStanding();
+  renderLeague();
   renderLog();
   renderChoosing();
 }
@@ -475,6 +536,9 @@ function renderSettingsSummary() {
 }
 
 function renderTopBar() {
+  $('mode').textContent = state.rehearsal ? 'Rehearsal: other teams automatic' : 'Live';
+  $('mode').classList.toggle('rehearsal', state.rehearsal);
+  $('rehearsal').setAttribute('aria-pressed', String(state.rehearsal));
   renderLastPick();
   renderSettingsSummary();
 }
@@ -836,32 +900,86 @@ function renderRoster() {
   $('roster-positions').textContent = `Eligible at: ${POSITIONS.map((position) => `${position} ${counts[position]}`).join(', ')}${outsideNote}`;
 }
 
-function renderProfile() {
+const ordinal = (value) => {
+  const tail = value % 100;
+  if (tail >= 11 && tail <= 13) return `${value}th`;
+  return `${value}${{ 1: 'st', 2: 'nd', 3: 'rd' }[value % 10] || 'th'}`;
+};
+
+// Which categories I win, contest or lose against the other 13 teams, from the share of them I beat
+function standingGroup(beaten) {
+  if (beaten >= 0.65) return 'Winning';
+  if (beaten >= 0.35) return 'Close';
+  return 'Behind';
+}
+
+function renderStanding() {
   const container = $('profile');
-  const { roster, plan } = analysis.profile;
-  if (!plan && !roster) {
-    put(container, h('p', { class: 'note' }, 'Appears once you have picks or a plan.'));
-    return;
-  }
+  const league = analysis.league;
   const keys = pool.categories.map((category) => category.key).filter((key) => state.categories.includes(key));
   const labels = Object.fromEntries(pool.categories.map((category) => [category.key, category.label]));
-  const bar = (kind, value) => h('div', { class: `bar ${kind}` }, h('span', { style: `width:${Math.max(0, Math.min(100, value))}%` }));
-  const rows = keys.map((key) =>
-    h(
+  const haveNow = league.size > 0;
+  const rows = keys.map((key) => {
+    const projected = league.projected.standing[key];
+    const now = league.standing[key];
+    return h(
       'div',
-      { class: 'profile-row', title: key === 'to' ? 'Turnovers are scored so that fewer is better' : '' },
+      { class: 'profile-row standing-row', title: `Beats ${Math.round(projected.beaten * 13 * 10) / 10} of the other 13 teams projected${key === 'to' ? '. Fewer turnovers is better' : ''}` },
       h('span', {}, labels[key]),
-      h('div', { class: 'bars' }, roster ? bar('roster', roster[key].score) : null, plan ? bar('plan', plan[key].score) : null),
-      h('span', {}, plan ? plan[key].score : roster[key].score),
+      h('div', { class: 'bars' }, h('div', { class: 'bar roster' }, h('span', { style: `width:${Math.round(projected.beaten * 100)}%` }))),
+      h('span', { class: 'rank' }, haveNow ? `${ordinal(now.rank)} now, ${ordinal(projected.rank)} proj.` : `${ordinal(projected.rank)} proj.`),
+    );
+  });
+  const groups = { Winning: [], Close: [], Behind: [] };
+  for (const key of keys) groups[standingGroup(league.projected.standing[key].beaten)].push(labels[key]);
+  const summary = Object.entries(groups).filter(([, names]) => names.length).map(([name, names]) => `${name}: ${names.join(', ')}`).join('. ');
+  put(
+    container,
+    h('p', { class: 'note standing-summary' }, summary ? `${summary}.` : ''),
+    ...rows,
+    h('p', { class: 'note' }, `Bar: the share of the other 13 teams you beat, ${league.projected.basis}. "Now" counts ${league.size} complete round${league.size === 1 ? '' : 's'}.`),
+  );
+}
+
+// ---------- the 14 teams ----------
+let leagueView = 'projected';
+
+function tintFor(rank, teams) {
+  const good = (teams - rank) / (teams - 1); // 1 for the best, 0 for the worst
+  return `background: color-mix(in srgb, var(--mine) ${Math.round(good * 30)}%, transparent)`;
+}
+
+function cellValue(key, value) {
+  return key === 'fg_pct' || key === 'ft_pct' ? formatRate(value) : oneDecimal(value);
+}
+
+function renderLeague() {
+  const container = $('league');
+  const table = leagueView === 'projected' ? analysis.league.projected : analysis.league;
+  const keys = pool.categories.map((category) => category.key).filter((key) => state.categories.includes(key));
+  const labels = Object.fromEntries(pool.categories.map((category) => [category.key, category.label]));
+  const views = h(
+    'div',
+    { class: 'league-views', role: 'group', 'aria-label': 'Which totals' },
+    ...[['projected', 'Projected'], ['now', 'So far']].map(([view, label]) =>
+      h('button', { type: 'button', 'aria-pressed': String(leagueView === view), onclick: () => { leagueView = view; renderLeague(); } }, label),
     ),
   );
-  const legend = h(
-    'div',
-    { class: 'profile-legend' },
-    roster ? h('span', {}, h('i', { style: 'background:var(--mine)' }), 'Drafted') : null,
-    plan ? h('span', {}, h('i', { style: 'background:var(--taken)' }), 'With best plan') : null,
+  const head = h('tr', {}, h('th', { class: 'left' }, 'Team'), h('th', {}, 'n'), ...keys.map((key) => h('th', {}, labels[key])));
+  const rows = table.teams.map((team) =>
+    h(
+      'tr',
+      { class: team.mine ? 'mine-row' : '' },
+      h('td', { class: 'left', title: `Slot ${team.slot}` }, team.name),
+      h('td', {}, team.players),
+      ...keys.map((key) => h('td', { style: tintFor(team.ranks[key], table.teams.length), title: `${ordinal(team.ranks[key])} of ${table.teams.length}` }, cellValue(key, team.totals[key]))),
+    ),
   );
-  put(container, legend, ...rows, h('p', { class: 'note' }, '0 to 100 against the pool. The number is the team average per category.'));
+  const note = leagueView === 'projected'
+    ? `${table.basis}: logged picks, your best plan for your team, and the other teams filled in ADP order with lineup limits. A guess at the league, not who will be available.`
+    : `So far: the first ${table.size} pick${table.size === 1 ? '' : 's'} of every team. Totals per game; FG% and FT% are real ratios; fewer turnovers is better.`;
+  const uncounted = table.notCounted ? ` ${plural(table.notCounted, 'pick')} not counted (unseen, gone or not in the list).` : '';
+  put(container, views, h('div', { class: 'league-wrap' }, h('table', { class: 'league-table' }, h('thead', {}, head), h('tbody', {}, ...rows))), h('p', { class: 'note' }, note + uncounted));
 }
 
 // A gone entry back to an unseen pick, for a mistake noticed after other picks were logged
@@ -1096,6 +1214,7 @@ function wireControls() {
   $('error-retry').addEventListener('click', refresh);
   $('error-dismiss').addEventListener('click', () => hideError(true));
   $('undo').addEventListener('click', undo);
+  $('rehearsal').addEventListener('click', toggleRehearsal);
   $('settings-toggle').addEventListener('click', toggleSettings);
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !$('settings').hidden) toggleSettings();
