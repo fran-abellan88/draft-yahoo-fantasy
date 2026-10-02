@@ -22,9 +22,11 @@ def _tokens(block: str) -> Dict[str, str]:
 
 def _themes() -> Dict[str, Dict[str, str]]:
     light_block = re.search(r":root\s*\{(.*?)\n\}", CSS, re.S)
-    dark_block = re.search(r"@media \(prefers-color-scheme: dark\)\s*\{\s*:root\s*\{(.*?)\}", CSS, re.S)
-    assert light_block and dark_block, "the colour tokens moved; update this test"
+    dark_block = re.search(r':root\[data-theme="dark"\]\s*\{(.*?)\}', CSS, re.S)
+    media_block = re.search(r'@media \(prefers-color-scheme: dark\)\s*\{\s*:root:not\(\[data-theme="light"\]\)\s*\{(.*?)\}', CSS, re.S)
+    assert light_block and dark_block and media_block, "the colour tokens moved; update this test"
     light = _tokens(light_block.group(1))
+    assert _tokens(media_block.group(1)) == _tokens(dark_block.group(1)), "the two copies of the dark tokens must stay equal"
     return {"light": light, "dark": {**light, **_tokens(dark_block.group(1))}}
 
 
@@ -227,7 +229,8 @@ def test_the_last_pick_and_the_settings_summary_are_shown_in_the_page() -> None:
     for element in ('id="last-pick"', 'id="settings-summary"', 'id="settings-toggle"', 'id="tabs"', 'id="modes"'):
         assert element in html
     assert "renderTopBar();" in JS[JS.index("function render()"):]
-    assert html.index('id="reset"') > html.index('id="settings"'), "Reset lives in the settings panel"
+    assert html.index('id="reset"') < html.index('id="settings"'), "Reset is in the top bar, where it can be seen"
+    assert 'id="theme"' in html and "THEME_KEY" in JS
 
 
 def test_the_page_shows_the_standing_and_the_14_teams_and_can_rehearse() -> None:
@@ -335,3 +338,25 @@ def test_the_planner_projection_is_asked_for_apart_from_the_analysis_and_shown_w
     assert "h3', {}, 'Projected'" in league and "h3', {}, 'So far'" in league, "both tables at once, no switch between them"
     assert "ADP order" in league and "Same planner" in league and "projectedTable()" in JS[JS.index("function renderStanding()"):]
     assert "400px minmax(0, 1fr) 380px 540px" in CSS and ".league-table td.left { max-width" in CSS
+
+
+def test_the_theme_follows_the_system_unless_chosen_and_is_set_before_the_first_paint() -> None:
+    html = (WEB / "index.html").read_text()
+    assert html.index("draft-assistant-theme") < html.index('href="/style.css"'), "applied before the stylesheet paints"
+    assert ':root[data-theme="light"] { color-scheme: light; }' in CSS and 'color-scheme: dark;' in CSS
+    assert ':root:not([data-theme="light"])' in CSS, "the system's dark scheme does not override a chosen light theme"
+    assert "THEMES = ['auto', 'light', 'dark']" in JS and "delete document.documentElement.dataset.theme" in JS
+
+
+def test_the_inline_theme_script_leaves_no_global_that_app_js_could_clash_with() -> None:
+    head = (WEB / "index.html").read_text().split("</head>")[0]
+    inline = head[head.index("<script>"): head.index("</script>")]
+    assert "(function ()" in inline and "var theme" not in inline, "a global `var theme` once stopped app.js from loading"
+
+
+def test_a_failed_projection_never_leaves_an_older_table_and_my_score_is_shown_under_both_projections() -> None:
+    fetch_league = JS[JS.index("async function fetchPlannerLeague"): JS.index("function scheduleRefresh()")]
+    assert fetch_league.count("plannerLeague = null") >= 3, "other categories, a refused answer and a failed request all clear it"
+    league = JS[JS.index("function renderLeague()"): JS.index("// A gone entry back to an unseen pick")]
+    assert "if the others draft like you" in league and "if they draft by ADP" in league
+    assert "Your team in this projection" in league and "projected.myPlayers" in league

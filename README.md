@@ -15,7 +15,7 @@ python run_dashboard.py
 The page opens at `http://127.0.0.1:8001/`. The server listens on your computer only and the page loads nothing from
 the internet, so it keeps working if the connection drops during the draft.
 
-Your picks are kept in the browser, so reloading the page mid-draft loses nothing. **Reset draft** clears them.
+Your picks are kept in the browser, so reloading the page mid-draft loses nothing. **Reset draft** (top bar, press twice; **New mock draft** in a mock draft) clears them.
 
 ## Using the page
 
@@ -58,7 +58,8 @@ for a window of about 2500 x 1476 placed on the right half of a wide screen, wit
 the recommendation column is on the dashboard's left edge, next to the seam. From left to right: recommendation, plan
 and category strength; the table (search, position chips, the last logged pick with Undo, then the players); your
 roster and the log; the 14 teams (Projected above So far). Settings (categories, score, who will still
-be there, Reset) open from the button in the top bar, which also shows the choices in one line.
+be there) open from the button in the top bar, which also shows the choices in one line. Next to it are the **Theme** button
+(Auto follows the system, Light and Dark are remembered in this browser) and **Reset draft**.
 
 Narrower windows keep the same panels and fold them into a tab strip, in this order as the window shrinks: 14 teams
 and log at 2349 px, then your roster and category strength at 1719 px, then the plan and the table at 1239 px. The

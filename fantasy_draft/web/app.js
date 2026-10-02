@@ -10,6 +10,7 @@ const MOCK = location.pathname === '/mock' || location.pathname.startsWith('/moc
 const API = MOCK ? '/mock/api' : '/api';
 const STORAGE_KEY = 'draft-assistant-v2';
 const ASIDE_KEY = 'draft-assistant-unconfirmed'; // a browser copy the file replaced, kept so nothing is lost
+const THEME_KEY = 'draft-assistant-theme'; // 'light', 'dark' or absent (follow the system): a per-browser convenience
 const TAB_KEY = 'draft-assistant-tab'; // the tab last open, a per-browser convenience
 const SYNC_KEY = 'draft-assistant-sync'; // which file version the browser copy is based on, and whether the server has it
 let draftId = ''; // set from /api/draft before anything is read or written
@@ -349,10 +350,12 @@ async function fetchPlannerLeague(requestId, body) {
       plannerKeys = keysAsked;
     } else {
       plannerFailed = true;
+      plannerLeague = null; // never leave the table of an older log standing for this one
     }
   } catch (error) {
     if (requestId !== latestRequest) return;
     plannerFailed = true;
+    plannerLeague = null;
   }
   plannerPending = false;
   renderLeague();
@@ -507,6 +510,8 @@ async function autoPlayOthers() {
   await refresh();
 }
 
+const resetLabel = () => (state.rehearsal ? 'New mock draft' : 'Reset draft');
+
 function reset() {
   const button = $('reset');
   if (!resetArmed) {
@@ -514,12 +519,12 @@ function reset() {
     button.textContent = 'Click again to clear every pick';
     setTimeout(() => {
       resetArmed = false;
-      button.textContent = 'Reset draft';
+      button.textContent = resetLabel();
     }, 3500);
     return;
   }
   resetArmed = false;
-  button.textContent = 'Reset draft';
+  button.textContent = resetLabel();
   state.picks = [];
   state.history = [];
   if (state.rehearsal) state.seed = Math.floor(Math.random() * 1000000) + 1; // a new rehearsal is a different draft
@@ -590,6 +595,7 @@ function renderSettingsSummary() {
 }
 
 function renderTopBar() {
+  if (!resetArmed) $('reset').textContent = resetLabel();
   $('app').dataset.mode = state.rehearsal ? 'mock' : 'real';
   $('mode-real').setAttribute('aria-current', state.rehearsal ? 'false' : 'page');
   $('mode-mock').setAttribute('aria-current', state.rehearsal ? 'page' : 'false');
@@ -633,6 +639,27 @@ function wireTabs() {
   }
   window.addEventListener('resize', syncTabs);
   syncTabs();
+}
+
+// Auto (the system), Light, Dark: one button, remembered in this browser
+const THEMES = ['auto', 'light', 'dark'];
+let themeChoice = 'auto';
+
+function applyTheme() {
+  if (themeChoice === 'auto') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = themeChoice;
+  $('theme').textContent = `Theme: ${themeChoice[0].toUpperCase()}${themeChoice.slice(1)}`;
+}
+
+function cycleTheme() {
+  themeChoice = THEMES[(THEMES.indexOf(themeChoice) + 1) % THEMES.length];
+  applyTheme();
+  try {
+    if (themeChoice === 'auto') localStorage.removeItem(THEME_KEY);
+    else localStorage.setItem(THEME_KEY, themeChoice);
+  } catch (error) {
+    // Storage blocked: the choice lasts until the page is reloaded
+  }
 }
 
 function toggleSettings() {
@@ -1165,6 +1192,16 @@ function renderLeague() {
   const projectedNote = usingPlanner
     ? `${projected.basis}: logged picks, then every team, yours too, takes the first player of its own best plan in turn. It shows what well-informed teams would end up with, not who will be available, and your league is probably easier.${projected.fallbacks ? ` ${plural(projected.fallbacks, 'pick')} fell back to ADP order.` : ''}`
     : `${projected.basis}: logged picks, your best plan for your team, and the other teams filled in ADP order with lineup limits. Your team is built to these categories and the others are not, so it tends to come first.`;
+  // My Score under both ways of completing the league, whichever one is shown: how much of it depends on the rivals
+  const mineScore = (table) => (table.teams.find((team) => team.mine) || {}).score;
+  const withPlanner = plannerLeague !== null && plannerKeys === JSON.stringify(state.categories) ? mineScore(plannerLeague) : null;
+  const withAdp = mineScore(analysis.league.projected);
+  const range = withPlanner !== null && withPlanner !== undefined && withAdp !== undefined && withAdp !== null
+    ? h('p', { class: 'range' }, `Your projected Score: ${oneDecimal(withPlanner)} if the others draft like you, ${oneDecimal(withAdp)} if they draft by ADP (of ${keys.length}).`)
+    : null;
+  const myTeam = usingPlanner && projected.myPlayers
+    ? h('p', { class: 'note' }, `Your team in this projection: ${projected.myPlayers.map(nameOf).join(', ')}. It can differ from your plan, which is made before the others pick.`)
+    : null;
   const now = analysis.league;
   const nowNote = `The first ${now.size} pick${now.size === 1 ? '' : 's'} of every team. Totals per game; FG% and FT% are real ratios; fewer turnovers is better.${now.waiting ? ` ${plural(now.waiting, 'team')} yet to make pick ${now.size} ${now.waiting === 1 ? 'is' : 'are'} scaled up to it, and a scaled team usually drops a little when it picks.` : ''}${now.leftOut ? ` ${plural(now.leftOut, 'team')} with no player yet ${now.leftOut === 1 ? 'is' : 'are'} left out.` : ''}`;
   const uncounted = now.notCounted ? ` ${plural(now.notCounted, 'pick')} not counted (unseen, gone or not in the list).` : '';
@@ -1173,8 +1210,10 @@ function renderLeague() {
     h('h3', {}, 'Projected'),
     switcher,
     status ? h('p', { class: 'note league-status', role: 'status' }, status) : null,
+    range,
     leagueTable(projected, keys, labels),
     h('p', { class: 'note' }, projectedNote),
+    myTeam,
     h('h3', {}, 'So far'),
     leagueTable(now, keys, labels),
     h('p', { class: 'note' }, nowNote + uncounted),
@@ -1463,6 +1502,7 @@ function wireControls() {
   $('behind').addEventListener('click', toggleBehind);
   $('behind-form').addEventListener('submit', submitBehind);
   $('reset').addEventListener('click', reset);
+  $('theme').addEventListener('click', cycleTheme);
   $('search').addEventListener('input', (event) => {
     state.search = event.target.value;
     renderPool();
@@ -1524,6 +1564,13 @@ async function init() {
   if (server.problem) showError(server.problem, false, true);
   else if (serverVersion > 0 && !draftRefused) showSaved('Saved', true); // the file is what was loaded: say so until the next save
   if (!server.problem && source === 'browser' && !draftRefused && state.picks.length > 0) saveToServer(); // a draft the file does not have yet
+  try {
+    const stored = localStorage.getItem(THEME_KEY);
+    if (stored === 'light' || stored === 'dark') themeChoice = stored;
+  } catch (error) {
+    // follow the system
+  }
+  applyTheme();
   buildCategories();
   buildPositionChips();
   buildPoolHead();
