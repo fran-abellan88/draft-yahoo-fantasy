@@ -55,6 +55,12 @@ Every change is saved to `saved_draft.json` in the project folder (not tracked b
 backup. The file survives a closed tab, cleared browser data and a different port, so the draft is still there if the
 dashboard starts on 8002 instead of 8001. Two things to know:
 
+- To try things out without touching the real draft, start a second instance with its own file:
+  `python run_dashboard.py --port 8002 --draft-file /tmp/trial.json`. The startup line prints the file in use. Instances
+  that share a file share one draft.
+- A save that would empty a draft with picks (Reset, for one) first copies the old file to `saved_draft.previous.json`.
+- If the server could not be reached for a while, the browser copy can be newer than the file; the page notices (it
+  records which file version the copy is based on and whether the server confirmed it) and uses the newer one.
 - If you open the dashboard in two windows, the one that saves second is refused ("changed in another window"); reload it.
 - If the saved draft cannot be loaded (an unknown player, an unseen pick on one of yours), the page says so and keeps
   the file as it is; nothing is saved until you press **Reset**. A file that is not valid at all is renamed to
