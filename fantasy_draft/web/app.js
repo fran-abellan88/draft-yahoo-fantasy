@@ -980,7 +980,7 @@ function oddsCell(value) {
 // The Score column has its own colour map, one hue across the whole range of scores still on the board (5th to 95th
 // percentile, so a few outliers do not flatten it). The stat columns keep the other hue and a fainter tint.
 const SCORE_TINT_MIN = 8;
-const SCORE_TINT_MAX = 46;
+const SCORE_TINT_MAX = 40;
 let scoreRange = { low: 0, high: 1 };
 
 function updateScoreRange() {
@@ -1000,7 +1000,7 @@ function scoreTint(score) {
 function statCell(column, player, row) {
   const score = row.categoryScores[column.key];
   const ticked = state.categories.includes(column.key);
-  const style = ticked && score !== null && score !== undefined ? `background: color-mix(in srgb, var(--cool) ${Math.round(Math.max(0, Math.min(100, score)) * 0.28)}%, transparent)` : '';
+  const style = ticked && score !== null && score !== undefined ? `background: color-mix(in srgb, var(--cool) ${Math.round(Math.max(0, Math.min(100, score)) * 0.22)}%, transparent)` : '';
   return h('td', { class: ticked ? '' : 'dim', style }, column.kind === 'rate' ? formatRate(player.stats[column.key]) : oneDecimal(player.stats[column.key]));
 }
 

@@ -48,6 +48,13 @@ TEXT_PAIRS: List[Tuple[str, str, str]] = [
     ("mine", "mine-soft", "snake cells for my picks already made"),
     ("mine", "surface", "snake cells for my coming picks, roster pick numbers"),
     ("muted", "surface", "secondary text on cards"),
+    ("muted", "raised", "table headers, labels inside a card"),
+    ("ink", "raised", "inputs, league tables, buttons"),
+    ("cool", "surface", "odds and ranks as text"),
+    ("flag", "surface", "warnings as text"),
+    ("danger", "surface", "errors as text"),
+    ("flag", "flag-soft", "badges and the search note"),
+    ("danger", "danger-soft", "the error banner"),
     ("ink", "hover", "the row under the pointer, the main click target"),
     ("muted", "hover", "player details on the hovered row"),
     ("paper", "ink", "snake cell on the clock, active filter chip"),
@@ -386,3 +393,29 @@ def test_the_columns_grow_together_the_table_starts_on_adp_and_the_score_has_its
     for kind in ("planner", "adp", "both"):
         assert f".predict-mark.{kind}" in CSS
     assert "'both'" in JS
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_ink_stays_readable_on_the_score_map_and_the_log_tags(theme: str) -> None:
+    tokens = _themes()[theme]
+    # the strongest each fill reaches, and what it can sit on: the Score cell on a hovered row, a tag only in the log
+    for name, share, bases in (("score", 0.40, ("surface", "hover")), ("tag-planner", 0.42, ("surface",)), ("tag-adp", 0.42, ("surface",))):
+        for base in bases:
+            ratio = _contrast(tokens["ink"], _blend(tokens[name], tokens[base], share))
+            assert ratio >= WCAG_TEXT, f"ink on the strongest {name} fill over {base} in {theme} mode is {ratio:.2f}:1"
+    assert _contrast(tokens["muted"], _blend(tokens["cool"], tokens["surface"], 0.22)) >= 4.0, "dim text on the strongest stat tint"
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_panels_stand_apart_from_the_page_and_the_inside_of_a_card_from_the_card(theme: str) -> None:
+    tokens = _themes()[theme]
+    assert _contrast(tokens["paper"], tokens["surface"]) >= 1.15, "a card must be visible against the page"
+    assert _contrast(tokens["surface"], tokens["raised"]) >= 1.07, "a table header or input must be visible inside a card"
+    assert _contrast(tokens["line"], tokens["surface"]) >= 1.4, "hairlines must be visible"
+    assert "#ffffff" not in {value.lower() for key, value in tokens.items() if key in ("paper", "surface", "raised")}, "no pure white"
+
+
+def test_every_panel_is_a_card() -> None:
+    cards = re.search(r"(\.team, [^{]*)\{([^}]*)\}", CSS)
+    assert cards and all(name in cards.group(1) for name in (".panel.log", ".seam-standing", ".teams"))
+    assert "background: var(--surface)" in cards.group(2) and "border-radius" in cards.group(2)
