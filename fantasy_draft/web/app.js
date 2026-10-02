@@ -75,25 +75,93 @@ const detailOf = (id) => {
 };
 
 // ---------- persistence ----------
+// The draft is kept in two places: a file next to the project, written by the server (it survives a closed browser
+// and a change of port), and this browser's storage as a backup for when the server cannot be reached.
+let serverVersion = 0; // the version of the file this page last saw
+let draftRefused = false; // the saved draft could not be loaded: it is kept as it is until Reset
+let serverSaveBlocked = false; // another window saved first: this one must reload before it saves
+let serverSaving = false;
+let serverSaveAgain = false;
+
+function currentSavedState() {
+  return { version: 2, picks: state.picks, history: state.history, categories: state.categories, gamesAdjusted: state.gamesAdjusted, method: state.method, rule: state.rule };
+}
+
 function saveState() {
+  if (draftRefused) return; // never write over a draft this page could not read
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 2, picks: state.picks, history: state.history, categories: state.categories, gamesAdjusted: state.gamesAdjusted, method: state.method, rule: state.rule }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(currentSavedState()));
   } catch (error) {
     // Private mode or blocked storage: the draft still works, it just will not survive a refresh
   }
+  saveToServer();
 }
 
-function restoreState() {
-  let saved = null;
+// One save at a time, always of the latest state, each naming the version the last one produced
+async function saveToServer() {
+  if (serverSaveBlocked) return;
+  if (serverSaving) {
+    serverSaveAgain = true;
+    return;
+  }
+  serverSaving = true;
   try {
-    saved = pickSavedState(JSON.parse(localStorage.getItem(STORAGE_KEY)), JSON.parse(localStorage.getItem(LEGACY_STORAGE_KEY)));
+    do {
+      serverSaveAgain = false;
+      const response = await fetch('/api/draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ baseVersion: serverVersion, state: currentSavedState() }),
+      });
+      const data = await response.json();
+      if (response.status === 409) {
+        serverSaveBlocked = true;
+        showError(data.error, false, true);
+        return;
+      }
+      if (!response.ok) {
+        showError(`The draft could not be saved on disk: ${data.error}. It is still kept in this browser.`);
+        return;
+      }
+      serverVersion = data.version;
+    } while (serverSaveAgain);
   } catch (error) {
-    saved = null;
+    showError('The draft could not be saved on disk because the server cannot be reached. It is still kept in this browser.');
+  } finally {
+    serverSaving = false;
+  }
+}
+
+// What the server has saved: {version, state, problem}. The page works without it, from the browser's own copy.
+async function loadServerDraft() {
+  try {
+    const response = await fetch('/api/draft');
+    if (!response.ok) return { version: 0, state: null, problem: null };
+    return await response.json();
+  } catch (error) {
+    return { version: 0, state: null, problem: null };
+  }
+}
+
+function restoreState(fromServer) {
+  let saved = fromServer;
+  if (!saved) {
+    try {
+      saved = pickSavedState(JSON.parse(localStorage.getItem(STORAGE_KEY)), JSON.parse(localStorage.getItem(LEGACY_STORAGE_KEY)));
+    } catch (error) {
+      saved = null;
+    }
   }
   const allKeys = pool.categories.map((category) => category.key);
   state.categories = allKeys;
   if (!saved || typeof saved !== 'object') return;
-  state.picks = normalizePicks(saved.picks, new Set(playerById.keys()), pool.myPicks) || [];
+  const picks = normalizePicks(saved.picks, new Set(playerById.keys()), pool.myPicks);
+  if (picks === null) {
+    // Not replaced by an empty draft: nothing is saved until the user chooses Reset
+    draftRefused = true;
+    showError('The saved draft could not be loaded (a pick is unknown or in a place the draft does not allow). It is kept as it is. Reset starts a new draft.', false, true);
+  }
+  state.picks = picks || [];
   state.history = sanitizeHistory(saved.history, state.picks);
   if (Array.isArray(saved.categories) && saved.categories.length > 0 && saved.categories.every((key) => allKeys.includes(key))) {
     state.categories = allKeys.filter((key) => saved.categories.includes(key));
@@ -112,13 +180,19 @@ function ruleForRequest() {
     : { type: 'probability', baseSd: rule.baseSd, sdPerAdp: rule.sdPerAdp, threshold: rule.threshold };
 }
 
-function showError(message, retryable = false) {
+// A sticky message is about the saved draft, not about one request: a successful analysis must not clear it
+let stickyError = false;
+
+function showError(message, retryable = false, sticky = false) {
+  stickyError = sticky;
   $('error-text').textContent = message;
   $('error-retry').hidden = !retryable;
   $('error').hidden = false;
 }
 
-function hideError() {
+function hideError(force = false) {
+  if (stickyError && !force) return;
+  stickyError = false;
   $('error').hidden = true;
 }
 
@@ -176,7 +250,7 @@ async function refresh() {
     if (requestId !== latestRequest) return;
     setBusy(false);
     markRefreshFailed();
-    showError("Can't reach the draft server. Your picks are saved in this browser. Check that run_dashboard.py is still running.", true);
+    showError("Can't reach the draft server. Your picks are saved. Check that run_dashboard.py is still running.", true);
     return;
   }
   let data;
@@ -309,6 +383,8 @@ function reset() {
   button.textContent = 'Reset draft';
   state.picks = [];
   state.history = [];
+  draftRefused = false;
+  hideError(true);
   saveState();
   refresh();
 }
@@ -983,7 +1059,11 @@ async function init() {
     return;
   }
   for (const player of pool.players) playerById.set(player.id, player);
-  restoreState();
+  const server = await loadServerDraft();
+  serverVersion = server.version;
+  restoreState(server.state);
+  if (server.problem) showError(server.problem, false, true);
+  else if (!server.state && !draftRefused && state.picks.length > 0) saveToServer(); // a draft that so far lives only in this browser
   buildCategories();
   buildPositionChips();
   buildPoolHead();

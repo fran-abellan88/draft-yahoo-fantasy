@@ -166,3 +166,13 @@ def test_the_choosing_note_holds_the_confirmation_and_blocks_a_second_click_and_
     assert "choosing.pending.text" in note and "applyChosen" in note and "scrollIntoView" in note
     assert "$('outside').disabled = analysis.clock.draftComplete || choosing !== null" in note
     assert "if (choosing.pending) return;" in note
+
+
+def test_the_page_saves_to_the_server_one_save_at_a_time_and_never_over_a_draft_it_could_not_read() -> None:
+    save = JS[JS.index("function saveState"): JS.index("async function loadServerDraft")]
+    assert "if (draftRefused) return;" in save, "a refused draft is kept, not replaced"
+    assert "baseVersion: serverVersion" in save and "response.status === 409" in save
+    assert "serverSaveAgain" in save, "one save in flight, then the latest state"
+    assert "stickyError" in JS and "hideError(true)" in JS, "only Reset clears a message about the saved draft"
+    init = JS[JS.index("async function init"):]
+    assert "loadServerDraft()" in init and "restoreState(server.state)" in init
