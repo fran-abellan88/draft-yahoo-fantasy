@@ -7,6 +7,24 @@ TEAMS = 14
 MY_SLOT = 2
 ROSTER_SIZE = 13
 
+# The league's 14 teams by draft slot (Yahoo's "2026 draft order", round 1). Slot 2 is the user's team.
+TEAM_NAMES: Tuple[str, ...] = (
+    "Monty va al mar",
+    "Fran'stastic Team",
+    "Raw Power",
+    "Irish Beer",
+    "Los Excremento Kings",
+    "ET Team",
+    "Tizona Burgos",
+    "Mallorca Red Devils",
+    "ShowtimeJony",
+    "Pechos Fríos",
+    "Espuelas Team",
+    "3 Olive trees Punhales",
+    "X-lan Trail Brazzers",
+    "Karl Malone de la Isla",
+)
+
 
 def snake_pick(slot: int, round_number: int, teams: int = TEAMS) -> int:
     """Return the overall pick number of `slot` in `round_number` (both 1-based) of a snake draft."""
@@ -16,6 +34,15 @@ def snake_pick(slot: int, round_number: int, teams: int = TEAMS) -> int:
         raise ValueError("Rounds start at 1")
     position = slot if round_number % 2 == 1 else teams - slot + 1
     return (round_number - 1) * teams + position
+
+
+def slot_of_pick(number: int, teams: int = TEAMS) -> int:
+    """Return the draft slot that makes overall pick `number` (1-based) of a snake draft."""
+    if number < 1:
+        raise ValueError("Picks start at 1")
+    round_number = (number - 1) // teams + 1
+    position = (number - 1) % teams + 1
+    return position if round_number % 2 == 1 else teams - position + 1
 
 
 def my_picks(slot: int = MY_SLOT, rounds: int = 8, teams: int = TEAMS) -> List[int]:

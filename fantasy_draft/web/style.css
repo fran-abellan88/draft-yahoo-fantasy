@@ -199,6 +199,7 @@ td.player .notes { margin-top: 3px; }
 .profile-legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
 .profile-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; }
 .log li { display: grid; grid-template-columns: 38px 1fr; gap: 8px; padding: 4px 0; font-size: 13px; color: var(--muted); }
+.team-name { margin: 0 6px; color: var(--muted); font-weight: 400; font-size: 12px; }
 .log li.mine { color: var(--mine); font-weight: 650; }
 .log li.edit-panel { display: block; padding: 8px; margin: 2px 0 6px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); }
 .edit-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 6px; }

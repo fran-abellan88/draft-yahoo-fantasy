@@ -17,7 +17,7 @@ import pandas as pd
 
 from fantasy_draft.availability import AdpWindow, AvailabilityRule, NormalAdpModel
 from fantasy_draft.categories import CATEGORIES, categories_in
-from fantasy_draft.draft import MY_SLOT, PICK_KINDS, ROSTER_SIZE, TEAMS, DraftState, Pick, my_picks
+from fantasy_draft.draft import MY_SLOT, PICK_KINDS, ROSTER_SIZE, TEAM_NAMES, TEAMS, DraftState, Pick, my_picks, slot_of_pick
 from fantasy_draft.flags import build_flags
 from fantasy_draft.optimizer import FirstPickOption, Plan, Recommendation, plan_picks, team_profile
 from fantasy_draft.scoring import METHODS, Bounds, category_scores, composite_score, compute_bounds
@@ -120,7 +120,13 @@ class DraftService:
             )
         return {
             "ruleLimits": {key: {"default": d, "min": low, "max": high} for key, (d, low, high) in RULE_LIMITS.items()},
-            "league": {"teams": self.teams, "slot": self.slot, "rounds": self.rounds, "rosterSize": ROSTER_SIZE},
+            "league": {
+                "teams": self.teams,
+                "slot": self.slot,
+                "rounds": self.rounds,
+                "rosterSize": ROSTER_SIZE,
+                "teamNames": list(TEAM_NAMES),
+            },
             "myPicks": my_picks(self.slot, ROSTER_SIZE, self.teams),
             "categories": [
                 {"key": key, "label": CATEGORIES[key].label, "lowerIsBetter": CATEGORIES[key].lower_is_better} for key in self.keys
@@ -199,7 +205,17 @@ class DraftService:
             "recommendation": self._recommendation(best, next_mine),
             "lookFirst": self._look_first(pool, best, rule, clock, state),
             "roster": [{"id": pick.player_id, "kind": pick.kind, "pick": number} for number, pick in numbered if number in mine_numbers],
-            "log": [{"pick": number, "kind": pick.kind, "id": pick.player_id, "mine": number in mine_numbers} for number, pick in numbered],
+            "log": [
+                {
+                    "pick": number,
+                    "kind": pick.kind,
+                    "id": pick.player_id,
+                    "mine": number in mine_numbers,
+                    "slot": slot_of_pick(number, self.teams),
+                    "team": TEAM_NAMES[slot_of_pick(number, self.teams) - 1],
+                }
+                for number, pick in numbered
+            ],
             "profile": {
                 "roster": self._profile(list(mine), keys),
                 "plan": self._profile(list(mine) + list(best.player_ids), keys) if best else None,
@@ -270,6 +286,7 @@ class DraftService:
             "round": round_number,
             "pickInRound": position,
             "slotOnClock": on_clock,
+            "teamOnClock": TEAM_NAMES[on_clock - 1],
             "reversed": round_number % 2 == 0,
             "isMine": on_clock == self.slot,
             "nextMyPick": next_mine,

@@ -69,6 +69,7 @@ const pct = (value) => `${Math.round(value * 100)}%`;
 const oneDecimal = (value) => (value === null || value === undefined ? '-' : value.toFixed(1));
 const formatRate = (value) => (value === null || value === undefined ? '-' : value.toFixed(3).replace(/^0/, ''));
 const signed = (value) => `${value > 0 ? '+' : ''}${value.toFixed(1)}`;
+const teamName = (slot) => (pool.league.teamNames ? pool.league.teamNames[slot - 1] : `Slot ${slot}`);
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 const nameOf = (id) => playerById.get(id).name;
 const detailOf = (id) => {
@@ -435,10 +436,10 @@ function renderClock() {
   if (clock.draftComplete) {
     line.textContent = 'The draft is complete.';
   } else if (clock.isMine) {
-    line.textContent = `Pick ${clock.pick} (round ${clock.round}): you're up.`;
+    line.textContent = `Pick ${clock.pick} (round ${clock.round}): ${teamName(pool.league.slot)}, you're up.`;
   } else {
     const wait = clock.picksUntilMine === null ? '' : ` You pick at ${clock.nextMyPick}, after ${plural(clock.picksUntilMine, 'more pick')}.`;
-    line.textContent = `Pick ${clock.pick} (round ${clock.round}): slot ${clock.slotOnClock} is choosing.${wait}`;
+    line.textContent = `Pick ${clock.pick} (round ${clock.round}): ${clock.teamOnClock} is choosing.${wait}`;
   }
 
   const slots = Array.from({ length: pool.league.teams }, (_, index) => index + 1);
@@ -449,12 +450,12 @@ function renderClock() {
     if (slot === pool.league.slot) classes.push('me');
     if (!clock.draftComplete && position < clock.pickInRound) classes.push('done');
     if (!clock.draftComplete && position === clock.pickInRound) classes.push('now');
-    return h('div', { class: classes.join(' ') }, slot);
+    return h('div', { class: classes.join(' '), title: teamName(slot) }, slot);
   });
   put($('snake'), ...cells);
   $('snake-note').textContent = clock.reversed
-    ? `Round ${clock.round}: picks run right to left. Slot numbers shown, yours is outlined.`
-    : `Round ${clock.round}: picks run left to right. Slot numbers shown, yours is outlined.`;
+    ? `Round ${clock.round}: picks run right to left. Hover a slot for the team; yours is outlined.`
+    : `Round ${clock.round}: picks run left to right. Hover a slot for the team; yours is outlined.`;
   $('undo').disabled = state.picks.length === 0;
   $('undo').textContent = undoLabel(state.picks, state.history, nameOf);
   $('outside').disabled = analysis.clock.draftComplete;
@@ -464,7 +465,7 @@ function renderClock() {
 function renderLastPick() {
   const entries = analysis.log;
   const last = entries[entries.length - 1];
-  $('last-pick').textContent = last ? `Logged pick ${last.pick}: ${logLabel(last)}.` : 'Nothing logged yet.';
+  $('last-pick').textContent = last ? `Logged pick ${last.pick} (${last.team}): ${logLabel(last)}.` : 'Nothing logged yet.';
 }
 
 function renderSettingsSummary() {
@@ -1002,7 +1003,7 @@ function renderLog() {
       editing = editing && editing.pick === entry.pick ? null : { pick: entry.pick, pending: null, error: null };
       renderLog();
     } }, 'Edit'));
-    const row = h('li', { class: entry.mine ? 'mine' : '' }, h('span', {}, `#${entry.pick}`), h('span', {}, logLabel(entry), ...buttons));
+    const row = h('li', { class: entry.mine ? 'mine' : '' }, h('span', {}, `#${entry.pick}`), h('span', {}, logLabel(entry), h('span', { class: 'team-name' }, entry.team), ...buttons));
     return editing && editing.pick === entry.pick ? [row, editPanel(entry)] : [row];
   });
   put(list, ...rows);

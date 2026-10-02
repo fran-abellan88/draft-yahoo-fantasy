@@ -27,7 +27,8 @@ def _ask(service: DraftService, picks: List[str], **extra: Any) -> Dict[str, Any
 
 def test_pool_payload_describes_the_league_and_every_player(service: DraftService) -> None:
     payload = service.pool_payload()
-    assert payload["league"] == {"teams": 14, "slot": 2, "rounds": 8, "rosterSize": 13}
+    league = {key: payload["league"][key] for key in ("teams", "slot", "rounds", "rosterSize")}
+    assert league == {"teams": 14, "slot": 2, "rounds": 8, "rosterSize": 13}
     assert payload["myPicks"][:8] == [2, 27, 30, 55, 58, 83, 86, 111]
     assert [c["key"] for c in payload["categories"]] == ALL
     assert next(c for c in payload["categories"] if c["key"] == "to")["lowerIsBetter"] is True
@@ -296,7 +297,7 @@ def test_a_pick_outside_the_list_advances_the_draft_and_removes_nobody(service: 
     assert plain["clock"]["pick"] == 2 and after["clock"]["pick"] == 3
     assert after["roster"] == [{"id": None, "kind": "outside", "pick": 2}]
     assert [entry["kind"] for entry in after["log"]] == ["player", "outside"]
-    assert after["log"][1] == {"pick": 2, "kind": "outside", "id": None, "mine": True}
+    assert after["log"][1] == {"pick": 2, "kind": "outside", "id": None, "mine": True, "slot": 2, "team": "Fran'stastic Team"}
     assert {row["id"] for row in after["pool"]} == {row["id"] for row in plain["pool"]}
     assert after["plans"], "there is still a plan for the later picks"
 
@@ -339,7 +340,7 @@ def test_unseen_picks_advance_the_clock_and_show_in_the_log(service: DraftServic
     answer = _ask(service, ids[:20] + [UNSEEN] * 6)
     assert answer["clock"]["pick"] == 27 and answer["clock"]["isMine"] is True
     assert [entry["kind"] for entry in answer["log"][-7:-5]] == ["player", "unseen"]
-    assert answer["log"][-1] == {"pick": 26, "kind": "unseen", "id": None, "mine": False}
+    assert answer["log"][-1] == {"pick": 26, "kind": "unseen", "id": None, "mine": False, "slot": 3, "team": "Raw Power"}
     assert {row["id"] for row in answer["pool"]} == set(ids[20:]), "an unseen pick removes nobody from the pool"
 
 
@@ -423,3 +424,17 @@ def test_look_first_is_empty_when_nothing_is_unseen_or_it_is_not_my_turn(service
     assert _ask(service, ids[:26], method="uncapped", gamesAdjusted=True)["lookFirst"] == [], "my turn but the pool is exactly what is left"
     assert _ask(service, ids[:10] + [UNSEEN] * 3)["lookFirst"] == [], "pick 14 is not mine"
     assert _ask(service, [])["lookFirst"] == []
+
+
+def test_the_team_names_follow_the_snake_order_and_slot_2_is_the_users_team(service: DraftService) -> None:
+    from fantasy_draft.draft import TEAM_NAMES, slot_of_pick
+
+    assert len(TEAM_NAMES) == 14 and TEAM_NAMES[1] == "Fran'stastic Team"
+    assert [slot_of_pick(number) for number in (1, 2, 14, 15, 16, 28, 29)] == [1, 2, 14, 14, 13, 1, 1]
+    payload = service.pool_payload()
+    assert payload["league"]["teamNames"][payload["league"]["slot"] - 1] == "Fran'stastic Team"
+    ids = service.players.sort_values("adp_est")["player_id"].tolist()
+    answer = _ask(service, ids[:15])
+    assert answer["log"][1]["team"] == "Fran'stastic Team" and answer["log"][14]["slot"] == 14
+    assert answer["log"][14]["team"] == TEAM_NAMES[13]
+    assert answer["clock"]["teamOnClock"] == TEAM_NAMES[12], "pick 16 goes to slot 13 in the second round"
