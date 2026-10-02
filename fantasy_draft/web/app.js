@@ -411,7 +411,8 @@ function hasUnseenPicks() {
 function rehearsalUndoLabel() {
   const mine = pool.myPicks.filter((number) => number <= state.picks.length);
   const count = state.picks.length - (mine.length ? mine[mine.length - 1] - 1 : 0);
-  return state.picks.length === 0 ? 'Undo' : `Undo: ${plural(count, 'pick')}, back to my pick ${mine.length ? mine[mine.length - 1] : 1}`;
+  if (state.picks.length === 0) return 'Undo';
+  return `Undo: ${plural(count, 'pick')}, back to ${mine.length ? `my pick ${mine[mine.length - 1]}` : 'the start'}`;
 }
 
 function undo() {

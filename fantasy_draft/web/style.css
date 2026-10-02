@@ -168,7 +168,7 @@ button.gone { padding: 1px 8px; font-size: 12px; margin-left: 6px; }
 
 .table-wrap { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow: auto; flex: 1 1 0; min-height: 0; }
 table { border-collapse: collapse; width: 100%; font-size: 14px; }
-th, td { padding: 7px 7px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+th, td { padding: 4px 7px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
 th { position: sticky; top: 0; background: var(--surface); z-index: 1; font-weight: 600; color: var(--muted); font-size: 13px; padding: 0; }
 th button { width: 100%; border: 0; border-radius: 0; background: transparent; padding: 9px 7px; text-align: right; color: inherit; font-weight: inherit; }
 th.left, td.left { text-align: left; }
@@ -178,10 +178,10 @@ th[aria-sort="ascending"] button::after { content: " \25B2"; font-size: 10px; }
 th[aria-sort="descending"] button::after { content: " \25BC"; font-size: 10px; }
 tbody tr { cursor: pointer; }
 tbody tr:hover { background: var(--hover); }
-td.player { min-width: 220px; white-space: normal; }
+td.player { min-width: 260px; white-space: nowrap; }
 td.player strong { font-weight: 650; }
-td.player .meta { color: var(--muted); font-size: 12px; }
-td.player .notes { margin-top: 3px; }
+td.player .meta { display: inline; margin-left: 8px; color: var(--muted); font-size: 12px; }
+td.player .notes { display: inline; margin-left: 4px; }
 .score { font-weight: 700; }
 
 .badge { display: inline-block; margin: 1px 4px 1px 0; padding: 1px 7px; border-radius: 999px; font-size: 12px; background: var(--flag-soft); color: var(--flag); }
@@ -274,13 +274,12 @@ body { margin: 0; }
       "err err err err"
       "rec table team teams"
       "plan table team teams"
-      "tabs table log teams"
-      "standing table log teams";
+      "tabs table team log"
+      "standing table team log";
   }
   /* the strip is not drawn, but the row it would have taken stays as small as it can */
   .app { grid-template-rows: auto auto auto minmax(0, auto) 0 minmax(0, 1fr); }
   .seam-standing { grid-row: 5 / 7; }
-  .panel.log { grid-row: 5 / 7; }
 }
 
 /* 1720 to 2349: 14 teams and the log share a tab panel under the team */

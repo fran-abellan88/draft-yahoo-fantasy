@@ -72,13 +72,15 @@ last-pick line and the snake strip (hover a slot).
 - **14 teams** shows every team's totals per game (FG% and FT% as real ratios, turnovers reversed), tinted by rank.
   Projected means the logged picks, your best plan for your team and the other teams filled in ADP order with lineup
   limits. It is a picture of the league, not a prediction of who will be available.
-- **Rehearsal** (top bar) makes the other 13 teams pick automatically: best ADP left that keeps their lineup startable,
-  blurred a little by the same spread as the availability model and seeded, so a rehearsal can be repeated and the next
-  one differs. In a rehearsal Undo goes back to just before your last pick. The top bar says "Rehearsal" so it cannot
-  be mistaken for the real draft; press Rehearsal again to turn it off. Reset starts a new seed.
+- **Rehearsal** is a separate instance, never a button in the live draft: start it with
+  `python run_dashboard.py --rehearsal --draft-file /tmp/rehearsal.json` (it refuses the real draft file). The other 13
+  teams then pick automatically: best ADP left that keeps their lineup startable, blurred a little by the same spread
+  as the availability model and seeded, so a rehearsal can be repeated and the next one differs. The top bar says
+  "Rehearsal", the startup line says so too, and the live instance refuses automatic picks. Undo goes back to just
+  before your last pick and its label says how many picks that removes. Reset starts a new seed.
 - **Favour the categories I can still win** (Settings, off by default) weights each ticked category by how close you
   are to the other teams in it: more where you are close, less where you dominate or cannot catch up. It starts after
-  the first complete round, reaches full effect after four, never moves a weight further than 40% from 1, and never
+  the first complete round, reaches full effect after four, keeps every weight within 40% of 1, and never
   brings back an unticked category. The weights in use are listed under Standing.
 - The table marks the recommended player with a star and the players in the plan with their pick ("plan: 58"), tints
   each stat by how good it is in its category and the odds by how likely he is to last, dims unticked categories, and
@@ -86,6 +88,9 @@ last-pick line and the snake strip (hover a slot).
   player scores higher. Your roster is shown as the ten starting slots and the bench.
 
 ### Where the draft is saved
+
+The startup line says how many picks the file holds ("Continuing a saved draft: 3 picks") and the page says so when it
+loads, so a leftover draft is never a surprise.
 
 Every change is saved to `saved_draft.json` in the project folder (not tracked by git), and also in the browser as a
 backup. The file survives a closed tab, cleared browser data and a different port, so the draft is still there if the
