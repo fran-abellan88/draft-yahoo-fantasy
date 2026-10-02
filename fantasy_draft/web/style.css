@@ -9,6 +9,7 @@
   --line: #d8dee6;
   --mine: #0f7b55;
   --mine-soft: #dff3ea;
+  --cool: #2b6cb0; /* odds, stat tints, ranks, ticked controls: not green, which means yours */
   --on-mine: #ffffff; /* text on a --mine background */
   --flag: #9a4a05;
   --flag-soft: #fdf0dc;
@@ -29,6 +30,7 @@
     --line: #2b3949;
     --mine: #3ecf9b;
     --mine-soft: #143a2e;
+    --cool: #6aa9ff;
     --on-mine: #06281d;
     --flag: #f0a95a;
     --flag-soft: #3a2a14;
@@ -110,7 +112,7 @@ tr.unconfirmed { opacity: 0.6; }
 /* Controls */
 .categories { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; }
 .categories label, .choice { display: flex; gap: 8px; align-items: center; cursor: pointer; }
-.categories input[type="checkbox"], .choice input { width: 17px; height: 17px; accent-color: var(--mine); }
+.categories input[type="checkbox"], .choice input { width: 17px; height: 17px; accent-color: var(--cool); }
 
 .choice.method { margin-top: 10px; }
 .choice.games { margin-top: 12px; font-weight: 600; }
@@ -156,8 +158,8 @@ button.gone { padding: 1px 8px; font-size: 12px; margin-left: 6px; }
 
 .meter { display: grid; gap: 3px; font-size: 12px; color: var(--muted); }
 .meter .track { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
-.meter .fill { height: 100%; background: var(--mine); }
-.meter .fill.low { background: var(--flag); }
+.meter .fill { height: 100%; background: var(--cool); }
+.meter .fill.low { background: var(--taken); }
 
 /* Pool */
 .filters { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; align-items: center; }
@@ -196,7 +198,7 @@ td.player .notes { display: inline; margin-left: 4px; }
 .profile-row .bars { display: grid; gap: 3px; }
 .profile-row .bar { height: 7px; background: var(--line); border-radius: 4px; overflow: hidden; }
 .profile-row .bar > span { display: block; height: 100%; }
-.profile-row .bar.roster > span { background: var(--mine); }
+.profile-row .bar.roster > span { background: var(--cool); }
 .profile-row .bar.plan > span { background: var(--taken); }
 .profile-legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
 .profile-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; }

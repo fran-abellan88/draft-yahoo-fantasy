@@ -18,6 +18,7 @@ too, and POSTs must be `application/json`, which a foreign page cannot send with
     POST /api/autopick   the pick the team on the clock would make (rehearsal)
 """
 
+import hashlib
 import json
 import socketserver
 from functools import partial
@@ -68,7 +69,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._send_json(HTTPStatus.OK, self.service.pool_payload())
         elif path == "/api/draft":
             version, state, problem = self.saved.load()
-            self._send_json(HTTPStatus.OK, {"version": version, "state": state, "problem": problem})
+            # The id names this draft file in this mode, so the page can keep its browser copy per draft, not per port:
+            # a rehearsal and the live draft may share a port one after the other and must never share a copy
+            ident = hashlib.sha1(f"{self.saved.path.resolve()}|{self.service.rehearsal}".encode()).hexdigest()[:12]
+            self._send_json(HTTPStatus.OK, {"id": ident, "version": version, "state": state, "problem": problem})
         else:
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "Not found"})
 

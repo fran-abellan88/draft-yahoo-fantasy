@@ -222,11 +222,14 @@ def test_the_gate_is_in_one_place_not_repeated_in_each_method() -> None:
 
 
 def test_the_saved_draft_round_trips_through_the_server_and_rejects_a_stale_save(base_url: str) -> None:
-    assert json.loads(_get(base_url + "/api/draft")[2]) == {"version": 0, "state": None, "problem": None}
+    empty = json.loads(_get(base_url + "/api/draft")[2])
+    assert {key: empty[key] for key in ("version", "state", "problem")} == {"version": 0, "state": None, "problem": None}
     state = {"version": 2, "picks": [{"kind": "unseen"}], "method": "uncapped"}
     status, payload = _post(base_url + "/api/draft", json.dumps({"baseVersion": 0, "state": state}).encode())
     assert (status, payload) == (200, {"version": 1})
-    assert json.loads(_get(base_url + "/api/draft")[2]) == {"version": 1, "state": state, "problem": None}
+    saved = json.loads(_get(base_url + "/api/draft")[2])
+    assert {key: saved[key] for key in ("version", "state", "problem")} == {"version": 1, "state": state, "problem": None}
+    assert saved["id"] == empty["id"], "the id names the file and mode, so it does not change with the contents"
     status, payload = _post(base_url + "/api/draft", json.dumps({"baseVersion": 0, "state": state}).encode())
     assert status == 409 and payload["version"] == 1 and "another window" in payload["error"]
 
@@ -250,3 +253,17 @@ def test_the_saved_draft_endpoint_is_gated_like_the_rest(base_url: str) -> None:
     headers = {"Host": "evil.example", "Content-Type": "application/json"}
     assert _raw(port, "GET", "/api/draft", headers)[0] == 403
     assert _raw(port, "POST", "/api/draft", headers, b'{"baseVersion": 0, "state": {}}')[0] == 403
+
+
+def test_the_draft_id_names_the_file_and_the_mode_so_browser_copies_never_cross(tmp_path: Any) -> None:
+    ids = set()
+    for name, rehearsal in (("a.json", False), ("a.json", True), ("b.json", False)):
+        server = make_server(DraftService(load_players(), rehearsal=rehearsal), port=0, saved=SavedDraft(tmp_path / name))
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            ids.add(json.loads(_get(f"http://{HOST}:{server.server_address[1]}/api/draft")[2])["id"])
+        finally:
+            server.shutdown()
+            server.server_close()
+    assert len(ids) == 3 and all(len(value) == 12 for value in ids)
