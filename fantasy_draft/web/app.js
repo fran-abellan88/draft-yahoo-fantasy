@@ -10,6 +10,7 @@ const MOCK = location.pathname === '/mock' || location.pathname.startsWith('/moc
 const API = MOCK ? '/mock/api' : '/api';
 const STORAGE_KEY = 'draft-assistant-v2';
 const ASIDE_KEY = 'draft-assistant-unconfirmed'; // a browser copy the file replaced, kept so nothing is lost
+const THEME_KEY = 'draft-assistant-theme'; // 'light', 'dark' or absent (follow the system): a per-browser convenience
 const TAB_KEY = 'draft-assistant-tab'; // the tab last open, a per-browser convenience
 const SYNC_KEY = 'draft-assistant-sync'; // which file version the browser copy is based on, and whether the server has it
 let draftId = ''; // set from /api/draft before anything is read or written
@@ -507,6 +508,8 @@ async function autoPlayOthers() {
   await refresh();
 }
 
+const resetLabel = () => (state.rehearsal ? 'New mock draft' : 'Reset draft');
+
 function reset() {
   const button = $('reset');
   if (!resetArmed) {
@@ -514,12 +517,12 @@ function reset() {
     button.textContent = 'Click again to clear every pick';
     setTimeout(() => {
       resetArmed = false;
-      button.textContent = 'Reset draft';
+      button.textContent = resetLabel();
     }, 3500);
     return;
   }
   resetArmed = false;
-  button.textContent = 'Reset draft';
+  button.textContent = resetLabel();
   state.picks = [];
   state.history = [];
   if (state.rehearsal) state.seed = Math.floor(Math.random() * 1000000) + 1; // a new rehearsal is a different draft
@@ -590,6 +593,7 @@ function renderSettingsSummary() {
 }
 
 function renderTopBar() {
+  if (!resetArmed) $('reset').textContent = resetLabel();
   $('app').dataset.mode = state.rehearsal ? 'mock' : 'real';
   $('mode-real').setAttribute('aria-current', state.rehearsal ? 'false' : 'page');
   $('mode-mock').setAttribute('aria-current', state.rehearsal ? 'page' : 'false');
@@ -633,6 +637,27 @@ function wireTabs() {
   }
   window.addEventListener('resize', syncTabs);
   syncTabs();
+}
+
+// Auto (the system), Light, Dark: one button, remembered in this browser
+const THEMES = ['auto', 'light', 'dark'];
+let themeChoice = 'auto';
+
+function applyTheme() {
+  if (themeChoice === 'auto') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = themeChoice;
+  $('theme').textContent = `Theme: ${themeChoice[0].toUpperCase()}${themeChoice.slice(1)}`;
+}
+
+function cycleTheme() {
+  themeChoice = THEMES[(THEMES.indexOf(themeChoice) + 1) % THEMES.length];
+  applyTheme();
+  try {
+    if (themeChoice === 'auto') localStorage.removeItem(THEME_KEY);
+    else localStorage.setItem(THEME_KEY, themeChoice);
+  } catch (error) {
+    // Storage blocked: the choice lasts until the page is reloaded
+  }
 }
 
 function toggleSettings() {
@@ -1463,6 +1488,7 @@ function wireControls() {
   $('behind').addEventListener('click', toggleBehind);
   $('behind-form').addEventListener('submit', submitBehind);
   $('reset').addEventListener('click', reset);
+  $('theme').addEventListener('click', cycleTheme);
   $('search').addEventListener('input', (event) => {
     state.search = event.target.value;
     renderPool();
@@ -1524,6 +1550,13 @@ async function init() {
   if (server.problem) showError(server.problem, false, true);
   else if (serverVersion > 0 && !draftRefused) showSaved('Saved', true); // the file is what was loaded: say so until the next save
   if (!server.problem && source === 'browser' && !draftRefused && state.picks.length > 0) saveToServer(); // a draft the file does not have yet
+  try {
+    const stored = localStorage.getItem(THEME_KEY);
+    if (stored === 'light' || stored === 'dark') themeChoice = stored;
+  } catch (error) {
+    // follow the system
+  }
+  applyTheme();
   buildCategories();
   buildPositionChips();
   buildPoolHead();

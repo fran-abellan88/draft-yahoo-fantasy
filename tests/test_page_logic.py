@@ -426,3 +426,26 @@ def test_a_browser_copy_with_the_same_picks_as_the_file_needs_no_notice() -> Non
     assert discards("{picks: [1, 2]}", "{picks: [1, 2]}") is False, "the page left before the answer came"
     assert discards("{picks: [1, 2, 3]}", "{picks: [1, 2]}") is True
     assert discards("{picks: [1, 2]}", "null") is True
+
+
+def test_the_inline_head_script_and_app_js_load_into_one_page_without_a_redeclaration() -> None:
+    """A global `var theme` in the head once made app.js fail with a SyntaxError and the page sat on "Loading"."""
+    html = (WEB / "index.html").read_text()
+    inline = re.search(r"<script>(.*?)</script>", html.split("</head>")[0], re.S)
+    assert inline and NODE is not None
+    script = f"""
+        const vm = require('vm');
+        const fs = require('fs');
+        const page = {{ document: {{ documentElement: {{ dataset: {{}} }} }}, localStorage: {{ getItem: () => null }} }};
+        const context = vm.createContext(page);
+        vm.runInContext({json.dumps(inline.group(1))}, context);
+        try {{
+          vm.runInContext(fs.readFileSync({json.dumps(str(WEB / 'app.js'))}, 'utf8'), context);
+        }} catch (error) {{
+          // by name, not instanceof: the error comes from the other realm
+          if (error.name === 'SyntaxError') {{ console.log(JSON.stringify(error.message)); process.exit(0); }}
+        }}
+        console.log(JSON.stringify(''));
+    """
+    result = subprocess.run([NODE, "-e", script], capture_output=True, text=True, timeout=30, check=True)
+    assert json.loads(result.stdout) == "", "app.js must declare nothing the head script already declared"

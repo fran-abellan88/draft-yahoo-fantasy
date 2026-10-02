@@ -21,8 +21,10 @@
   --font: ui-sans-serif, "Avenir Next", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
+/* Follow the system unless the theme button chose one (data-theme on <html>). The dark tokens appear twice because CSS
+   cannot share them between a media query and an attribute selector; a test keeps the two copies equal. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --paper: #0f1722;
     --surface: #17212f;
     --ink: #e7ecf3;
@@ -40,6 +42,28 @@
     --hover: #263a52;
     --focus: #8ab4ff;
   }
+}
+
+:root[data-theme="light"] { color-scheme: light; }
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #0f1722;
+  --surface: #17212f;
+  --ink: #e7ecf3;
+  --muted: #9aa7b8;
+  --line: #2b3949;
+  --mine: #3ecf9b;
+  --mine-soft: #143a2e;
+  --cool: #6aa9ff;
+  --on-mine: #06281d;
+  --flag: #f0a95a;
+  --flag-soft: #3a2a14;
+  --danger: #ff8a80;
+  --danger-soft: #3b1a18;
+  --taken: #6c7a8c;
+  --hover: #263a52;
+  --focus: #8ab4ff;
 }
 
 * { box-sizing: border-box; }

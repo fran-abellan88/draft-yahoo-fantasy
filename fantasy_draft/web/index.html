@@ -4,6 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Draft assistant</title>
+  <script>
+    // The chosen theme is applied before the first paint, so a light page never flashes dark (see app.js)
+    (function () {
+      try {
+        var chosen = localStorage.getItem('draft-assistant-theme');
+        if (chosen === 'light' || chosen === 'dark') document.documentElement.dataset.theme = chosen;
+      } catch (error) { /* storage blocked: follow the system */ }
+    })();
+  </script>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -22,6 +31,8 @@
       <div class="topbar-actions">
         <button id="behind" type="button" aria-expanded="false" title="You missed some picks. Say which pick Yahoo is at and the picks in between are marked unseen.">I am behind</button>
         <button id="settings-toggle" type="button" aria-expanded="false" aria-controls="settings"><span id="settings-summary">Settings</span></button>
+        <button id="theme" type="button" title="Colours: follow the system, always light or always dark">Theme: Auto</button>
+        <button id="reset" type="button" class="quiet" title="Clears every pick. The old draft file is kept as a copy. Press twice.">Reset draft</button>
       </div>
       <form id="behind-form" class="behind-form" hidden>
         <label>Yahoo is at pick <input id="behind-pick" type="number" min="2" step="1" inputmode="numeric"></label>
@@ -71,11 +82,6 @@
             <label>Plan on a player whose ADP is no more than this many picks earlier <input id="rule-slack" type="number" min="0" max="60" step="1" value="3"></label>
           </div>
           <p class="note">Spreads are starting guesses. Real drafts will tell us better values.</p>
-        </div>
-        <div>
-          <h2>Draft</h2>
-          <button id="reset" type="button" class="quiet">Reset draft</button>
-          <p class="note">Clears every pick. The old draft file is kept as a copy.</p>
         </div>
       </div>
     </section>
