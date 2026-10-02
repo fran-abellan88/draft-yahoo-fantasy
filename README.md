@@ -62,6 +62,29 @@ Narrower windows keep the same panels and fold them into a tab strip, in this or
 and log at 2349 px, then your roster and category strength at 1719 px, then the plan and the table at 1239 px. The
 recommendation never goes into a tab.
 
+### The league, the other teams and rehearsal
+
+The 14 teams are named from Yahoo's draft order (slot 2 is Fran'stastic Team, the user's), in the clock, the log, the
+last-pick line and the snake strip (hover a slot).
+
+- **Standing** shows, for each category, how your team ranks and the share of the other 13 teams it beats: "so far"
+  over the complete rounds, and projected to 8 players each. Winning, close and behind are listed on top.
+- **14 teams** shows every team's totals per game (FG% and FT% as real ratios, turnovers reversed), tinted by rank.
+  Projected means the logged picks, your best plan for your team and the other teams filled in ADP order with lineup
+  limits. It is a picture of the league, not a prediction of who will be available.
+- **Rehearsal** (top bar) makes the other 13 teams pick automatically: best ADP left that keeps their lineup startable,
+  blurred a little by the same spread as the availability model and seeded, so a rehearsal can be repeated and the next
+  one differs. In a rehearsal Undo goes back to just before your last pick. The top bar says "Rehearsal" so it cannot
+  be mistaken for the real draft; press Rehearsal again to turn it off. Reset starts a new seed.
+- **Favour the categories I can still win** (Settings, off by default) weights each ticked category by how close you
+  are to the other teams in it: more where you are close, less where you dominate or cannot catch up. It starts after
+  the first complete round, reaches full effect after four, never moves a weight further than 40% from 1, and never
+  brings back an unticked category. The weights in use are listed under Standing.
+- The table marks the recommended player with a star and the players in the plan with their pick ("plan: 58"), tints
+  each stat by how good it is in its category and the odds by how likely he is to last, dims unticked categories, and
+  when it is your turn the odds column is for your next pick ("At pick 30"). The recommendation says why when another
+  player scores higher. Your roster is shown as the ten starting slots and the bench.
+
 ### Where the draft is saved
 
 Every change is saved to `saved_draft.json` in the project folder (not tracked by git), and also in the browser as a

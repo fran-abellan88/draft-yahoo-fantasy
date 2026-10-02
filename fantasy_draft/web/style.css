@@ -268,7 +268,7 @@ body { margin: 0; }
 /* 2350 and up: every panel has its own place */
 @media (min-width: 2350px) {
   .app {
-    grid-template-columns: 420px minmax(0, 1fr) 380px 450px;
+    grid-template-columns: 420px minmax(0, 1fr) 380px 540px;
     grid-template-areas:
       "top top top top"
       "err err err err"
