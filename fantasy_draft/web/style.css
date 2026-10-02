@@ -27,8 +27,6 @@
 
 /* Follow the system unless the theme button chose one (data-theme on <html>). The dark tokens appear twice because CSS
    cannot share them between a media query and an attribute selector; a test keeps the two copies equal. */
-/* Follow the system unless the theme button chose one (data-theme on <html>). The dark tokens appear twice because CSS
-   cannot share them between a media query and an attribute selector; a test keeps the two copies equal. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --paper: #0e1013;
@@ -460,5 +458,12 @@ td.dim { opacity: 0.45; }
 .predict-mark.both { background: linear-gradient(90deg, color-mix(in srgb, var(--tag-planner) 42%, transparent) 50%, color-mix(in srgb, var(--tag-adp) 42%, transparent) 50%); }
 .predict-mark.differs { color: var(--muted); border: 1px solid var(--line); } /* not the warning colour: a differing pick is not a mistake */
 /* Edit and Unmark show on the hovered or focused row, so the log is not 26 identical buttons */
-.log li:not(:hover):not(:focus-within) button.gone { opacity: 0; }
-.log li button.gone { transition: opacity 0.1s; }
+.log li { position: relative; }
+/* Out of the flow, at the row's right edge: hidden, they would still make the row wrap onto an empty second line */
+.row-actions { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); display: flex; gap: 4px; padding-left: 8px; background: linear-gradient(90deg, transparent, var(--surface) 8px); transition: opacity 0.1s; }
+.log li:not(:hover):not(:focus-within) .row-actions { opacity: 0; }
+.row-actions button.gone { margin: 0; }
+
+/* A notice is something to know, not a failure: the card colours, and red stays for errors */
+.banner.notice { background: var(--raised); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; font-weight: 500; }
+.banner.notice button { color: var(--ink); border-color: var(--line); background: var(--surface); }

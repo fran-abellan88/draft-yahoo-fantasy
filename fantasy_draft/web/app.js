@@ -237,6 +237,7 @@ function showError(message, retryable = false, sticky = false) {
   $('error-text').textContent = message;
   $('error-retry').hidden = !retryable;
   $('error-dismiss').hidden = true;
+  $('error').classList.remove('notice');
   $('error').hidden = false;
 }
 
@@ -244,6 +245,7 @@ function showError(message, retryable = false, sticky = false) {
 function showNotice(message) {
   showError(message, false, true);
   $('error-dismiss').hidden = false;
+  $('error').classList.add('notice');
 }
 
 function hideError(force = false) {
@@ -1461,7 +1463,7 @@ function renderLog() {
       editing = editing && editing.pick === entry.pick ? null : { pick: entry.pick, pending: null, error: null };
       renderLog();
     } }, 'Edit'));
-    const row = h('li', { class: entry.mine ? 'mine' : '' }, h('span', {}, `#${entry.pick}`), h('span', {}, logLabel(entry), entry.id ? h('span', { class: 'team-name' }, playerById.get(entry.id).positions.join('/')) : null, h('span', { class: 'team-name' }, entry.team), predictionMark(entry), ...buttons));
+    const row = h('li', { class: entry.mine ? 'mine' : '' }, h('span', {}, `#${entry.pick}`), h('span', {}, logLabel(entry), entry.id ? h('span', { class: 'team-name' }, playerById.get(entry.id).positions.join('/')) : null, h('span', { class: 'team-name' }, entry.team), predictionMark(entry), h('span', { class: 'row-actions' }, ...buttons)));
     return editing && editing.pick === entry.pick ? [row, editPanel(entry)] : [row];
   });
   put(list, ...rows);

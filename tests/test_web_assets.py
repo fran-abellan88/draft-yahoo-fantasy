@@ -419,3 +419,11 @@ def test_every_panel_is_a_card() -> None:
     cards = re.search(r"(\.team, [^{]*)\{([^}]*)\}", CSS)
     assert cards and all(name in cards.group(1) for name in (".panel.log", ".seam-standing", ".teams"))
     assert "background: var(--surface)" in cards.group(2) and "border-radius" in cards.group(2)
+
+
+def test_a_notice_is_not_dressed_as_an_error_and_hidden_log_buttons_do_not_take_room() -> None:
+    assert "classList.add('notice')" in JS and "classList.remove('notice')" in JS
+    assert ".banner.notice { background: var(--raised)" in CSS
+    assert ".row-actions { position: absolute;" in CSS, "out of the flow: hidden buttons once made rows wrap"
+    assert "h('span', { class: 'row-actions' }, ...buttons)" in JS
+    assert CSS.count("Follow the system unless the theme button chose one") == 1
