@@ -388,8 +388,8 @@ def test_the_columns_grow_together_the_table_starts_on_adp_and_the_score_has_its
     columns = re.findall(r"grid-template-columns:([^;]*);", CSS)
     assert columns and not any(re.search(r"(?<![\w(,] )\b(?:380|400|420|540)px\s*(?:minmax|;|$)", value) for value in columns)
     assert "sort: { key: 'adp', direction: 1 }" in JS
-    score_tint = JS[JS.index("function scoreTint"): JS.index("// A stat tinted")]
-    assert "scoreTint(row.score)" in JS and "var(--score)" in score_tint and "var(--cool)" not in score_tint
+    score_tint = JS[JS.index("const scoreFill"): JS.index("// A stat tinted")]
+    assert "scoreTint(row)" in JS and "var(--score)" in score_tint and "var(--cool)" not in score_tint
     for kind in ("planner", "adp", "both"):
         assert f".predict-mark.{kind}" in CSS
     assert "'both'" in JS
@@ -427,3 +427,26 @@ def test_a_notice_is_not_dressed_as_an_error_and_hidden_log_buttons_do_not_take_
     assert ".row-actions { position: absolute;" in CSS, "out of the flow: hidden buttons once made rows wrap"
     assert "h('span', { class: 'row-actions' }, ...buttons)" in JS
     assert CSS.count("Follow the system unless the theme button chose one") == 1
+
+
+def test_the_score_column_defaults_to_a_bar_of_the_gap_to_the_best_player_left_and_offers_two_colour_maps() -> None:
+    html = (WEB / "index.html").read_text()
+    assert html.count('name="scorestyle"') == 3 and 'value="bar" checked' in html
+    assert "let scoreStyle = 'bar';" in JS and "SCORE_STYLES = ['bar', 'rank', 'range']" in JS
+    tint = JS[JS.index("function scoreTint(row)"): JS.index("function scoreTitle")]
+    assert "linear-gradient(to right" in tint and "scoreTop - score" in tint and "SCORE_BAR_SPAN" in tint
+    assert "row.rank <= limit" in tint, "colour by rank uses the rank among the players left, not the score"
+    assert "localStorage.setItem(SCORE_STYLE_KEY" in JS and "scorestyle" in JS[JS.index("function wireControls()"):], "a browser preference"
+    assert "behind the best score left" in JS
+
+
+def test_the_second_thing_on_the_clock_is_in_the_recommendation_box_and_the_odds_column_marks_only_the_risky() -> None:
+    html = (WEB / "index.html").read_text()
+    assert 'id="alternatives"' not in html
+    hero = JS[JS.index("function renderHero()"): JS.index("function meter(")]
+    assert "alternativesBlock()" in hero
+    block = JS[JS.index("function alternativesBlock()"): JS.index("function renderPlan()")]
+    assert "analysis.alternativesMode === 'gone'" in block and "alternativesWorthShowing()" in block
+    odds = JS[JS.index("function oddsCell"): JS.index("// The Score column")]
+    assert "color-mix" not in odds and "wont-last" in odds and "value < 0.5" in odds
+    assert "td.wont-last { color: var(--flag)" in CSS
