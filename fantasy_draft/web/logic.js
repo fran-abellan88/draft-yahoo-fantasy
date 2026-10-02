@@ -317,6 +317,27 @@ function settingChanges(current, proposed, labels) {
   return changes;
 }
 
+// ---------- the Score bar ----------
+// A bar is as long as a player is good, from the lowest score left (a short sliver) to the best (full). Three earlier
+// versions failed, so the rules are: nobody saturates (a better score is always a longer bar: calling the 5th best "full"
+// gave 71.3 and 52.0 the same bar) and nobody vanishes (a fixed span of points, or calling the 60th best "empty", left
+// real players with no bar at all). The cost is that early in a draft, when the best scores are far above the rest, most
+// bars are short; they still differ.
+const SCORE_BAR_MINIMUM = 0.05; // the lowest score left still shows this much bar
+
+function scoreBarAnchors(scores) {
+  const present = scores.filter((score) => score !== null && score !== undefined);
+  if (present.length === 0) return { ceiling: 1, floor: 0 };
+  return { ceiling: Math.max(...present), floor: Math.min(...present) };
+}
+
+// SCORE_BAR_MINIMUM to 1: how much of the bar a score fills
+function scoreBarShare(score, anchors) {
+  if (anchors.ceiling <= anchors.floor) return 1;
+  const along = Math.max(0, Math.min(1, (score - anchors.floor) / (anchors.ceiling - anchors.floor)));
+  return SCORE_BAR_MINIMUM + (1 - SCORE_BAR_MINIMUM) * along;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { clampRuleValue, sanitizeRule, normalizePicks, pickSavedState, planBehind, markGone, sanitizeHistory, undoLast, unmarkGone, swapPicks, forgetPick, placeGone, choosePlayer, describePick, swapText, forgetText, placeText, chooseText, undoLabel, chooseSource, discardsUnconfirmed, settingChanges, PICK_KINDS };
+  module.exports = { clampRuleValue, sanitizeRule, normalizePicks, pickSavedState, planBehind, markGone, sanitizeHistory, undoLast, unmarkGone, swapPicks, forgetPick, placeGone, choosePlayer, describePick, swapText, forgetText, placeText, chooseText, undoLabel, chooseSource, discardsUnconfirmed, settingChanges, scoreBarAnchors, scoreBarShare, PICK_KINDS };
 }

@@ -66,10 +66,10 @@
           <label class="choice method"><input type="radio" name="method" value="capped"> Cap at the top 5%</label>
           <p class="note">Uncapped counts a 32-point scorer as better than a 26-point one. Capped treats everyone past the top 5% in a category as equal.</p>
           <h3 class="subhead">Score column</h3>
-          <label class="choice"><input type="radio" name="scorestyle" value="bar" checked> Bar: how far behind the best player left</label>
+          <label class="choice"><input type="radio" name="scorestyle" value="bar" checked> Bar: from the lowest score left to the best</label>
           <label class="choice"><input type="radio" name="scorestyle" value="rank"> Colour by rank: top 5, 15, 30, 60</label>
           <label class="choice"><input type="radio" name="scorestyle" value="range"> Colour by range: 5th to 95th percentile</label>
-          <p class="note">How the Score cell is drawn. The bar is empty at 15 points behind the best score left, so the top players show their gaps.</p>
+          <p class="note">How the Score cell is drawn. The bar is full for the best score left and a short sliver for the lowest, so every player has a bar and two different scores always give two different bars. Hover a score for the exact gap.</p>
           <label class="choice games"><input id="needs" type="checkbox"> Favour the categories I can still win</label>
           <p class="note">Off, every category counts equally. On, a category where you are close to the other teams counts a little more and one you already dominate or cannot catch a little less, after a few rounds. The weights in use are listed under Standing. Only ticked categories count.</p>
           <label class="choice games"><input id="games-adjusted" type="checkbox"> Count games missed</label>

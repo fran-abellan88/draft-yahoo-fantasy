@@ -434,7 +434,7 @@ def test_the_score_column_defaults_to_a_bar_of_the_gap_to_the_best_player_left_a
     assert html.count('name="scorestyle"') == 3 and 'value="bar" checked' in html
     assert "let scoreStyle = 'bar';" in JS and "SCORE_STYLES = ['bar', 'rank', 'range']" in JS
     tint = JS[JS.index("function scoreTint(row)"): JS.index("function scoreTitle")]
-    assert "linear-gradient(to right" in tint and "scoreTop - score" in tint and "SCORE_BAR_SPAN" in tint
+    assert "linear-gradient(to right" in tint and "scoreBarShare(score, scoreAnchors)" in tint and "SCORE_BAR_SPAN" not in JS
     assert "row.rank <= limit" in tint, "colour by rank uses the rank among the players left, not the score"
     assert "localStorage.setItem(SCORE_STYLE_KEY" in JS and "scorestyle" in JS[JS.index("function wireControls()"):], "a browser preference"
     assert "behind the best score left" in JS
@@ -450,3 +450,10 @@ def test_the_second_thing_on_the_clock_is_in_the_recommendation_box_and_the_odds
     odds = JS[JS.index("function oddsCell"): JS.index("// The Score column")]
     assert "color-mix" not in odds and "wont-last" in odds and "value < 0.5" in odds
     assert "td.wont-last { color: var(--flag)" in CSS
+
+
+def test_the_score_column_is_wide_enough_for_its_bar_and_the_other_cells_pay_for_it() -> None:
+    assert "#pool th:nth-child(3), #pool td.score-cell { min-width: 100px; }" in CSS
+    assert "#pool td { padding: 4px 5px; }" in CSS and "#pool th button { padding: 9px 5px; }" in CSS
+    columns = re.findall(r"\{ key: '(\w+)', label", JS[JS.index("const POOL_COLUMNS"): JS.index("function buildPoolHead")])
+    assert columns[2] == "score", "the width rule names the third column: keep Score third"
