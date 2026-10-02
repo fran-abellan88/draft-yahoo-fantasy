@@ -27,7 +27,7 @@ const state = {
   picks: [],
   history: [], // the actions Undo reverts, newest last (see logic.js)
   needs: false, // weight the categories by team need (an option, off by default)
-  rehearsal: false, // the other teams pick automatically
+  rehearsal: false, // set from the server (started with --rehearsal), never from a saved draft
   seed: 0, // makes one rehearsal repeatable and the next one different
   categories: [],
   gamesAdjusted: true,
@@ -107,7 +107,7 @@ function readStored(key) {
 }
 
 function currentSavedState() {
-  return { version: 2, picks: state.picks, history: state.history, rehearsal: state.rehearsal, seed: state.seed, needs: state.needs, categories: state.categories, gamesAdjusted: state.gamesAdjusted, method: state.method, rule: state.rule };
+  return { version: 2, picks: state.picks, history: state.history, seed: state.seed, needs: state.needs, categories: state.categories, gamesAdjusted: state.gamesAdjusted, method: state.method, rule: state.rule };
 }
 
 function saveState() {
@@ -199,7 +199,6 @@ function restoreState(fromServer) {
   }
   state.picks = picks || [];
   state.history = sanitizeHistory(saved.history, state.picks);
-  state.rehearsal = saved.rehearsal === true;
   state.needs = saved.needs === true;
   state.seed = Number.isInteger(saved.seed) ? saved.seed : 0;
   if (Array.isArray(saved.categories) && saved.categories.length > 0 && saved.categories.every((key) => allKeys.includes(key))) {
@@ -408,6 +407,13 @@ function hasUnseenPicks() {
   return state.picks.some((pick) => pick.kind === 'unseen');
 }
 
+// In a rehearsal Undo goes back to just before my last pick, which can remove many automatic picks: say how many
+function rehearsalUndoLabel() {
+  const mine = pool.myPicks.filter((number) => number <= state.picks.length);
+  const count = state.picks.length - (mine.length ? mine[mine.length - 1] - 1 : 0);
+  return state.picks.length === 0 ? 'Undo' : `Undo: ${plural(count, 'pick')}, back to my pick ${mine.length ? mine[mine.length - 1] : 1}`;
+}
+
 function undo() {
   if (state.rehearsal && state.picks.length > 0) {
     // The other teams' picks are automatic, so Undo goes back to just before my last pick
@@ -459,15 +465,6 @@ async function autoPlayOthers() {
   state.history = [];
   saveState();
   await refresh();
-}
-
-function toggleRehearsal() {
-  autoPlayFailed = false;
-  state.rehearsal = !state.rehearsal;
-  if (state.rehearsal && !state.seed) state.seed = Math.floor(Math.random() * 1000000) + 1;
-  saveState();
-  renderTopBar();
-  if (state.rehearsal) autoPlayOthers();
 }
 
 function reset() {
@@ -535,7 +532,7 @@ function renderClock() {
     ? `Round ${clock.round}: picks run right to left. Hover a slot for the team; yours is outlined.`
     : `Round ${clock.round}: picks run left to right. Hover a slot for the team; yours is outlined.`;
   $('undo').disabled = state.picks.length === 0;
-  $('undo').textContent = undoLabel(state.picks, state.history, nameOf);
+  $('undo').textContent = state.rehearsal ? rehearsalUndoLabel() : undoLabel(state.picks, state.history, nameOf);
   $('outside').disabled = analysis.clock.draftComplete;
 }
 
@@ -555,7 +552,6 @@ function renderSettingsSummary() {
 function renderTopBar() {
   $('mode').textContent = state.rehearsal ? 'Rehearsal: other teams automatic' : 'Live';
   $('mode').classList.toggle('rehearsal', state.rehearsal);
-  $('rehearsal').setAttribute('aria-pressed', String(state.rehearsal));
   renderLastPick();
   renderSettingsSummary();
 }
@@ -1329,7 +1325,6 @@ function wireControls() {
   $('error-retry').addEventListener('click', refresh);
   $('error-dismiss').addEventListener('click', () => hideError(true));
   $('undo').addEventListener('click', undo);
-  $('rehearsal').addEventListener('click', toggleRehearsal);
   $('settings-toggle').addEventListener('click', toggleSettings);
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !$('settings').hidden) toggleSettings();
@@ -1380,6 +1375,8 @@ async function init() {
     return;
   }
   for (const player of pool.players) playerById.set(player.id, player);
+  state.rehearsal = pool.rehearsal === true;
+  if (state.rehearsal && !state.seed) state.seed = Math.floor(Math.random() * 1000000) + 1;
   let server = null;
   try {
     server = await loadServerDraft();
@@ -1390,7 +1387,8 @@ async function init() {
   serverVersion = server.version;
   const local = readStored(STORAGE_KEY);
   const source = chooseSource(server.version, server.state, local, readStored(SYNC_KEY));
-  if (discardsUnconfirmed(source, local, readStored(SYNC_KEY))) {
+  const keptAside = discardsUnconfirmed(source, local, readStored(SYNC_KEY));
+  if (keptAside) {
     try {
       localStorage.setItem(ASIDE_KEY, JSON.stringify(local));
     } catch (error) {
@@ -1399,6 +1397,9 @@ async function init() {
     showNotice(`The draft file was used. This browser had a copy with ${plural((local.picks || []).length, 'pick')} that the file never received, but the file changed since. That copy is kept aside in this browser.`);
   }
   restoreState(source === 'server' ? server.state : null);
+  if (state.picks.length > 0 && !draftRefused && !server.problem && !keptAside) {
+    showNotice(`Continuing a saved draft: ${plural(state.picks.length, 'pick')}${state.rehearsal ? ' (a rehearsal)' : ''}. Reset starts a new one.`);
+  }
   if (server.problem) showError(server.problem, false, true);
   else if (source === 'browser' && !draftRefused && state.picks.length > 0) saveToServer(); // a draft the file does not have yet
   buildCategories();

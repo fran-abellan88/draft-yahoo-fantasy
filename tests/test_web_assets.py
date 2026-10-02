@@ -232,15 +232,17 @@ def test_the_last_pick_and_the_settings_summary_are_shown_in_the_page() -> None:
 
 def test_the_page_shows_the_standing_and_the_14_teams_and_can_rehearse() -> None:
     html = (WEB / "index.html").read_text()
-    for element in ('id="league"', 'id="profile"', 'id="rehearsal"'):
+    for element in ('id="league"', 'id="profile"'):
         assert element in html
+    assert 'id="rehearsal"' not in html, "there is no button: a rehearsal is a separate instance, started with --rehearsal"
+    assert "state.rehearsal = pool.rehearsal === true" in JS and "saved.rehearsal" not in JS
     render = JS[JS.index("function render()"):]
     assert "renderStanding();" in render and "renderLeague();" in render
     assert "'/api/autopick'" in JS and "noise: true" in JS and "seed: state.seed + state.picks.length" in JS
     undo = JS[JS.index("function undo()"): JS.index("// ---------- rehearsal")]
     assert "state.rehearsal" in undo, "in a rehearsal Undo goes back to just before my last pick"
     assert "autoPlayFailed" in JS and "!autoPlayFailed" in JS[JS.index("render();\n  if (state.rehearsal"):][:200]
-    assert "rehearsal: state.rehearsal, seed: state.seed" in JS
+    assert "seed: state.seed" in JS and "rehearsal: state.rehearsal" not in JS, "the mode is never saved with a draft"
 
 
 def test_the_need_weights_are_a_setting_that_is_saved_requested_and_shown() -> None:

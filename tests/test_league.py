@@ -83,3 +83,20 @@ def test_the_share_beaten_counts_ties_as_half_and_an_empty_league_is_even(player
     mine = next(row for row in table["teams"] if row["mine"])["totals"]["pts"]
     expected = sum(1.0 if mine > value else 0.0 for value in totals if value is not mine) / 13
     assert table["standing"]["pts"]["beaten"] == pytest.approx(expected, abs=0.01)
+
+
+def test_a_team_with_an_uncredited_pick_is_scaled_so_the_gap_does_not_make_it_look_weak(players: pd.DataFrame) -> None:
+    ids = _ids(players)
+    full = rosters_by_slot(_picks(ids[:28]), 14)
+    gap_picks = _picks(ids[:28])
+    gap_picks[1] = Pick("unseen")  # my pick 2 was never seen
+    gap = rosters_by_slot(gap_picks, 14)
+    whole = league_table(players, full, ["pts", "fg_pct"], 2, 2, TEAM_NAMES)
+    partial = league_table(players, gap, ["pts", "fg_pct"], 2, 2, TEAM_NAMES)
+    mine = next(row for row in partial["teams"] if row["mine"])
+    one = players.set_index("player_id").loc[ids[26]]
+    assert mine["players"] == 1 and mine["totals"]["pts"] == pytest.approx(one["pts"] * 2, abs=1e-3), "one player counted as two"
+    assert mine["totals"]["fg_pct"] == pytest.approx(one["fgm"] / one["fga"], abs=1e-3), "a ratio needs no scaling"
+    others_whole = {row["slot"]: row["totals"]["pts"] for row in whole["teams"] if not row["mine"]}
+    others_partial = {row["slot"]: row["totals"]["pts"] for row in partial["teams"] if not row["mine"]}
+    assert others_whole == others_partial, "other teams are untouched"

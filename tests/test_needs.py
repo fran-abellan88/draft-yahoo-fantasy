@@ -35,12 +35,15 @@ def test_a_close_category_outweighs_one_far_ahead_or_far_behind() -> None:
     assert weights["pts"] == pytest.approx(weights["ast"])
 
 
-def test_weights_average_one_never_leave_the_cap_and_cover_only_the_ticked_categories() -> None:
+def test_weights_never_leave_the_cap_after_normalising_and_cover_only_the_ticked_categories() -> None:
     standing = _standing({"pts": 0.9, "reb": 0.5, "ast": 0.1, "to": 0.6, "blk": 0.5})
     weights, _ = category_weights(standing, ["pts", "reb"], 8)
     assert set(weights) == {"pts", "reb"}, "an unticked category is never given a weight"
-    assert sum(weights.values()) / 2 == pytest.approx(1.0)
-    assert all(1 - MAX_SHIFT - 0.01 <= value <= 1 + MAX_SHIFT + 0.01 for value in weights.values())
+    assert all(1 - MAX_SHIFT <= value <= 1 + MAX_SHIFT for value in weights.values())
+    # a lopsided league: one category close, the rest decided; the cap holds even after dividing by the mean
+    lopsided = _standing({"a": 0.5, **{key: 0.0 for key in "bcdefgh"}})
+    spread, _ = category_weights(lopsided, list("abcdefgh"), 8)
+    assert max(spread.values()) <= 1 + MAX_SHIFT and min(spread.values()) >= 1 - MAX_SHIFT
 
 
 def test_the_ramp_grows_with_complete_rounds() -> None:

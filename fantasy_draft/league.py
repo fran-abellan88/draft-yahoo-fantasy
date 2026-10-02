@@ -12,7 +12,9 @@ Rules that keep the comparison honest:
 * Percentages are ratios of totals (sum of makes over sum of attempts), never an average of players' percentages.
 * Turnovers are reversed: fewer is better.
 * A pick that names no player in the pool (outside, unseen, gone) has no stats and is not credited to a team. The
-  number of such picks inside the comparison is reported, so a total is never mistaken for a complete one.
+  number of such picks inside the comparison is reported, so a total is never mistaken for a complete one. A team
+  with such a pick would otherwise look weaker only because of the gap, so its counting totals are scaled up to the
+  comparison size (a team with 7 credited players of 8 counts 8/7 of its total). Ratios need no scaling.
 """
 
 from typing import Any, Dict, List, Optional, Sequence
@@ -35,15 +37,16 @@ def rosters_by_slot(picks: Sequence[Pick], teams: int) -> Dict[int, List[Optiona
     return rosters
 
 
-def _total(frame: pd.DataFrame, key: str) -> float:
-    """One team's total in one category over its credited players."""
+def _total(frame: pd.DataFrame, key: str, size: int = 0) -> float:
+    """One team's total in one category over its credited players, scaled to `size` players for counting stats."""
     if frame.empty:
         return 0.0
     if key in RATIO_PARTS:
         made, attempted = RATIO_PARTS[key]
         attempts = float(frame[attempted].sum())
         return float(frame[made].sum()) / attempts if attempts > 0 else 0.0
-    return float(frame[CATEGORIES[key].column].sum())
+    total = float(frame[CATEGORIES[key].column].sum())
+    return total * size / len(frame) if size > len(frame) else total
 
 
 def _rank(values: Dict[int, float], slot: int, lower_is_better: bool) -> int:
@@ -80,7 +83,7 @@ def league_table(
         window = picks[:size]
         ids = [pid for pid in window if pid is not None]
         frame = by_id.loc[ids] if ids else by_id.iloc[0:0]
-        totals[slot] = {key: _total(frame, key) for key in keys}
+        totals[slot] = {key: _total(frame, key, size) for key in keys}
         counts[slot] = len(ids)
         missing[slot] = len(window) - len(ids)
 

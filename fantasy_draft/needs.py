@@ -9,9 +9,9 @@ Three limits keep the weights trustworthy (they are an option, off by default, a
 
 * A ramp. With one or two players "need" is only those players' profiles, so the weights start at 1 and reach their
   full effect after `RAMP_ROUNDS` complete rounds.
-* A cap. No weight moves further than `MAX_SHIFT` from 1 before normalising, so the ranking cannot lurch.
-* Punting stays explicit. Only ticked categories get a weight and the weights average 1, so the sum of ticked
-  weights is unchanged and an unticked category is never brought back.
+* A cap. After normalising to a mean of 1, no weight is further than `MAX_SHIFT` from 1, so the ranking cannot lurch.
+  (Clamping afterwards can leave the mean slightly off 1; that is accepted, it is the cap that matters.)
+* Punting stays explicit. Only ticked categories get a weight, so an unticked category is never brought back.
 """
 
 from typing import Dict, Mapping, Sequence, Tuple
@@ -30,4 +30,5 @@ def category_weights(standing: Mapping[str, Mapping[str, float]], keys: Sequence
     ramp = min(1.0, max(0.0, rounds_done / RAMP_ROUNDS))
     raw = {key: 1.0 + ramp * MAX_SHIFT * 2.0 * (closeness(standing[key]["beaten"]) - 0.5) for key in keys}
     mean = sum(raw.values()) / len(raw)
-    return {key: value / mean for key, value in raw.items()}, ramp
+    low, high = 1.0 - MAX_SHIFT, 1.0 + MAX_SHIFT
+    return {key: min(high, max(low, value / mean)) for key, value in raw.items()}, ramp

@@ -463,6 +463,7 @@ def test_the_projection_never_changes_the_logged_picks_or_gives_one_player_to_tw
 
 def test_autopick_gives_the_best_adp_that_fits_and_refuses_a_bad_request(service: DraftService) -> None:
     ids = _by_adp(service)
+    service = DraftService(service.players, rehearsal=True)
     assert service.autopick({"picks": ids[:3]}) == {"id": ids[3], "pick": 4}
     assert service.autopick({"picks": ids[:3], "noise": True, "seed": 5}) == service.autopick({"picks": ids[:3], "noise": True, "seed": 5})
     with pytest.raises(RequestError):
@@ -488,7 +489,7 @@ def test_team_need_weights_change_the_scores_once_rounds_are_complete_and_never_
     needs = _ask(service, picks, method="uncapped", gamesAdjusted=True, needs=True)
     assert needs["needs"]["ramp"] == 1.0
     weights = needs["needs"]["weights"]
-    assert set(weights) == set(ALL) and sum(weights.values()) / len(weights) == pytest.approx(1.0, abs=0.02)
+    assert set(weights) == set(ALL) and all(0.6 <= value <= 1.4 for value in weights.values())
     assert [row["score"] for row in needs["pool"]] != [row["score"] for row in plain["pool"]]
     punted = [key for key in ALL if key != "ast"]
     assert set(_ask(service, picks, method="uncapped", needs=True, **{})["needs"]["weights"]) == set(ALL)
@@ -543,3 +544,13 @@ def test_on_my_turn_each_row_also_carries_his_chance_at_my_following_pick(servic
     assert any(row["later"] < 1 for row in mine["pool"]) and {row["availability"] for row in mine["pool"]} == {1.0}
     waiting = _ask(service, ids[:10])
     assert waiting["laterPick"] is None and {row["later"] for row in waiting["pool"]} == {None}
+
+
+def test_automatic_picks_exist_only_in_a_rehearsal(service: DraftService) -> None:
+    ids = _by_adp(service)
+    assert service.pool_payload()["rehearsal"] is False
+    plain = DraftService(service.players)
+    with pytest.raises(RequestError, match="rehearsal"):
+        plain.autopick({"picks": ids[:3]})
+    practice = DraftService(service.players, rehearsal=True)
+    assert practice.pool_payload()["rehearsal"] is True and practice.autopick({"picks": ids[:3]})["id"] == ids[3]

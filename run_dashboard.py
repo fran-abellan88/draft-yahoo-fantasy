@@ -5,6 +5,7 @@ Start the draft dashboard on this computer and open it in the browser.
     python run_dashboard.py --port 9000
     python run_dashboard.py --no-browser
     python run_dashboard.py --draft-file /tmp/trial.json   # a separate saved draft, for trying things out
+    python run_dashboard.py --rehearsal --draft-file /tmp/rehearsal.json   # practice: the other teams pick automatically
 
 The server only listens on 127.0.0.1, so nobody else on the network can reach it.
 """
@@ -44,10 +45,17 @@ def main() -> None:
         default=DEFAULT_PATH,
         help="where the draft is saved (default: %(default)s). Instances sharing a file share one draft: use another file for trials",
     )
+    parser.add_argument(
+        "--rehearsal",
+        action="store_true",
+        help="practice draft: the other 13 teams pick automatically. Needs its own --draft-file, so it can never touch the real draft",
+    )
     args = parser.parse_args()
+    if args.rehearsal and args.draft_file.resolve() == DEFAULT_PATH.resolve():
+        sys.exit("A rehearsal needs its own draft file, so it cannot mix with the real draft. Add --draft-file PATH.")
 
     try:
-        service = DraftService(load_players())
+        service = DraftService(load_players(), rehearsal=args.rehearsal)
     except FileNotFoundError as error:
         sys.exit(f"Missing data file: {error.filename}. Run fetch_yahoo_players.py first.")
     saved = SavedDraft(args.draft_file)
@@ -55,6 +63,14 @@ def main() -> None:
     url = f"http://{HOST}:{server.server_address[1]}/"
     print(f"Draft assistant running at {url}  (Ctrl+C to stop)")
     print(f"Saving the draft in {saved.path}")
+    print("REHEARSAL: the other teams pick automatically. Not the real draft." if args.rehearsal else "Live draft: you log every pick.")
+    version, state, problem = saved.load()
+    if problem:
+        print(f"Warning: {problem}")
+    elif state is not None:
+        print(f"Continuing a saved draft: {len(state.get('picks', []))} picks (version {version}).")
+    else:
+        print("No saved draft yet: starting empty.")
     if not args.no_browser:
         webbrowser.open(url)
     try:
