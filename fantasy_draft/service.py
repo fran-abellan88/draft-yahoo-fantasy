@@ -252,13 +252,17 @@ class DraftService:
         }
 
     def _league(self, picks: List[Pick], keys: List[str], best: Optional[Plan]) -> Dict[str, Any]:
-        """All 14 teams: over the complete rounds so far, and projected to the end of the planning horizon.
+        """All 14 teams: the picks so far, and projected to the end of the planning horizon.
+
+        "So far" updates with every pick: it compares the first n picks of each team, n being the round now in progress,
+        and a team that has not made its n-th pick yet is scaled up (see league.py), so it never looks weak only because
+        its turn has not come.
 
         The projection keeps every logged pick, adds my best plan to my team and fills the other teams' missing picks
         automatically (autopick.py), protecting the players my plan counts on. It answers "what will the league look
         like", not "who will be available".
         """
-        size = len(picks) // self.teams
+        size = -(-len(picks) // self.teams)
         rosters = rosters_by_slot(picks, self.teams)
         table = league_table(self.players, rosters, keys, size, self.slot, TEAM_NAMES)
         table["basis"] = "so far"

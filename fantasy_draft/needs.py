@@ -28,7 +28,8 @@ def closeness(beaten: float) -> float:
 def category_weights(standing: Mapping[str, Mapping[str, float]], keys: Sequence[str], rounds_done: int) -> Tuple[Dict[str, float], float]:
     """Return (weight per ticked category, ramp). With no complete round every weight is exactly 1."""
     ramp = min(1.0, max(0.0, rounds_done / RAMP_ROUNDS))
-    raw = {key: 1.0 + ramp * MAX_SHIFT * 2.0 * (closeness(standing[key]["beaten"]) - 0.5) for key in keys}
+    # A category with no standing (my team has no credited player yet) is neutral
+    raw = {key: 1.0 + ramp * MAX_SHIFT * 2.0 * ((closeness(standing[key]["beaten"]) if key in standing else 0.5) - 0.5) for key in keys}
     mean = sum(raw.values()) / len(raw)
     low, high = 1.0 - MAX_SHIFT, 1.0 + MAX_SHIFT
     return {key: min(high, max(low, value / mean)) for key, value in raw.items()}, ramp

@@ -384,3 +384,4 @@ td.dim { opacity: 0.45; }
 @container (min-width: 760px) {
   .roster { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(7, auto); grid-auto-flow: column; column-gap: 32px; }
 }
+.league-table td.score { font-weight: 650; white-space: nowrap; }

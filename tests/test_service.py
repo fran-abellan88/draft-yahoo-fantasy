@@ -444,8 +444,8 @@ def test_the_league_block_scores_all_14_teams_so_far_and_projected(service: Draf
     ids = _by_adp(service)
     answer = _ask(service, ids[:30], method="uncapped", gamesAdjusted=True)
     league = answer["league"]
-    assert league["basis"] == "so far" and league["size"] == 2 and len(league["teams"]) == 14
-    assert {row["players"] for row in league["teams"]} == {2}
+    assert league["basis"] == "so far" and league["size"] == 3 and len(league["teams"]) == 14, "the round in progress"
+    assert {row["players"] for row in league["teams"]} == {2, 3}
     projected = league["projected"]
     assert projected["size"] == 8 and {row["players"] for row in projected["teams"]} == {8}
     mine = next(row for row in projected["teams"] if row["mine"])
@@ -458,7 +458,7 @@ def test_the_projection_never_changes_the_logged_picks_or_gives_one_player_to_tw
     answer = _ask(service, ids[:30])
     again = _ask(service, ids[:30])
     assert answer["league"] == again["league"], "deterministic"
-    assert answer["league"]["size"] == 2
+    assert answer["league"]["size"] == 3
 
 
 def test_autopick_gives_the_best_adp_that_fits_and_refuses_a_bad_request(service: DraftService) -> None:

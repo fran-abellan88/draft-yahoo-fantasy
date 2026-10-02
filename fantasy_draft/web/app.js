@@ -1036,7 +1036,7 @@ function renderStanding() {
   const league = analysis.league;
   const keys = pool.categories.map((category) => category.key).filter((key) => state.categories.includes(key));
   const labels = Object.fromEntries(pool.categories.map((category) => [category.key, category.label]));
-  const haveNow = league.size > 0;
+  const haveNow = Object.keys(league.standing).length > 0;
   const rows = keys.map((key) => {
     const projected = league.projected.standing[key];
     const now = league.standing[key];
@@ -1055,7 +1055,7 @@ function renderStanding() {
     container,
     h('p', { class: 'note standing-summary' }, summary ? `${summary}.` : ''),
     ...rows,
-    h('p', { class: 'note' }, `Bar: the share of the other 13 teams you beat, ${league.projected.basis}. "Now" counts ${league.size} complete round${league.size === 1 ? '' : 's'}.`),
+    h('p', { class: 'note' }, `Bar: the share of the other 13 teams you beat, ${league.projected.basis}. "Now" counts the first ${league.size} pick${league.size === 1 ? '' : 's'} of each team.`),
     renderWeightsNote(keys, labels),
   );
 }
@@ -1064,7 +1064,7 @@ function renderStanding() {
 let leagueView = 'projected';
 
 function tintFor(rank, teams) {
-  const good = (teams - rank) / (teams - 1); // 1 for the best, 0 for the worst
+  const good = teams > 1 ? (teams - rank) / (teams - 1) : 0.5; // 1 for the best, 0 for the worst
   return `background: color-mix(in srgb, var(--cool) ${Math.round(good * 30)}%, transparent)`;
 }
 
@@ -1084,19 +1084,33 @@ function renderLeague() {
       h('button', { type: 'button', 'aria-pressed': String(leagueView === view), onclick: () => { leagueView = view; renderLeague(); } }, label),
     ),
   );
-  const head = h('tr', {}, h('th', { class: 'left' }, 'Team'), h('th', {}, 'n'), ...keys.map((key) => h('th', {}, labels[key])));
+  const head = h(
+    'tr',
+    {},
+    h('th', { title: 'Place by team score' }, '#'),
+    h('th', { class: 'left' }, 'Team'),
+    h('th', { title: 'Expected categories won against a random team: the share of the other teams beaten, added over the ticked categories' }, 'Score'),
+    h('th', { title: 'Players counted' }, 'n'),
+    ...keys.map((key) => h('th', {}, labels[key])),
+  );
   const rows = table.teams.map((team) =>
     h(
       'tr',
       { class: team.mine ? 'mine-row' : '' },
+      h('td', {}, team.place === null ? '' : team.place),
       h('td', { class: 'left', title: `Slot ${team.slot}` }, team.name),
+      h('td', { class: 'score' }, team.score === null ? '' : `${oneDecimal(team.score)}/${keys.length}`),
       h('td', {}, team.players),
-      ...keys.map((key) => h('td', { style: tintFor(team.ranks[key], table.teams.length), title: `${ordinal(team.ranks[key])} of ${table.teams.length}` }, cellValue(key, team.totals[key]))),
+      ...keys.map((key) =>
+        team.totals === null
+          ? h('td', { class: 'dim' }, '')
+          : h('td', { style: tintFor(team.ranks[key], table.compared), title: `${ordinal(team.ranks[key])} of ${table.compared}` }, cellValue(key, team.totals[key])),
+      ),
     ),
   );
   const note = leagueView === 'projected'
     ? `${table.basis}: logged picks, your best plan for your team, and the other teams filled in ADP order with lineup limits. A guess at the league, not who will be available.`
-    : `So far: the first ${table.size} pick${table.size === 1 ? '' : 's'} of every team. Totals per game; FG% and FT% are real ratios; fewer turnovers is better.`;
+    : `So far: the first ${table.size} pick${table.size === 1 ? '' : 's'} of every team${table.waiting ? `; the ${plural(table.waiting, 'team')} yet to make pick ${table.size} ${table.waiting === 1 ? 'is' : 'are'} scaled up to it` : ''}. Totals per game; FG% and FT% are real ratios; fewer turnovers is better.`;
   const uncounted = table.notCounted ? ` ${plural(table.notCounted, 'pick')} not counted (unseen, gone or not in the list).` : '';
   put(container, views, h('div', { class: 'league-wrap' }, h('table', { class: 'league-table' }, h('thead', {}, head), h('tbody', {}, ...rows))), h('p', { class: 'note' }, note + uncounted));
 }
