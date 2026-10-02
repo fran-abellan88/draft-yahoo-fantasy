@@ -318,17 +318,17 @@ function settingChanges(current, proposed, labels) {
 }
 
 // ---------- the Score bar ----------
-// A bar is as long as a player is good, between two anchors taken from the players still left: full is as good as the
-// 5th best, empty is as good as the 60th (or the last one, late in the draft). Anchors by rank, not by points: a fixed
-// span of points emptied nearly every bar at the start of a draft, when the best three scores are 15 to 20 points above
-// the rest, and a scale from the lowest to the highest score squeezed everyone who matters into one corner.
-const SCORE_BAR_FULL_RANK = 5;
+// A bar is as long as a player is good, between two anchors taken from the players still left: full is the best one,
+// empty is as good as the 60th (or the last one, late in the draft). Two earlier versions failed, so: a fixed span of
+// points behind the best emptied nearly every bar at the start of a draft, when the best three scores are 15 to 20 points
+// above the rest; and calling "the 5th best" full made every better player the same full bar. Nobody saturates now, so
+// two different scores always give two different bars (a point of score is at least a percent of the bar).
 const SCORE_BAR_EMPTY_RANK = 60;
 
 function scoreBarAnchors(scores) {
   const sorted = scores.filter((score) => score !== null && score !== undefined).sort((a, b) => b - a);
   if (sorted.length === 0) return { ceiling: 1, floor: 0 };
-  return { ceiling: sorted[Math.min(SCORE_BAR_FULL_RANK, sorted.length) - 1], floor: sorted[Math.min(SCORE_BAR_EMPTY_RANK, sorted.length) - 1] };
+  return { ceiling: sorted[0], floor: sorted[Math.min(SCORE_BAR_EMPTY_RANK, sorted.length) - 1] };
 }
 
 // 0 to 1: how much of the bar a score fills

@@ -1021,7 +1021,7 @@ function scoreTint(row) {
 function scoreTitle(row) {
   const gap = scoreTop - row.score;
   const behind = gap < 0.05 ? 'The best score left.' : `${oneDecimal(gap)} behind the best score left.`;
-  return `Score for your ticked categories. ${behind} Bar: full is as good as the 5th best left, empty as good as the 60th.`;
+  return `Score for your ticked categories. ${behind} Bar: full is the best score left, empty is as good as the 60th best left.`;
 }
 
 function applyScoreStyle(choice) {

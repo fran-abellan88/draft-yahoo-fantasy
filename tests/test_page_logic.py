@@ -463,15 +463,17 @@ def _scores_after(picks: int) -> List[float]:
 
 @pytest.mark.parametrize("picks", [0, 28, 56, 84, 112])
 def test_the_score_bar_tells_the_players_that_matter_apart_at_every_stage_of_the_draft(picks: int) -> None:
-    """At the start of a draft a fixed 15-point span left 147 of 150 bars empty; the bar is anchored by rank instead."""
+    """Two failures to keep out: at the start a fixed 15-point span left 147 of 150 bars empty, and calling the 5th best
+    score "full" gave 71.3 and 52.0 the same bar."""
     scores = _scores_after(picks)
     template = "(() => { const a = L.scoreBarAnchors(SCORES); return SCORES.map((x) => L.scoreBarShare(x, a)); })()"
-    expression = template.replace("SCORES", json.dumps(scores))
-    widths = _run(expression)
+    widths = _run(template.replace("SCORES", json.dumps(scores)))
     ordered = sorted(zip(scores, widths), reverse=True)
-    top_widths = [width for _, width in ordered]
-    assert all(width == 1 for width in top_widths[:5]), "the 5th best left is a full bar"
-    assert all(width > 0 for width in top_widths[:30]), "no player who could be picked next has an empty bar"
-    assert top_widths[19] < 0.9 or picks >= 28, "the top 20 are told apart at the start, when the gaps are widest"
-    assert top_widths == sorted(top_widths, reverse=True), "a better score never has a shorter bar"
-    assert len({round(width, 1) for width in top_widths[:30]}) >= 4, "the bars differ"
+    assert ordered[0][1] == 1, "the best score left is the full bar"
+    assert sum(1 for _, width in ordered if width == 1) == 1, "nobody else saturates"
+    assert all(width > 0 for _, width in ordered[:30]), "no player who could be picked next has an empty bar"
+    for (higher, wide), (lower, narrow) in zip(ordered[:30], ordered[1:31]):
+        assert wide >= narrow, "a better score never has a shorter bar"
+        if higher - lower >= 1.0:
+            assert wide - narrow >= 0.005, f"{higher} and {lower} must not look the same"
+    assert len({round(width, 2) for _, width in ordered[:30]}) >= 10, "the bars differ"
