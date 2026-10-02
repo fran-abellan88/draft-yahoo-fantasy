@@ -245,7 +245,7 @@ def test_the_page_shows_the_standing_and_the_14_teams_and_can_rehearse() -> None
     assert "API + '/autopick'" in JS and "'/api/" not in JS and "noise: true" in JS and "seed: state.seed + state.picks.length" in JS
     undo = JS[JS.index("function undo()"): JS.index("// ---------- rehearsal")]
     assert "state.rehearsal" in undo, "in a rehearsal Undo goes back to just before my last pick"
-    after_render = JS[JS.index("fetchPlannerLeague(requestId, body);\n  if (state.rehearsal"):][:300]
+    after_render = JS[JS.index("fetchPredictions(requestId, body);\n  if (state.rehearsal"):][:300]
     assert "autoPlayFailed" in JS and "!autoPlayFailed" in after_render
     assert "seed: state.seed" in JS and "rehearsal: state.rehearsal" not in JS, "the mode is never saved with a draft"
 
@@ -360,3 +360,17 @@ def test_a_failed_projection_never_leaves_an_older_table_and_my_score_is_shown_u
     league = JS[JS.index("function renderLeague()"): JS.index("// A gone entry back to an unseen pick")]
     assert "if the others draft like you" in league and "if they draft by ADP" in league
     assert "Your team in this projection" in league and "projected.myPlayers" in league
+
+
+def test_the_pick_predictions_are_real_draft_only_asked_apart_and_tied_to_the_log_they_were_made_for() -> None:
+    html = (WEB / "index.html").read_text()
+    for element in ('id="predict-line"', 'id="prediction-summary"', 'id="managers"'):
+        assert element in html
+    fetch_predictions = JS[JS.index("async function fetchPredictions"): JS.index("const predictionRows")]
+    assert "if (state.rehearsal) return;" in fetch_predictions and "API + '/predict'" in fetch_predictions
+    assert "requestId !== latestRequest" in fetch_predictions
+    refresh = JS[JS.index("async function refresh()"): JS.index("// What each other team should have picked")]
+    assert refresh.index("render();") < refresh.index("fetchPredictions(requestId, body);"), "the analysis never waits"
+    assert "predictionsFor === picksSignature()" in JS, "a stale answer is never shown for another log"
+    assert "item.pick === entry.pick && item.id === entry.id" in JS, "a log row is marked only by the pick it was computed for"
+    assert "not a mistake" in JS

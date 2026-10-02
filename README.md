@@ -86,6 +86,15 @@ last-pick line and the snake strip (hover a slot).
   *ADP order* fills the other teams in ADP order with lineup limits; your team is built to these categories and theirs are
   not, so it tends to come first (88% of simulated drafts against ADP rivals, about 30% against rivals that use the
   planner: `python tools/rival_strength.py` reproduces it). The need weights are not used in either projection.
+- **What the others should pick** (real draft only). Under the clock line, the team on the clock gets two suggestions:
+  "should pick X by the planner, Y by ADP", the first player of that team's own best plan for your ticked categories and the
+  best-ADP player who keeps its lineup startable. Every logged pick of the others is then marked **planner**, **ADP**,
+  **planner and ADP** or **differs** (hover for both choices, how many picks before or after his ADP he went and his rank by
+  score among those left), the Draft log says how often that happened, and **By manager** breaks it down per team with the
+  average reach (how many picks before his ADP the players a manager takes go). Each pick is compared with the picks before
+  it, so editing the log keeps it consistent; unseen, gone, outside and your own picks are not compared. A pick that
+  differs is not a mistake: that manager may draft for other categories or by Yahoo's ranking. The mock draft does not show
+  this, since its other teams pick by ADP. It is asked for apart from the analysis, about half a second for a full log.
 - **Mock draft** is a second draft in the same program, at `http://127.0.0.1:8001/mock`. The top bar's **Real draft | Mock
   draft** switch moves between them; the mock one has an orange rule under the top bar and its own saved file
   (`saved_mock_draft.json`). In it the other 13 teams pick automatically: best ADP left that keeps their lineup startable,
