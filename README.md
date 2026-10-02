@@ -28,7 +28,7 @@ Your picks are kept in the browser, so reloading the page mid-draft loses nothin
   and one unseen pick is resolved to him (the one closest to his ADP), which raises the odds of the players near it. Your
   own picks are never unseen: the page stops before one and asks you to log it first. On your turn with unseen picks the
   page shows the chance the recommended player is still on the board, lists up to three better-scoring players the odds
-  left out ("look first at"), and has a **He is gone** button beside Draft.
+  left out ("look first at"), and has a **He is gone** button beside Draft. Under the window rule the odds are only 0 or 1, so it just says picks were missed and leaves the list out.
 - **Undo** reverts the last action, including Gone (the pick becomes unseen again) and a whole "I am behind". A gone
   entry in the log has **Unmark**. Every log row has **Edit**: swap two picks, say "I do not know what this pick was"
   (it becomes unseen, a player logged there returns to the pool), or place a gone player at an unseen pick. Each edit
