@@ -370,3 +370,17 @@ def test_choosing_a_player_replaces_a_wrong_pick_even_my_own_but_not_one_logged_
     assert "error" in _edit("choosePlayer(PICKS, 9, 'z')", log)
     assert "roster" in _run(f"L.chooseText({json.dumps(log)}, 2, 'z', [2], {NAMES})")
     assert "B goes back to the pool" in _run(f"L.chooseText({json.dumps(log)}, 2, 'z', [2], {NAMES})")
+
+
+def test_the_file_wins_unless_the_browser_copy_is_newer_and_unconfirmed() -> None:
+    def choose(server_version: int, server_state: str, local: str, sync: str) -> str:
+        return _run(f"L.chooseSource({server_version}, {server_state}, {local}, {sync})")
+
+    state = "{picks: []}"
+    assert choose(0, "null", "null", "null") == "none"
+    assert choose(0, "null", state, "null") == "browser", "no file yet: the browser copy is pushed up"
+    assert choose(3, state, state, "null") == "server", "no sync record: the file wins"
+    assert choose(3, state, state, "{basedOn: 3, confirmed: true}") == "server"
+    assert choose(3, state, state, "{basedOn: 3, confirmed: false}") == "browser", "saved while the server was down"
+    assert choose(4, state, state, "{basedOn: 3, confirmed: false}") == "server", "the file moved on since: another window saved"
+    assert choose(3, state, "null", "{basedOn: 3, confirmed: false}") == "server"

@@ -68,7 +68,7 @@ def test_a_failed_write_keeps_the_previous_draft(saved: SavedDraft, monkeypatch:
         saved.save({**STATE, "picks": []}, 1)
     monkeypatch.undo()
     assert saved.load()[1] == STATE
-    assert [path.name for path in saved.path.parent.iterdir()] == ["saved_draft.json"], "the temporary file is removed"
+    assert not [path for path in saved.path.parent.iterdir() if path.suffix == ".tmp"], "the temporary file is removed"
 
 
 UNUSABLE = [b"not json", b"[]", b'{"version": 1}', b'{"version": "1", "state": {}}', b'{"version": 1, "state": {"x": 1}}']
@@ -83,3 +83,18 @@ def test_an_unusable_file_is_reported_and_set_aside_on_the_next_save_not_overwri
     assert saved.save(STATE, 0) == 1
     assert saved.path.with_suffix(".unreadable.json").read_bytes() == contents, "the old content is kept"
     assert json.loads(saved.path.read_text())["version"] == 1
+
+
+def test_a_save_that_empties_a_draft_with_picks_keeps_the_old_file(saved: SavedDraft) -> None:
+    saved.save(STATE, 0)
+    saved.save({**STATE, "picks": []}, 1)
+    previous = json.loads(saved.path.with_suffix(".previous.json").read_text())
+    assert previous["state"]["picks"] == STATE["picks"] and previous["version"] == 1
+    assert saved.load()[1]["picks"] == []
+
+
+def test_ordinary_saves_leave_no_previous_file(saved: SavedDraft) -> None:
+    saved.save({**STATE, "picks": []}, 0)  # empty into nothing
+    saved.save(STATE, 1)  # filling an empty draft
+    saved.save({**STATE, "history": [{"type": "log", "count": 1}]}, 2)  # editing one with picks
+    assert not saved.path.with_suffix(".previous.json").exists()

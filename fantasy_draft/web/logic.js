@@ -64,6 +64,17 @@ function pickSavedState(current, legacy) {
   return null;
 }
 
+// ---------- which saved copy to load ----------
+// The draft lives in a file written by the server and, as a backup, in the browser. The file wins, except when the
+// browser copy is newer: it was saved while the server could not be reached (so the server never confirmed it) and
+// the file is still the version it was based on. `sync` is what the page wrote beside the browser copy:
+// {basedOn: the file version the copy came from, confirmed: whether the server has this exact copy}.
+function chooseSource(serverVersion, serverState, localState, sync) {
+  if (!serverState) return localState ? 'browser' : 'none';
+  if (localState && sync && sync.confirmed === false && sync.basedOn === serverVersion) return 'browser';
+  return 'server';
+}
+
 // ---------- catching up ----------
 // The user presses "I am behind" and types the pick Yahoo is at. The picks in between become unseen picks, except
 // that a pick of the user's own is never unseen (they always know it): the list stops before it and the user logs
@@ -278,5 +289,5 @@ function unmarkGone(picks, history, index) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { clampRuleValue, sanitizeRule, normalizePicks, pickSavedState, planBehind, markGone, sanitizeHistory, undoLast, unmarkGone, swapPicks, forgetPick, placeGone, choosePlayer, describePick, swapText, forgetText, placeText, chooseText, undoLabel, PICK_KINDS };
+  module.exports = { clampRuleValue, sanitizeRule, normalizePicks, pickSavedState, planBehind, markGone, sanitizeHistory, undoLast, unmarkGone, swapPicks, forgetPick, placeGone, choosePlayer, describePick, swapText, forgetText, placeText, chooseText, undoLabel, chooseSource, PICK_KINDS };
 }

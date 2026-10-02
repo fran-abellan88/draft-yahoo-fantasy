@@ -4,6 +4,7 @@
 // (also in localStorage, so a refresh mid-draft loses nothing) and asks the server what to do next.
 
 const STORAGE_KEY = 'draft-assistant-v2';
+const SYNC_KEY = 'draft-assistant-sync'; // which file version the browser copy is based on, and whether the server has it
 const LEGACY_STORAGE_KEY = 'draft-assistant-v1'; // read once if v2 is absent, never rewritten, so a rollback has data
 const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'];
 const STAT_COLUMNS = [
@@ -83,6 +84,22 @@ let serverSaveBlocked = false; // another window saved first: this one must relo
 let serverSaving = false;
 let serverSaveAgain = false;
 
+function writeSync(confirmed) {
+  try {
+    localStorage.setItem(SYNC_KEY, JSON.stringify({ basedOn: serverVersion, confirmed }));
+  } catch (error) {
+    // see saveState
+  }
+}
+
+function readStored(key) {
+  try {
+    return JSON.parse(localStorage.getItem(key));
+  } catch (error) {
+    return null;
+  }
+}
+
 function currentSavedState() {
   return { version: 2, picks: state.picks, history: state.history, categories: state.categories, gamesAdjusted: state.gamesAdjusted, method: state.method, rule: state.rule };
 }
@@ -91,6 +108,7 @@ function saveState() {
   if (draftRefused) return; // never write over a draft this page could not read
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(currentSavedState()));
+    writeSync(false);
   } catch (error) {
     // Private mode or blocked storage: the draft still works, it just will not survive a refresh
   }
@@ -124,6 +142,7 @@ async function saveToServer() {
         return;
       }
       serverVersion = data.version;
+      if (!serverSaveAgain) writeSync(true);
     } while (serverSaveAgain);
   } catch (error) {
     showError('The draft could not be saved on disk because the server cannot be reached. It is still kept in this browser.');
@@ -184,6 +203,7 @@ function ruleForRequest() {
 let stickyError = false;
 
 function showError(message, retryable = false, sticky = false) {
+  if (stickyError && !sticky) return; // an ordinary error must not replace a message about the saved draft
   stickyError = sticky;
   $('error-text').textContent = message;
   $('error-retry').hidden = !retryable;
@@ -1061,9 +1081,11 @@ async function init() {
   for (const player of pool.players) playerById.set(player.id, player);
   const server = await loadServerDraft();
   serverVersion = server.version;
-  restoreState(server.state);
+  const local = readStored(STORAGE_KEY);
+  const source = chooseSource(server.version, server.state, local, readStored(SYNC_KEY));
+  restoreState(source === 'server' ? server.state : null);
   if (server.problem) showError(server.problem, false, true);
-  else if (!server.state && !draftRefused && state.picks.length > 0) saveToServer(); // a draft that so far lives only in this browser
+  else if (source === 'browser' && !draftRefused && state.picks.length > 0) saveToServer(); // a draft the file does not have yet
   buildCategories();
   buildPositionChips();
   buildPoolHead();

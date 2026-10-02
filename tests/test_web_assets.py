@@ -175,4 +175,11 @@ def test_the_page_saves_to_the_server_one_save_at_a_time_and_never_over_a_draft_
     assert "serverSaveAgain" in save, "one save in flight, then the latest state"
     assert "stickyError" in JS and "hideError(true)" in JS, "only Reset clears a message about the saved draft"
     init = JS[JS.index("async function init"):]
-    assert "loadServerDraft()" in init and "restoreState(server.state)" in init
+    assert "loadServerDraft()" in init and "restoreState(source === 'server' ? server.state : null)" in init
+
+
+def test_the_browser_copy_records_what_the_server_confirmed_and_an_ordinary_error_cannot_hide_a_sticky_one() -> None:
+    assert "writeSync(false)" in JS and "if (!serverSaveAgain) writeSync(true)" in JS
+    assert "chooseSource(server.version, server.state, local, readStored(SYNC_KEY))" in JS
+    show = JS[JS.index("function showError"): JS.index("function hideError")]
+    assert "if (stickyError && !sticky) return;" in show

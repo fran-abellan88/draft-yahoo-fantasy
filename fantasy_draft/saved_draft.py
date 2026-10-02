@@ -10,11 +10,14 @@ them, when the page asks for an analysis. What it does guarantee:
 * a size limit and a short list of known keys, so the file cannot grow without bound or collect arbitrary data;
 * a version number that rises with every save. A save names the version the page last saw, and a save based on an
   older one is refused, so two open windows cannot silently overwrite each other;
-* a file that cannot be read is reported and set aside, never overwritten without a trace.
+* a file that cannot be read is reported and set aside, never overwritten without a trace;
+* a save that would empty a draft that has picks first copies the old file to `saved_draft.previous.json`, so Reset
+  (or anything else that empties it) can be taken back by hand.
 """
 
 import json
 import os
+import shutil
 import tempfile
 import threading
 from pathlib import Path
@@ -71,11 +74,13 @@ class SavedDraft:
         if isinstance(base_version, bool) or not isinstance(base_version, int):
             raise SavedDraftError("baseVersion must be a whole number")
         with self._lock:
-            version, _, problem = self._read()
+            version, current, problem = self._read()
             if problem is not None:
                 self._set_aside()
             if base_version != version:
                 raise Conflict(version)
+            if current and current.get("picks") and not state.get("picks"):
+                shutil.copy2(self.path, self.path.with_suffix(".previous.json"))
             payload = json.dumps({"version": version + 1, "state": state}, separators=(",", ":"))
             self._write(payload)
             return version + 1
