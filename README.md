@@ -57,7 +57,7 @@ The page never scrolls: it is exactly the window, and a panel that needs more ro
 for a window of about 2500 x 1476 placed on the right half of a wide screen, with Yahoo's draft room on the left, so
 the recommendation column is on the dashboard's left edge, next to the seam. From left to right: recommendation, plan
 and category strength; the table (search, position chips, the last logged pick with Undo, then the players); your
-roster and the log; the 14-team box (reserved, filled in a later step). Settings (categories, score, who will still
+roster and the log; the 14 teams (Projected above So far). Settings (categories, score, who will still
 be there, Reset) open from the button in the top bar, which also shows the choices in one line.
 
 Narrower windows keep the same panels and fold them into a tab strip, in this order as the window shrinks: 14 teams
@@ -75,8 +75,16 @@ last-pick line and the snake strip (hover a slot).
   **Score** column is the expected number of categories the team wins against a random opponent (the share of the other
   teams it beats in each ticked category, added up: 5.8/9), and the table is always sorted by it, best first, after every
   pick. A team with no player yet is listed last and left out of the ranks. *So far* counts the first n picks of every
-  team, n being the round in progress, and scales up a team that has not made its n-th pick yet. Projected means the logged picks, your best plan for your team and the other teams filled in ADP order with lineup
-  limits. It is a picture of the league, not a prediction of who will be available.
+  team, n being the round in progress, and scales up a team that has not made its n-th pick yet. Projected and So far are both shown, one above the other, and both
+  follow every pick. Projected has two ways to complete the other teams (the switch above it):
+  *Same planner* (the default) takes the logged picks and then, in snake order, lets every team, yours too, take the first
+  player of its own best plan, the search the recommendation uses. A poor pick by one manager lowers his projected stats and
+  leaves more for the rest, and nobody is first by construction. It shows what well-informed teams would end up with, not
+  who will be available, and a real league is probably easier. It takes about half a second from an empty draft, is
+  asked for apart from the analysis so the recommendation never waits, and shows the ADP projection until it arrives.
+  *ADP order* fills the other teams in ADP order with lineup limits; your team is built to these categories and theirs are
+  not, so it tends to come first (88% of simulated drafts against ADP rivals, about 30% against rivals that use the
+  planner: `python tools/rival_strength.py` reproduces it). The need weights are not used in either projection.
 - **Mock draft** is a second draft in the same program, at `http://127.0.0.1:8001/mock`. The top bar's **Real draft | Mock
   draft** switch moves between them; the mock one has an orange rule under the top bar and its own saved file
   (`saved_mock_draft.json`). In it the other 13 teams pick automatically: best ADP left that keeps their lineup startable,

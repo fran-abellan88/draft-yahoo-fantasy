@@ -5,7 +5,7 @@ from typing import Any, Dict, List
 import pytest
 
 from fantasy_draft.data import load_players
-from fantasy_draft.draft import DraftState, my_picks
+from fantasy_draft.draft import DraftState, my_picks, slot_of_pick
 from fantasy_draft.optimizer import FIRST_PICK_OPTIONS, NODE_BUDGET, OPTION_NODE_BUDGET
 from fantasy_draft.service import DraftService, RequestError, parse_rule
 
@@ -554,3 +554,46 @@ def test_automatic_picks_exist_only_in_a_rehearsal(service: DraftService) -> Non
         plain.autopick({"picks": ids[:3]})
     practice = DraftService(service.players, rehearsal=True)
     assert practice.pool_payload()["rehearsal"] is True and practice.autopick({"picks": ids[:3]})["id"] == ids[3]
+
+
+def _projection(service: DraftService, ids: List[str]) -> Dict[str, Any]:
+    return service.project_league({"categories": ALL, "picks": ids, "method": "uncapped", "gamesAdjusted": True})
+
+
+def test_the_planner_projection_makes_the_picks_each_team_s_own_recommendation_would(service: DraftService) -> None:
+    ids: List[str] = []
+    for number in range(1, 21):
+        slot = slot_of_pick(number, 14)
+        answer = DraftService(service.players, slot=slot).analyze(
+            {"categories": ALL, "picks": ids, "method": "uncapped", "gamesAdjusted": True}
+        )
+        ids.append(answer["recommendation"]["id"])
+    simulated = _projection(service, [])["simulated"]
+    assert simulated[:20] == ids, "the same search the page runs for that team, one after the other"
+
+
+def test_the_planner_projection_completes_every_team_and_keeps_the_logged_picks(service: DraftService) -> None:
+    logged = _by_adp(service)[:20]
+    table = _projection(service, logged)
+    assert table["size"] == 8 and {row["players"] for row in table["teams"]} == {8} and table["fallbacks"] == 0
+    assert len(table["simulated"]) == 8 * 14 - 20 and len(set(table["simulated"]) | set(logged)) == 8 * 14, "nobody twice"
+    assert not set(table["simulated"]) & set(logged)
+    assert [row["place"] for row in table["teams"]] == sorted(row["place"] for row in table["teams"])
+
+
+def test_a_poor_logged_pick_lowers_its_team_and_the_user_is_not_first_by_construction(service: DraftService) -> None:
+    by_adp = _by_adp(service)
+    good = _projection(service, [by_adp[0]])
+    poor = _projection(service, [by_adp[-1]])
+    team_one = lambda table: next(row for row in table["teams"] if row["slot"] == 1)["score"]  # noqa: E731
+    assert team_one(poor) < team_one(good) - 0.5, "his projected stats drop when he takes a poor player"
+    mine = lambda table: next(row for row in table["teams"] if row["mine"])["score"]  # noqa: E731
+    assert mine(poor) >= mine(good) - 1e-9, "a rival's mistake never hurts me"
+    assert _projection(service, [])["teams"][0]["place"] == 1
+
+
+def test_the_planner_projection_refuses_what_analyze_refuses(service: DraftService) -> None:
+    with pytest.raises(RequestError):
+        service.project_league({"categories": [], "picks": []})
+    with pytest.raises(RequestError):
+        service.project_league({"categories": ALL, "picks": ["nobody"]})

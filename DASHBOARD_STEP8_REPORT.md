@@ -38,3 +38,25 @@ Reviewer accepted all three parts. Fixed in one commit, suite 467 passed, flake8
 - The So far note now says a scaled team usually drops a little when it picks.
 
 Not changed: the Projected table still puts my planned team against ADP-order teams, so being first there is close to automatic (see the user's question on opponent strength; an experiment is proposed, nothing built).
+
+## Step 9: the planner projection (branch `feat/planner-projection`, from `feat/mock-and-standings`)
+
+Asked by the user after seeing their team always first in Projected, and after review 14 and my own 60-draft runs showed
+why (first place 88% against ADP rivals, 25 to 33% against rivals that score or plan). The user wants every team completed
+with the same planner so a rival's mistake shows at once; the real mock drafts give a minute per pick, so time is not a
+constraint.
+
+- `DraftService.project_league` and `POST /api/league` (both drafts): in snake order each team takes the first player of
+  its own best plan (`plan_picks`, same `top_k` as the recommendation, no alternatives), given every earlier pick including
+  simulated ones. Checked: its first 20 picks equal what each team's own `analyze` recommends. About 0.4 s from an empty
+  draft (the earlier 12 s per draft came from calling `analyze`, which does much more). A failed search falls back to ADP
+  and is counted (`fallbacks`). Needs weights are not used.
+- The page asks for it after the analysis (never in front of it), drops answers for an older log or other categories, and
+  shows the ADP projection meanwhile. Projected and So far are shown together (one above the other) and Standing uses the
+  projection in use. A switch picks Same planner (default) or ADP order.
+- Review R1: both tables fit the 540 px column at 2436 px (cell padding, team names cut with a title), the main table's
+  FT% fits (left column 420 to 400 px).
+- `tools/rival_strength.py` reproduces the rival-strength numbers.
+
+Tests: 473 passed, flake8 clean. A poor logged pick lowers its team's projected score by more than half a category and never
+hurts mine.

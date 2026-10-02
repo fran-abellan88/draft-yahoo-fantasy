@@ -317,3 +317,12 @@ def test_the_mock_routes_are_gated_like_the_rest(both: Tuple[str, Path, Path]) -
     port = _port(url)
     assert _raw(port, "GET", "/mock/api/draft", {"Host": "evil.example"})[0] == 403
     assert _raw(port, "POST", "/mock/api/autopick", {"Host": "evil.example", "Content-Type": "application/json"}, b"{}")[0] == 403
+
+
+def test_the_planner_projection_has_its_own_route_in_both_drafts(both: Tuple[str, Path, Path]) -> None:
+    url, _, _ = both
+    body = json.dumps({"categories": ALL, "picks": [], "method": "uncapped", "gamesAdjusted": True}).encode()
+    for prefix in ("", "/mock"):
+        status, answer = _post(f"{url}{prefix}/api/league", body)
+        assert status == 200 and len(answer["teams"]) == 14 and answer["fallbacks"] == 0
+    assert _post(url + "/api/league", b'{"categories": [], "picks": []}')[0] == 400

@@ -242,7 +242,8 @@ def test_the_page_shows_the_standing_and_the_14_teams_and_can_rehearse() -> None
     assert "API + '/autopick'" in JS and "'/api/" not in JS and "noise: true" in JS and "seed: state.seed + state.picks.length" in JS
     undo = JS[JS.index("function undo()"): JS.index("// ---------- rehearsal")]
     assert "state.rehearsal" in undo, "in a rehearsal Undo goes back to just before my last pick"
-    assert "autoPlayFailed" in JS and "!autoPlayFailed" in JS[JS.index("render();\n  if (state.rehearsal"):][:200]
+    after_render = JS[JS.index("fetchPlannerLeague(requestId, body);\n  if (state.rehearsal"):][:300]
+    assert "autoPlayFailed" in JS and "!autoPlayFailed" in after_render
     assert "seed: state.seed" in JS and "rehearsal: state.rehearsal" not in JS, "the mode is never saved with a draft"
 
 
@@ -321,3 +322,16 @@ def test_the_review_fixes_of_step_8_stay() -> None:
     assert "keepSettings(); // a pending change was worded for the draft as it was" in JS[JS.index("async function refresh()"):][:200]
     assert "server.state)" in JS and "a scaled team usually drops a little when it picks" in JS
     assert '<div class="rail">' in (WEB / "index.html").read_text() and ".rail { display: contents; }" in CSS
+
+
+def test_the_planner_projection_is_asked_for_apart_from_the_analysis_and_shown_with_so_far() -> None:
+    refresh = JS[JS.index("async function refresh()"): JS.index("function scheduleRefresh()")]
+    assert "fetchPlannerLeague(requestId, body);" in refresh
+    assert refresh.index("render();") < refresh.index("fetchPlannerLeague"), "the analysis never waits"
+    fetch_league = JS[JS.index("async function fetchPlannerLeague"): JS.index("function scheduleRefresh()")]
+    assert "API + '/league'" in fetch_league and "requestId !== latestRequest" in fetch_league, "an answer for an older log is dropped"
+    assert "plannerKeys !== keysAsked" in fetch_league, "a table for other categories is never shown"
+    league = JS[JS.index("function renderLeague()"): JS.index("// A gone entry back to an unseen pick")]
+    assert "h3', {}, 'Projected'" in league and "h3', {}, 'So far'" in league, "both tables at once, no switch between them"
+    assert "ADP order" in league and "Same planner" in league and "projectedTable()" in JS[JS.index("function renderStanding()"):]
+    assert "400px minmax(0, 1fr) 380px 540px" in CSS and ".league-table td.left { max-width" in CSS

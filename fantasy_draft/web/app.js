@@ -327,7 +327,36 @@ async function refresh() {
   analysis = data;
   poolRowById = new Map(data.pool.map((row) => [row.id, row]));
   render();
+  fetchPlannerLeague(requestId, body);
   if (state.rehearsal && !rehearsing && !autoPlayFailed && !data.clock.isMine && !data.clock.draftComplete) autoPlayOthers();
+}
+
+// The league projected with every team completed by the same planner. It takes longer than the analysis (up to a few
+// seconds early in the draft), so it is asked for apart from it and the recommendation never waits for it. Until it
+// arrives the table shows the quick ADP projection, and a result for an older log or other categories is dropped.
+async function fetchPlannerLeague(requestId, body) {
+  const keysAsked = JSON.stringify(state.categories);
+  if (plannerKeys !== keysAsked) plannerLeague = null; // other categories: the old table has other columns
+  plannerPending = true;
+  plannerFailed = false;
+  renderLeague();
+  try {
+    const response = await fetch(API + '/league', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+    const data = await response.json();
+    if (requestId !== latestRequest) return;
+    if (response.ok) {
+      plannerLeague = data;
+      plannerKeys = keysAsked;
+    } else {
+      plannerFailed = true;
+    }
+  } catch (error) {
+    if (requestId !== latestRequest) return;
+    plannerFailed = true;
+  }
+  plannerPending = false;
+  renderLeague();
+  renderStanding();
 }
 
 function scheduleRefresh() {
@@ -1044,7 +1073,7 @@ function renderStanding() {
   const labels = Object.fromEntries(pool.categories.map((category) => [category.key, category.label]));
   const haveNow = Object.keys(league.standing).length > 0;
   const rows = keys.map((key) => {
-    const projected = league.projected.standing[key];
+    const projected = projectedTable().standing[key];
     const now = league.standing[key];
     return h(
       'div',
@@ -1055,19 +1084,29 @@ function renderStanding() {
     );
   });
   const groups = { Winning: [], Close: [], Behind: [] };
-  for (const key of keys) groups[standingGroup(league.projected.standing[key].beaten)].push(labels[key]);
+  for (const key of keys) groups[standingGroup(projectedTable().standing[key].beaten)].push(labels[key]);
   const summary = Object.entries(groups).filter(([, names]) => names.length).map(([name, names]) => `${name}: ${names.join(', ')}`).join('. ');
   put(
     container,
     h('p', { class: 'note standing-summary' }, summary ? `${summary}.` : ''),
     ...rows,
-    h('p', { class: 'note' }, `Bar: the share of the other 13 teams you beat, ${league.projected.basis}. "Now" counts the first ${league.size} pick${league.size === 1 ? '' : 's'} of each team, against ${plural(Math.max(league.compared - 1, 0), 'other team')}.`),
+    h('p', { class: 'note' }, `Bar: the share of the other 13 teams you beat, ${projectedTable().basis}. "Now" counts the first ${league.size} pick${league.size === 1 ? '' : 's'} of each team, against ${plural(Math.max(league.compared - 1, 0), 'other team')}.`),
     renderWeightsNote(keys, labels),
   );
 }
 
 // ---------- the 14 teams ----------
-let leagueView = 'projected';
+let projectedBasis = 'planner'; // which projection the 14 teams and Standing show: 'planner' or 'adp'
+let plannerLeague = null; // the planner-completed projection for the log last asked about
+let plannerKeys = ''; // the categories it was computed for
+let plannerPending = false;
+let plannerFailed = false;
+
+// The projected table in use: the planner's when chosen and ready, otherwise the quick ADP fill that comes with the analysis
+function projectedTable() {
+  const planner = projectedBasis === 'planner' && plannerLeague !== null && plannerKeys === JSON.stringify(state.categories);
+  return planner ? plannerLeague : analysis.league.projected;
+}
 
 function tintFor(rank, teams) {
   const good = teams > 1 ? (teams - rank) / (teams - 1) : 0.5; // 1 for the best, 0 for the worst
@@ -1078,18 +1117,7 @@ function cellValue(key, value) {
   return key === 'fg_pct' || key === 'ft_pct' ? formatRate(value) : oneDecimal(value);
 }
 
-function renderLeague() {
-  const container = $('league');
-  const table = leagueView === 'projected' ? analysis.league.projected : analysis.league;
-  const keys = pool.categories.map((category) => category.key).filter((key) => state.categories.includes(key));
-  const labels = Object.fromEntries(pool.categories.map((category) => [category.key, category.label]));
-  const views = h(
-    'div',
-    { class: 'league-views', role: 'group', 'aria-label': 'Which totals' },
-    ...[['projected', 'Projected'], ['now', 'So far']].map(([view, label]) =>
-      h('button', { type: 'button', 'aria-pressed': String(leagueView === view), onclick: () => { leagueView = view; renderLeague(); } }, label),
-    ),
-  );
+function leagueTable(table, keys, labels) {
   const head = h(
     'tr',
     {},
@@ -1104,7 +1132,7 @@ function renderLeague() {
       'tr',
       { class: team.mine ? 'mine-row' : '' },
       h('td', {}, team.place === null ? '' : team.place),
-      h('td', { class: 'left', title: `Slot ${team.slot}` }, team.name),
+      h('td', { class: 'left', title: `${team.name}, slot ${team.slot}` }, team.name),
       h('td', { class: 'score' }, team.score === null ? '' : `${oneDecimal(team.score)}/${keys.length}`),
       h('td', {}, team.players),
       ...keys.map((key) =>
@@ -1114,11 +1142,43 @@ function renderLeague() {
       ),
     ),
   );
-  const note = leagueView === 'projected'
-    ? `${table.basis}: logged picks, your best plan for your team, and the other teams filled in ADP order with lineup limits. A guess at the league, not who will be available.`
-    : `So far: the first ${table.size} pick${table.size === 1 ? '' : 's'} of every team. Totals per game; FG% and FT% are real ratios; fewer turnovers is better.${table.waiting ? ` ${plural(table.waiting, 'team')} yet to make pick ${table.size} ${table.waiting === 1 ? 'is' : 'are'} scaled up to it, and a scaled team usually drops a little when it picks.` : ''}${table.leftOut ? ` ${plural(table.leftOut, 'team')} with no player yet ${table.leftOut === 1 ? 'is' : 'are'} left out.` : ''}`;
-  const uncounted = table.notCounted ? ` ${plural(table.notCounted, 'pick')} not counted (unseen, gone or not in the list).` : '';
-  put(container, views, h('div', { class: 'league-wrap' }, h('table', { class: 'league-table' }, h('thead', {}, head), h('tbody', {}, ...rows))), h('p', { class: 'note' }, note + uncounted));
+  return h('div', { class: 'league-wrap' }, h('table', { class: 'league-table' }, h('thead', {}, head), h('tbody', {}, ...rows)));
+}
+
+// Projected and So far, one above the other, both updated with every pick and sorted by team score
+function renderLeague() {
+  const container = $('league');
+  const keys = pool.categories.map((category) => category.key).filter((key) => state.categories.includes(key));
+  const labels = Object.fromEntries(pool.categories.map((category) => [category.key, category.label]));
+  const projected = projectedTable();
+  const usingPlanner = projected === plannerLeague;
+  const switcher = h(
+    'div',
+    { class: 'league-views', role: 'group', 'aria-label': 'How the other teams are completed' },
+    ...[['planner', 'Same planner'], ['adp', 'ADP order']].map(([view, label]) =>
+      h('button', { type: 'button', 'aria-pressed': String(projectedBasis === view), onclick: () => { projectedBasis = view; renderLeague(); renderStanding(); } }, label),
+    ),
+  );
+  let status = '';
+  if (projectedBasis === 'planner' && !usingPlanner) status = plannerFailed ? 'The planner projection failed: showing ADP order.' : 'Updating: showing ADP order meanwhile.';
+  else if (usingPlanner && plannerPending) status = 'Updating.';
+  const projectedNote = usingPlanner
+    ? `${projected.basis}: logged picks, then every team, yours too, takes the first player of its own best plan in turn. It shows what well-informed teams would end up with, not who will be available, and your league is probably easier.${projected.fallbacks ? ` ${plural(projected.fallbacks, 'pick')} fell back to ADP order.` : ''}`
+    : `${projected.basis}: logged picks, your best plan for your team, and the other teams filled in ADP order with lineup limits. Your team is built to these categories and the others are not, so it tends to come first.`;
+  const now = analysis.league;
+  const nowNote = `The first ${now.size} pick${now.size === 1 ? '' : 's'} of every team. Totals per game; FG% and FT% are real ratios; fewer turnovers is better.${now.waiting ? ` ${plural(now.waiting, 'team')} yet to make pick ${now.size} ${now.waiting === 1 ? 'is' : 'are'} scaled up to it, and a scaled team usually drops a little when it picks.` : ''}${now.leftOut ? ` ${plural(now.leftOut, 'team')} with no player yet ${now.leftOut === 1 ? 'is' : 'are'} left out.` : ''}`;
+  const uncounted = now.notCounted ? ` ${plural(now.notCounted, 'pick')} not counted (unseen, gone or not in the list).` : '';
+  put(
+    container,
+    h('h3', {}, 'Projected'),
+    switcher,
+    status ? h('p', { class: 'note league-status', role: 'status' }, status) : null,
+    leagueTable(projected, keys, labels),
+    h('p', { class: 'note' }, projectedNote),
+    h('h3', {}, 'So far'),
+    leagueTable(now, keys, labels),
+    h('p', { class: 'note' }, nowNote + uncounted),
+  );
 }
 
 // A gone entry back to an unseen pick, for a mistake noticed after other picks were logged
