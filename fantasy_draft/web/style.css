@@ -313,6 +313,10 @@ body { margin: 0; }
 #pool td:nth-child(1), #pool td:nth-child(2) { background: var(--surface); }
 #pool tbody tr:hover td:nth-child(1), #pool tbody tr:hover td:nth-child(2) { background: var(--hover); }
 #pool th { z-index: 3; }
+/* Tighter cells in the player table pay for a wider Score column, where the bar needs room to show small gaps */
+#pool td { padding: 4px 5px; }
+#pool th button { padding: 9px 5px; }
+#pool th:nth-child(3), #pool td.score-cell { min-width: 100px; }
 
 /* 2350 and up: every panel has its own place. The columns share extra width in proportion (the fr numbers are their
    widths at 2436 px), so a wider window enlarges every panel, not only the table */

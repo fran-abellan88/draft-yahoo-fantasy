@@ -450,3 +450,10 @@ def test_the_second_thing_on_the_clock_is_in_the_recommendation_box_and_the_odds
     odds = JS[JS.index("function oddsCell"): JS.index("// The Score column")]
     assert "color-mix" not in odds and "wont-last" in odds and "value < 0.5" in odds
     assert "td.wont-last { color: var(--flag)" in CSS
+
+
+def test_the_score_column_is_wide_enough_for_its_bar_and_the_other_cells_pay_for_it() -> None:
+    assert "#pool th:nth-child(3), #pool td.score-cell { min-width: 100px; }" in CSS
+    assert "#pool td { padding: 4px 5px; }" in CSS and "#pool th button { padding: 9px 5px; }" in CSS
+    columns = re.findall(r"\{ key: '(\w+)', label", JS[JS.index("const POOL_COLUMNS"): JS.index("function buildPoolHead")])
+    assert columns[2] == "score", "the width rule names the third column: keep Score third"
