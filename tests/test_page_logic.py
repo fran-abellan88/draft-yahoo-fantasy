@@ -384,3 +384,14 @@ def test_the_file_wins_unless_the_browser_copy_is_newer_and_unconfirmed() -> Non
     assert choose(3, state, state, "{basedOn: 3, confirmed: false}") == "browser", "saved while the server was down"
     assert choose(4, state, state, "{basedOn: 3, confirmed: false}") == "server", "the file moved on since: another window saved"
     assert choose(3, state, "null", "{basedOn: 3, confirmed: false}") == "server"
+
+
+def test_a_browser_copy_the_file_replaces_is_kept_aside_only_when_it_was_never_confirmed() -> None:
+    def discards(source: str, local: str, sync: str) -> bool:
+        return _run(f"L.discardsUnconfirmed('{source}', {local}, {sync})")
+
+    assert discards("server", "{picks: []}", "{basedOn: 3, confirmed: false}") is True
+    assert discards("server", "{picks: []}", "{basedOn: 3, confirmed: true}") is False
+    assert discards("server", "null", "{basedOn: 3, confirmed: false}") is False
+    assert discards("browser", "{picks: []}", "{basedOn: 3, confirmed: false}") is False, "that copy is the one being used"
+    assert discards("server", "{picks: []}", "null") is False

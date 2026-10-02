@@ -32,4 +32,4 @@ data/cache/
 saved_draft.json
 saved_draft.unreadable.json
 .saved_draft_*.tmp
-saved_draft.previous.json
+saved_draft.previous-v*.json

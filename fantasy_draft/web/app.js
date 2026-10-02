@@ -4,6 +4,7 @@
 // (also in localStorage, so a refresh mid-draft loses nothing) and asks the server what to do next.
 
 const STORAGE_KEY = 'draft-assistant-v2';
+const ASIDE_KEY = 'draft-assistant-unconfirmed'; // a browser copy the file replaced, kept so nothing is lost
 const SYNC_KEY = 'draft-assistant-sync'; // which file version the browser copy is based on, and whether the server has it
 const LEGACY_STORAGE_KEY = 'draft-assistant-v1'; // read once if v2 is absent, never rewritten, so a rollback has data
 const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'];
@@ -142,7 +143,7 @@ async function saveToServer() {
         return;
       }
       serverVersion = data.version;
-      if (!serverSaveAgain) writeSync(true);
+      writeSync(!serverSaveAgain); // confirmed only if nothing newer is waiting; either way based on this version
     } while (serverSaveAgain);
   } catch (error) {
     showError('The draft could not be saved on disk because the server cannot be reached. It is still kept in this browser.');
@@ -151,15 +152,12 @@ async function saveToServer() {
   }
 }
 
-// What the server has saved: {version, state, problem}. The page works without it, from the browser's own copy.
+// What the server has saved: {version, state, problem}. A failed read is an error like a failed read of the pool: the
+// page stops, because starting without knowing the file's version would later overwrite it.
 async function loadServerDraft() {
-  try {
-    const response = await fetch('/api/draft');
-    if (!response.ok) return { version: 0, state: null, problem: null };
-    return await response.json();
-  } catch (error) {
-    return { version: 0, state: null, problem: null };
-  }
+  const response = await fetch('/api/draft');
+  if (!response.ok) throw new Error(`the server answered ${response.status}`);
+  return response.json();
 }
 
 function restoreState(fromServer) {
@@ -207,7 +205,14 @@ function showError(message, retryable = false, sticky = false) {
   stickyError = sticky;
   $('error-text').textContent = message;
   $('error-retry').hidden = !retryable;
+  $('error-dismiss').hidden = true;
   $('error').hidden = false;
+}
+
+// Something to know rather than a failure: stays until dismissed
+function showNotice(message) {
+  showError(message, false, true);
+  $('error-dismiss').hidden = false;
 }
 
 function hideError(force = false) {
@@ -1038,6 +1043,7 @@ function onRuleChange() {
 
 function wireControls() {
   $('error-retry').addEventListener('click', refresh);
+  $('error-dismiss').addEventListener('click', () => hideError(true));
   $('undo').addEventListener('click', undo);
   $('outside').addEventListener('click', draftOutside);
   $('behind').addEventListener('click', toggleBehind);
@@ -1079,10 +1085,24 @@ async function init() {
     return;
   }
   for (const player of pool.players) playerById.set(player.id, player);
-  const server = await loadServerDraft();
+  let server = null;
+  try {
+    server = await loadServerDraft();
+  } catch (error) {
+    showError("Can't read the saved draft from the draft server. Nothing was changed. Check that run_dashboard.py is running, then reload.", false, true);
+    return;
+  }
   serverVersion = server.version;
   const local = readStored(STORAGE_KEY);
   const source = chooseSource(server.version, server.state, local, readStored(SYNC_KEY));
+  if (discardsUnconfirmed(source, local, readStored(SYNC_KEY))) {
+    try {
+      localStorage.setItem(ASIDE_KEY, JSON.stringify(local));
+    } catch (error) {
+      // nothing more can be done
+    }
+    showNotice(`The draft file was used. This browser had a copy with ${plural((local.picks || []).length, 'pick')} that the file never received, but the file changed since. That copy is kept aside in this browser.`);
+  }
   restoreState(source === 'server' ? server.state : null);
   if (server.problem) showError(server.problem, false, true);
   else if (source === 'browser' && !draftRefused && state.picks.length > 0) saveToServer(); // a draft the file does not have yet

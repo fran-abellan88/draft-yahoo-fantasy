@@ -75,6 +75,12 @@ function chooseSource(serverVersion, serverState, localState, sync) {
   return 'server';
 }
 
+// True when the file won although the browser copy had never been confirmed by the server: that copy is then kept aside
+// and the user is told, so nothing is lost without a word.
+function discardsUnconfirmed(source, localState, sync) {
+  return source === 'server' && Boolean(localState) && Boolean(sync) && sync.confirmed === false;
+}
+
 // ---------- catching up ----------
 // The user presses "I am behind" and types the pick Yahoo is at. The picks in between become unseen picks, except
 // that a pick of the user's own is never unseen (they always know it): the list stops before it and the user logs
@@ -289,5 +295,5 @@ function unmarkGone(picks, history, index) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { clampRuleValue, sanitizeRule, normalizePicks, pickSavedState, planBehind, markGone, sanitizeHistory, undoLast, unmarkGone, swapPicks, forgetPick, placeGone, choosePlayer, describePick, swapText, forgetText, placeText, chooseText, undoLabel, chooseSource, PICK_KINDS };
+  module.exports = { clampRuleValue, sanitizeRule, normalizePicks, pickSavedState, planBehind, markGone, sanitizeHistory, undoLast, unmarkGone, swapPicks, forgetPick, placeGone, choosePlayer, describePick, swapText, forgetText, placeText, chooseText, undoLabel, chooseSource, discardsUnconfirmed, PICK_KINDS };
 }

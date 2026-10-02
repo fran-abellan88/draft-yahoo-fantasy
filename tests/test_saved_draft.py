@@ -88,7 +88,7 @@ def test_an_unusable_file_is_reported_and_set_aside_on_the_next_save_not_overwri
 def test_a_save_that_empties_a_draft_with_picks_keeps_the_old_file(saved: SavedDraft) -> None:
     saved.save(STATE, 0)
     saved.save({**STATE, "picks": []}, 1)
-    previous = json.loads(saved.path.with_suffix(".previous.json").read_text())
+    previous = json.loads(saved.path.with_name("saved_draft.previous-v1.json").read_text())
     assert previous["state"]["picks"] == STATE["picks"] and previous["version"] == 1
     assert saved.load()[1]["picks"] == []
 
@@ -97,4 +97,14 @@ def test_ordinary_saves_leave_no_previous_file(saved: SavedDraft) -> None:
     saved.save({**STATE, "picks": []}, 0)  # empty into nothing
     saved.save(STATE, 1)  # filling an empty draft
     saved.save({**STATE, "history": [{"type": "log", "count": 1}]}, 2)  # editing one with picks
-    assert not saved.path.with_suffix(".previous.json").exists()
+    assert not list(saved.path.parent.glob("*.previous-*"))
+
+
+def test_each_emptying_keeps_its_own_previous_file_so_a_later_one_never_replaces_an_earlier_one(saved: SavedDraft) -> None:
+    saved.save(STATE, 0)
+    saved.save({**STATE, "picks": []}, 1)  # Reset: the six picks of version 1 are kept
+    saved.save({**STATE, "picks": [{"kind": "player", "id": "b"}]}, 2)
+    saved.save({**STATE, "picks": []}, 3)  # Undo of the only pick: version 3 is kept too
+    kept = sorted(path.name for path in saved.path.parent.glob("*.previous-*"))
+    assert kept == ["saved_draft.previous-v1.json", "saved_draft.previous-v3.json"]
+    assert json.loads((saved.path.parent / kept[0]).read_text())["state"]["picks"] == STATE["picks"]

@@ -58,9 +58,12 @@ dashboard starts on 8002 instead of 8001. Two things to know:
 - To try things out without touching the real draft, start a second instance with its own file:
   `python run_dashboard.py --port 8002 --draft-file /tmp/trial.json`. The startup line prints the file in use. Instances
   that share a file share one draft.
-- A save that would empty a draft with picks (Reset, for one) first copies the old file to `saved_draft.previous.json`.
+- A save that would empty a draft with picks (Reset, for one) first copies the old file to `saved_draft.previous-v<N>.json` (one per version, never replaced by a later one).
 - If the server could not be reached for a while, the browser copy can be newer than the file; the page notices (it
-  records which file version the copy is based on and whether the server confirmed it) and uses the newer one.
+  records which file version the copy is based on and whether the server confirmed it) and uses the newer one. When the
+  file wins over a copy the server never confirmed, the page says so and keeps that copy under the browser key
+  `draft-assistant-unconfirmed`. If the saved draft cannot be read at load, the page stops with a message rather than
+  start from nothing.
 - If you open the dashboard in two windows, the one that saves second is refused ("changed in another window"); reload it.
 - If the saved draft cannot be loaded (an unknown player, an unseen pick on one of yours), the page says so and keeps
   the file as it is; nothing is saved until you press **Reset**. A file that is not valid at all is renamed to

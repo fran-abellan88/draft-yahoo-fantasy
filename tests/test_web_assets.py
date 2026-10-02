@@ -175,11 +175,19 @@ def test_the_page_saves_to_the_server_one_save_at_a_time_and_never_over_a_draft_
     assert "serverSaveAgain" in save, "one save in flight, then the latest state"
     assert "stickyError" in JS and "hideError(true)" in JS, "only Reset clears a message about the saved draft"
     init = JS[JS.index("async function init"):]
+    assert "await loadServerDraft()" in init and "Can't read the saved draft" in init, "a failed read stops the page like the pool does"
     assert "loadServerDraft()" in init and "restoreState(source === 'server' ? server.state : null)" in init
 
 
 def test_the_browser_copy_records_what_the_server_confirmed_and_an_ordinary_error_cannot_hide_a_sticky_one() -> None:
-    assert "writeSync(false)" in JS and "if (!serverSaveAgain) writeSync(true)" in JS
+    assert "writeSync(false)" in JS and "writeSync(!serverSaveAgain)" in JS
     assert "chooseSource(server.version, server.state, local, readStored(SYNC_KEY))" in JS
     show = JS[JS.index("function showError"): JS.index("function hideError")]
     assert "if (stickyError && !sticky) return;" in show
+
+
+def test_the_sync_record_follows_every_successful_save_and_a_replaced_browser_copy_is_kept_and_announced() -> None:
+    assert "writeSync(!serverSaveAgain)" in JS
+    init = JS[JS.index("async function init"):]
+    assert "discardsUnconfirmed(" in init and "ASIDE_KEY" in init and "showNotice(" in init
+    assert 'id="error-dismiss"' in (WEB / "index.html").read_text()
