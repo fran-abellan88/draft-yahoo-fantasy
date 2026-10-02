@@ -534,3 +534,12 @@ def test_an_on_the_clock_alternative_that_takes_the_recommended_player_next_says
     thens = [alt["then"] for alt in answer["alternatives"] if "then" in alt]
     for then in thens:
         assert then["id"] == recommended and then["pick"] == 30 and 0 <= then["availability"] <= 1
+
+
+def test_on_my_turn_each_row_also_carries_his_chance_at_my_following_pick(service: DraftService) -> None:
+    ids = _by_adp(service)
+    mine = _ask(service, ids[:26])  # my turn at 27, next planned pick 30
+    assert mine["laterPick"] == 30 and all(0 <= row["later"] <= 1 for row in mine["pool"])
+    assert any(row["later"] < 1 for row in mine["pool"]) and {row["availability"] for row in mine["pool"]} == {1.0}
+    waiting = _ask(service, ids[:10])
+    assert waiting["laterPick"] is None and {row["later"] for row in waiting["pool"]} == {None}

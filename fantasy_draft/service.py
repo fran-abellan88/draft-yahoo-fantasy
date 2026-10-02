@@ -204,6 +204,8 @@ class DraftService:
 
         pool = self._pool_rows(scores, category, flags, drafted, next_mine_probability)
         self._add_unseen_risk(pool, adp, state)
+        later_pick = self._later_pick(clock)
+        self._add_later(pool, adp, state, rule, later_pick)
         best = plans[0] if plans else None
         return {
             "clock": clock,
@@ -218,6 +220,7 @@ class DraftService:
                 "maxOptionNodes": recommendation_result.max_option_nodes,
             },
             "recommendation": self._recommendation(best, next_mine),
+            "laterPick": later_pick,
             "lineup": self._lineup(picks, mine_numbers),
             "bestAvailable": self._best_available(pool, picks, mine_numbers),
             "lookFirst": self._look_first(pool, best, rule, clock, state),
@@ -416,6 +419,26 @@ class DraftService:
                 item["then"] = {"id": best.player_ids[0], "pick": option.plan.pick_numbers[1], "availability": _num(odds, 3)}
             shown.append(item)
         return shown
+
+    def _later_pick(self, clock: Dict[str, Any]) -> Optional[int]:
+        """On my turn, the pick after it that is also mine (and planned): "if I pass on him now, is he there then?"."""
+        if not clock["isMine"] or clock["draftComplete"]:
+            return None
+        later = [number for number in my_picks(self.slot, self.rounds, self.teams) if number > clock["pick"]]
+        return later[0] if later else None
+
+    def _add_later(
+        self, pool: List[Dict[str, Any]], adp: np.ndarray, state: DraftState, rule: AvailabilityRule, later_pick: Optional[int]
+    ) -> None:
+        """Per row, his chance of being there at my following pick (None unless it is my turn and another pick is planned)."""
+        if later_pick is None:
+            for row in pool:
+                row["later"] = None
+            return
+        position = {pid: index for index, pid in enumerate(self.players["player_id"])}
+        odds = rule.probability(adp, later_pick, state.picks_made, state.unseen)
+        for row in pool:
+            row["later"] = _num(odds[position[row["id"]]], 3)
 
     def _add_unseen_risk(self, pool: List[Dict[str, Any]], adp: np.ndarray, state: DraftState) -> None:
         """Per row, the chance he was taken at one of the unseen picks (0 with none), so Gone shows only where it matters."""

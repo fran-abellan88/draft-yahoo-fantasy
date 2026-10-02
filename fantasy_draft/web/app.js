@@ -5,6 +5,7 @@
 
 const STORAGE_KEY = 'draft-assistant-v2';
 const ASIDE_KEY = 'draft-assistant-unconfirmed'; // a browser copy the file replaced, kept so nothing is lost
+const TAB_KEY = 'draft-assistant-tab'; // the tab last open, a per-browser convenience
 const SYNC_KEY = 'draft-assistant-sync'; // which file version the browser copy is based on, and whether the server has it
 const LEGACY_STORAGE_KEY = 'draft-assistant-v1'; // read once if v2 is absent, never rewritten, so a rollback has data
 const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'];
@@ -121,13 +122,23 @@ function saveState() {
 }
 
 // One save at a time, always of the latest state, each naming the version the last one produced
+function showSaved(text, ok) {
+  const badge = $('saved-state');
+  badge.textContent = text;
+  badge.classList.toggle('bad', !ok);
+}
+
 async function saveToServer() {
-  if (serverSaveBlocked) return;
+  if (serverSaveBlocked) {
+    showSaved('Not saved: reload', false);
+    return;
+  }
   if (serverSaving) {
     serverSaveAgain = true;
     return;
   }
   serverSaving = true;
+  showSaved('Saving', true);
   try {
     do {
       serverSaveAgain = false;
@@ -140,17 +151,21 @@ async function saveToServer() {
       if (response.status === 409) {
         serverSaveBlocked = true;
         showError(data.error, false, true);
+        showSaved('Not saved: reload', false);
         return;
       }
       if (!response.ok) {
         showError(`The draft could not be saved on disk: ${data.error}. It is still kept in this browser.`);
+        showSaved('Not saved on disk', false);
         return;
       }
       serverVersion = data.version;
       writeSync(!serverSaveAgain); // confirmed only if nothing newer is waiting; either way based on this version
+      if (!serverSaveAgain) showSaved('Saved', true);
     } while (serverSaveAgain);
   } catch (error) {
     showError('The draft could not be saved on disk because the server cannot be reached. It is still kept in this browser.');
+    showSaved('Not saved on disk', false);
   } finally {
     serverSaving = false;
   }
@@ -554,6 +569,13 @@ function visibleTabs() {
 
 function syncTabs() {
   const tabs = visibleTabs();
+  try {
+    const remembered = localStorage.getItem(TAB_KEY);
+    if (remembered && !syncTabs.started) $('app').dataset.tab = remembered;
+  } catch (error) {
+    // no storage: the default tab is used
+  }
+  syncTabs.started = true;
   if (tabs.length === 0) return;
   if (!tabs.some((button) => button.dataset.tab === $('app').dataset.tab)) $('app').dataset.tab = tabs[0].dataset.tab;
   for (const button of $('tabs').querySelectorAll('button')) button.setAttribute('aria-selected', String(button.dataset.tab === $('app').dataset.tab));
@@ -563,6 +585,11 @@ function wireTabs() {
   for (const button of $('tabs').querySelectorAll('button')) {
     button.addEventListener('click', () => {
       $('app').dataset.tab = button.dataset.tab;
+      try {
+        localStorage.setItem(TAB_KEY, button.dataset.tab);
+      } catch (error) {
+        // see syncTabs
+      }
       syncTabs();
     });
   }
@@ -576,6 +603,20 @@ function toggleSettings() {
   $('settings-toggle').setAttribute('aria-expanded', String(!panel.hidden));
 }
 
+// One line when the recommendation is not the best score in the table, so the page never seems to contradict itself
+function whyNotTheTopScore(recommendation, plan) {
+  const top = analysis.pool[0];
+  if (!top || top.id === recommendation.id) return '';
+  const lead = `${nameOf(top.id)} scores higher (${oneDecimal(top.score)})`;
+  const step = plan.steps.find((candidate) => candidate.id === top.id);
+  if (step) return `${lead} but the plan takes him at pick ${step.pick}, where he should still be there (${pct(step.availability)}).`;
+  const waiting = !analysis.clock.isMine && top.availability !== null && top.availability < state.rule.threshold;
+  if (waiting) return `${lead} but is only ${pct(top.availability)} likely to last to pick ${recommendation.pick}.`;
+  const alternative = analysis.alternatives.find((candidate) => candidate.id === top.id);
+  if (alternative && alternative.behind >= TIE_POINTS) return `${lead} but taking him first makes the whole plan ${oneDecimal(alternative.behind)} lower.`;
+  return '';
+}
+
 function renderHero() {
   const hero = $('hero');
   const clock = analysis.clock;
@@ -587,12 +628,13 @@ function renderHero() {
     return;
   }
   if (!recommendation) {
-    const best = analysis.pool[0];
+    const best = analysis.bestAvailable ? poolRowById.get(analysis.bestAvailable.id) : null;
     hero.className = 'hero';
-    put(hero, 
-      h('h2', {}, 'Your planned picks are made'),
+    put(hero,
+      h('h2', {}, `Rounds ${pool.league.rounds + 1} to ${pool.league.rosterSize} are not planned. Best available who fits your lineup:`),
       best ? h('p', { class: 'name' }, nameOf(best.id)) : null,
-      best ? h('p', { class: 'facts' }, `Best available by score: ${detailOf(best.id)}, score ${oneDecimal(best.score)}`) : null,
+      best ? h('p', { class: 'facts' }, `${detailOf(best.id)}, score ${oneDecimal(best.score)}`) : null,
+      best && clock.isMine ? h('div', { class: 'cta' }, h('button', { type: 'button', class: 'primary', onclick: () => draft(best.id) }, `Draft ${nameOf(best.id)}`)) : null,
     );
     return;
   }
@@ -605,21 +647,26 @@ function renderHero() {
 
   const heading = mine
     ? `Pick ${recommendation.pick} is yours. Take`
-    : `You pick at ${recommendation.pick}, after ${plural(clock.picksUntilMine, 'more pick')}. Today's plan says`;
+    : `You pick at ${recommendation.pick}, after ${plural(clock.picksUntilMine, 'more pick')}. Current plan:`;
   // On my turn the player is on the board unless picks were missed: then the doubt is shown and the user checks Yahoo
   const doubt = mine && hasUnseenPicks() && row.availability !== null;
   const odds = doubt
     ? (state.rule.type === 'window' ? "Picks were missed. Check he is still on Yahoo's board." : `${pct(row.availability)} chance he is still on the board. Check Yahoo.`)
     : !mine && row.availability !== null ? `${pct(row.availability)} chance he is still there.` : '';
   const lookFirst = doubt ? analysis.lookFirst : [];
+  const reason = whyNotTheTopScore(recommendation, plan);
   put(hero, 
     h('h2', {}, heading),
     h('p', { class: 'name' }, nameOf(recommendation.id)),
     h('p', { class: 'facts' }, `${detailOf(recommendation.id)}, score ${oneDecimal(row.score)}${odds ? `. ${odds}` : ''}`),
+    reason ? h('p', { class: 'facts' }, reason) : null,
     analysis.search.truncated ? h('p', { class: 'facts' }, 'Approximate: the search was cut short. See the note under Plan.') : null,
     laterSteps.length ? h('p', { class: 'then' }, `Then ${laterSteps.join(', ')}.`) : null,
     lookFirst.length
-      ? h('p', { class: 'facts' }, `If still on the board, look first at: ${lookFirst.map((entry) => `${nameOf(entry.id)} (${pct(entry.availability)})`).join(', ')}.`)
+      ? h('p', { class: 'facts' }, 'If still on the board, look first at: ', ...lookFirst.flatMap((entry) => [
+        h('button', { type: 'button', class: 'gone', title: `Log ${nameOf(entry.id)} as the pick on the clock`, onclick: () => { cancelChoosing(); draft(entry.id); } }, `${nameOf(entry.id)} (${pct(entry.availability)})`),
+        ' ',
+      ]))
       : null,
     mine
       ? h(
@@ -653,6 +700,20 @@ function alternativesWorthShowing() {
   return !analysis.search.truncated && analysis.alternatives.some((alt) => alt.behind >= TIE_POINTS);
 }
 
+// "Kawhi Leonard (1.2 lower)"; a plan that is the same team in the other order says when the recommended player comes
+function alternativeText(alt) {
+  return `${nameOf(alt.id)} (${alt.behind >= TIE_POINTS ? `${oneDecimal(alt.behind)} lower` : 'same score'})`;
+}
+
+// When the alternatives are the same team in the other order, say once that the recommended player comes next
+function thenSentence() {
+  const thens = analysis.alternatives.filter((alt) => alt.then).map((alt) => alt.then);
+  if (thens.length === 0) return '';
+  const first = thens[0];
+  const same = thens.length === analysis.alternatives.length && thens.every((then) => then.id === first.id);
+  return same ? ` Each of those plans takes ${nameOf(first.id)} at ${first.pick} if he lasts (${pct(first.availability)}).` : '';
+}
+
 function renderPlan() {
   const container = $('plan');
   const alternatives = $('alternatives');
@@ -661,7 +722,7 @@ function renderPlan() {
     put(alternatives, );
     return;
   }
-  const [best, ...others] = analysis.plans;
+  const [best] = analysis.plans;
   const rows = best.steps.map((step) => {
     const row = poolRowById.get(step.id);
     return h(
@@ -673,29 +734,15 @@ function renderPlan() {
       meter(step.availability, step.pick === analysis.clock.pick && !hasUnseenPicks()),
     );
   });
-  const foot = h(
-    'div',
-    { class: 'plan-foot' },
-    `Roster score ${oneDecimal(best.totalScore)}. Odds the whole plan holds: ${pct(best.survival)}, every pick's odds multiplied. The plan is recomputed after each pick.`,
-  );
-  const otherPlans = others.length
-    ? h(
-        'details',
-        { class: 'others' },
-        h('summary', {}, `Other strong plans (${others.length})`),
-        others.map((plan) =>
-          h('div', { class: 'other-plan' }, `${plan.steps.map((step) => `${step.pick}: ${nameOf(step.id)}`).join(', ')}. Score ${oneDecimal(plan.totalScore)}.`),
-        ),
-      )
-    : null;
-  put(container, h('div', { class: 'plan' }, rows, foot), otherPlans);
+  const foot = h('div', { class: 'plan-foot' }, `Roster score ${oneDecimal(best.totalScore)}. The plan is recomputed after each pick.`);
+  put(container, h('div', { class: 'plan' }, rows, foot));
 
   if (alternativesWorthShowing() && analysis.recommendation) {
-    const text = analysis.alternatives.map((alt) => `${nameOf(alt.id)} (${alt.behind >= TIE_POINTS ? `${oneDecimal(alt.behind)} lower` : 'same'})`).join(', ');
+    const text = analysis.alternatives.map(alternativeText).join(', ');
     const lead = analysis.alternativesMode === 'gone'
       ? `If ${nameOf(analysis.recommendation.id)} is gone by pick ${analysis.recommendation.pick}, take instead: `
       : 'Or take instead: ';
-    put(alternatives, h('span', {}, lead), h('strong', {}, text), h('span', {}, '. In brackets: how far the whole plan falls behind the best one.'));
+    put(alternatives, h('span', {}, lead), h('strong', {}, text), h('span', {}, `. In brackets: how far the whole plan falls behind the best one.${thenSentence()}`));
   } else {
     put(alternatives, );
   }
@@ -733,11 +780,20 @@ function sortBy(column) {
   renderPool();
 }
 
+// The pick the column is about: my next pick, or on my turn the one after it ("if I pass on him now, will he be there?")
+function columnPick() {
+  return analysis.clock.isMine ? analysis.laterPick : analysis.clock.nextMyPick;
+}
+
+function oddsAtColumn(row) {
+  return analysis.clock.isMine ? row.later : row.availability;
+}
+
 function sortValue(row, player, key) {
   if (key === 'rank') return row.rank;
   if (key === 'name') return player.name;
   if (key === 'score') return row.score;
-  if (key === 'availability') return row.availability;
+  if (key === 'availability') return oddsAtColumn(row);
   if (key === 'adp') return player.adp;
   if (key === 'xrank') return player.xrank;
   if (key === 'gp') return player.gp;
@@ -761,6 +817,26 @@ function notesFor(row, player) {
   return notes;
 }
 
+// A player the unseen picks could not plausibly have taken needs no Gone button: it shows from this chance up
+const UNSEEN_RISK_SHOWN = 0.05;
+
+// The odds as a tint of the cell (the same mechanism as the stats), text at full contrast
+function oddsCell(value) {
+  if (value === null || value === undefined) return h('td', {}, '-');
+  const style = value >= 0.5
+    ? `background: color-mix(in srgb, var(--mine) ${Math.round(value * 28)}%, transparent)`
+    : `background: color-mix(in srgb, var(--flag) ${Math.round((1 - value) * 22)}%, transparent)`;
+  return h('td', { style }, pct(value));
+}
+
+// A stat tinted by how good it is in its category (0 to 100 on the capped scale); unticked categories are dimmed
+function statCell(column, player, row) {
+  const score = row.categoryScores[column.key];
+  const ticked = state.categories.includes(column.key);
+  const style = ticked && score !== null && score !== undefined ? `background: color-mix(in srgb, var(--mine) ${Math.round(Math.max(0, Math.min(100, score)) * 0.28)}%, transparent)` : '';
+  return h('td', { class: ticked ? '' : 'dim', style }, column.kind === 'rate' ? formatRate(player.stats[column.key]) : oneDecimal(player.stats[column.key]));
+}
+
 // Only offered while picks are unseen; it must not also log the row, so its clicks and keys stop here
 function goneButton(player) {
   return h(
@@ -781,13 +857,29 @@ function goneButton(player) {
 
 function matchesFilters(player) {
   if (state.position !== 'ALL' && !player.positions.includes(state.position)) return false;
-  const needle = state.search.trim().toLowerCase();
-  return !needle || player.name.toLowerCase().includes(needle) || player.team.toLowerCase().includes(needle);
+  const text = `${player.name} ${player.team}`.toLowerCase();
+  return state.search.toLowerCase().split(/\s+/).filter(Boolean).every((token) => text.includes(token));
+}
+
+// An empty table says why: a player already drafted is named with the pick that took him
+function emptyTableMessage() {
+  const tokens = state.search.toLowerCase().split(/\s+/).filter(Boolean);
+  if (tokens.length) {
+    const taken = analysis.log.find((entry) => entry.id && tokens.every((token) => `${nameOf(entry.id)} ${playerById.get(entry.id).team}`.toLowerCase().includes(token)));
+    if (taken) return `${nameOf(taken.id)} was taken at pick ${taken.pick} (${taken.team}).`;
+  }
+  return 'No available player matches. Clear the search or choose another position.';
 }
 
 let visibleIds = [];
 
+let plannedPicks = new Map();
+
 function renderPool() {
+  plannedPicks = new Map(analysis.plans.length ? analysis.plans[0].steps.map((step) => [step.id, step.pick]) : []);
+  const pickLabel = columnPick();
+  const availabilityHead = $('pool-head').querySelector('button[data-key="availability"]');
+  if (availabilityHead) availabilityHead.textContent = pickLabel ? `At pick ${pickLabel}` : 'At your pick';
   const rows = analysis.pool
     .map((row) => ({ row, player: playerById.get(row.id) }))
     .filter(({ player }) => matchesFilters(player));
@@ -806,20 +898,23 @@ function renderPool() {
     const logged = pickedIds().has(player.id); // still in the table because the server has not answered yet
     const unconfirmed = refreshFailed && logged;
     const pending = busyShown && logged && !unconfirmed;
+    const planned = plannedPicks.get(player.id);
+    const isRecommended = analysis.recommendation && analysis.recommendation.id === player.id;
     const cells = [
       h('td', {}, row.rank),
-      h('td', { class: 'left player' }, h('strong', {}, player.name), h('div', { class: 'meta' }, `${player.team}, ${player.positions.join('/')}`), h('div', { class: 'notes' }, [
+      h('td', { class: 'left player' }, h('strong', {}, isRecommended ? `★ ${player.name}` : player.name), h('div', { class: 'meta' }, `${player.team}, ${player.positions.join('/')}`), h('div', { class: 'notes' }, [
+        ...(planned && !isRecommended ? [badge(`plan: ${planned}`, 'info', `The current plan takes him at pick ${planned}`)] : []),
         ...(unconfirmed ? [badge('Logged, not confirmed. Click to retry', 'injury', 'The server has not confirmed this pick yet')] : []),
         ...(pending ? [badge('Logging the pick', 'info', 'Waiting for the server to confirm this pick')] : []),
         ...notesFor(row, player),
-        ...(hasUnseenPicks() ? [goneButton(player)] : []),
+        ...(hasUnseenPicks() && row.unseenRisk >= UNSEEN_RISK_SHOWN ? [goneButton(player)] : []),
       ])),
       h('td', { class: 'score' }, oneDecimal(row.score)),
-      h('td', {}, row.availability === null ? '-' : pct(row.availability)),
+      oddsCell(oddsAtColumn(row)),
       h('td', { title: player.adpEstimated ? 'Yahoo shows no ADP for him; estimated from nearby ranks' : '' }, `${player.adpEstimated ? '~' : ''}${player.adp.toFixed(1)}`),
       h('td', {}, player.xrank),
       h('td', {}, player.gp),
-      ...STAT_COLUMNS.map((column) => h('td', {}, column.kind === 'rate' ? formatRate(player.stats[column.key]) : oneDecimal(player.stats[column.key]))),
+      ...STAT_COLUMNS.map((column) => statCell(column, player, row)),
     ];
     return h(
       'tr',
@@ -833,6 +928,10 @@ function renderPool() {
           if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
             rowPicked(player.id);
+          } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            const sibling = event.key === 'ArrowDown' ? event.currentTarget.nextElementSibling : event.currentTarget.previousElementSibling;
+            if (sibling) sibling.focus();
           }
         },
       },
@@ -840,7 +939,7 @@ function renderPool() {
     );
   });
   put($('pool-body'), ...body);
-  if (rows.length === 0) $('pool-body').append(h('tr', {}, h('td', { colspan: POOL_COLUMNS.length, class: 'left' }, 'No available player matches. Clear the search or choose another position.')));
+  if (rows.length === 0) $('pool-body').append(h('tr', {}, h('td', { colspan: POOL_COLUMNS.length, class: 'left' }, emptyTableMessage())));
 
   for (const button of $('pool-head').querySelectorAll('button[data-key]')) {
     // aria-sort belongs on the column header cell, and the stylesheet draws the arrow from it
@@ -882,24 +981,29 @@ function renderSearchNote() {
 
 function renderRoster() {
   const list = $('roster');
-  if (analysis.roster.length === 0) {
+  const entries = analysis.roster;
+  if (entries.length === 0) {
     const first = pool.myPicks[0];
     put(list, h('li', { class: 'empty-row' }, `No picks yet. Your first pick is ${first}.`));
     $('roster-positions').textContent = '';
     return;
   }
-  put(list, 
-    ...analysis.roster.map((entry) =>
-      entry.kind === 'outside'
-        ? h('li', {}, h('span', { class: 'pick' }, `#${entry.pick}`), h('span', {}, h('strong', {}, 'Not in the list'), h('div', { class: 'note' }, 'Any position, replacement-level value')))
-        : h('li', {}, h('span', { class: 'pick' }, `#${entry.pick}`), h('span', {}, h('strong', {}, nameOf(entry.id)), h('div', { class: 'note' }, detailOf(entry.id)))),
-    ),
+  const who = (entry) => (entry.kind === 'outside' ? 'Not in the list' : nameOf(entry.id));
+  const detail = (entry) => (entry.kind === 'outside' ? 'Any position, replacement-level value' : detailOf(entry.id));
+  const slotRows = analysis.lineup.slots.map((slot) => {
+    const entry = slot.entry === null ? null : entries[slot.entry];
+    return entry
+      ? h('li', { class: 'slot filled' }, h('span', { class: 'pick' }, slot.slot), h('span', {}, h('strong', {}, who(entry)), h('div', { class: 'note' }, `#${entry.pick}, ${detail(entry)}`)))
+      : h('li', { class: 'slot open' }, h('span', { class: 'pick' }, slot.slot), h('span', { class: 'note' }, 'open'));
+  });
+  const bench = analysis.lineup.bench.map((index) =>
+    h('li', { class: 'slot bench' }, h('span', { class: 'pick' }, 'Bench'), h('span', {}, h('strong', {}, who(entries[index])), h('div', { class: 'note' }, `#${entries[index].pick}, ${detail(entries[index])}`))),
   );
-  const counts = Object.fromEntries(POSITIONS.map((position) => [position, 0]));
-  const outside = analysis.roster.filter((entry) => entry.kind === 'outside').length;
-  for (const entry of analysis.roster) if (entry.kind !== 'outside') for (const position of playerById.get(entry.id).positions) counts[position] += 1;
-  const outsideNote = outside ? `, plus ${outside} not in the list (any position)` : '';
-  $('roster-positions').textContent = `Eligible at: ${POSITIONS.map((position) => `${position} ${counts[position]}`).join(', ')}${outsideNote}`;
+  put(list, ...slotRows, ...bench);
+  const fits = analysis.lineup.canAdd;
+  $('roster-positions').textContent = fits.length
+    ? `One more player can start at: ${fits.join(', ')}.`
+    : 'The lineup is full: another player would sit on the bench.';
 }
 
 const ordinal = (value) => {

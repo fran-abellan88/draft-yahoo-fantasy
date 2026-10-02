@@ -46,6 +46,8 @@ TEXT_PAIRS: List[Tuple[str, str, str]] = [
     ("mine", "mine-soft", "snake cells for my picks already made"),
     ("mine", "surface", "snake cells for my coming picks, roster pick numbers"),
     ("muted", "surface", "secondary text on cards"),
+    ("ink", "hover", "the row under the pointer, the main click target"),
+    ("muted", "hover", "player details on the hovered row"),
     ("paper", "ink", "snake cell on the clock, active filter chip"),
 ]
 
@@ -245,3 +247,19 @@ def test_the_need_weights_are_a_setting_that_is_saved_requested_and_shown() -> N
     assert 'id="needs"' in (WEB / "index.html").read_text()
     assert "needs: state.needs" in JS and "state.needs = saved.needs === true" in JS
     assert "analysis.needs" in JS and "Weights in use" in JS
+
+
+def test_the_table_marks_the_plan_tints_the_stats_and_the_hero_explains_itself() -> None:
+    assert "★" in JS and "plan: ${planned}" in JS
+    assert "statCell(column, player, row)" in JS and "row.categoryScores[column.key]" in JS and "td.dim" in CSS
+    assert "UNSEEN_RISK_SHOWN" in JS and "row.unseenRisk >= UNSEEN_RISK_SHOWN" in JS, "Gone only where the unseen picks matter"
+    assert "whyNotTheTopScore(recommendation, plan)" in JS and "Current plan:" in JS and "Today's plan" not in JS
+    assert "Odds the whole plan holds" not in JS and "Other strong plans" not in JS
+    assert "analysis.bestAvailable" in JS and "are not planned" in JS
+    assert "oddsAtColumn(row)" in JS and "analysis.laterPick" in JS
+    assert "ArrowDown" in JS and "split(/\\s+/)" in JS
+
+
+def test_the_roster_shows_slots_and_the_tab_and_saved_state_are_kept() -> None:
+    assert "analysis.lineup.slots" in JS and "canAdd" in JS and "Eligible at:" not in JS
+    assert "TAB_KEY" in JS and "showSaved('Saved', true)" in JS and 'id="saved-state"' in (WEB / "index.html").read_text()
