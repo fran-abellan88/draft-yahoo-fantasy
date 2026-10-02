@@ -321,3 +321,52 @@ def test_a_saved_log_with_an_unseen_pick_on_mine_is_not_loaded() -> None:
     assert _run(f"L.normalizePicks({log}, {known}, [2])") is None
     assert _run(f"L.normalizePicks({log}, {known}, [3])") == [{"kind": "player", "id": "a"}, {"kind": "unseen"}]
     assert _run(f"L.normalizePicks({log}, {known})") is not None, "no pick numbers given: nothing to check against"
+
+
+NAMES = "(id) => id.toUpperCase()"
+
+
+def test_after_an_edit_undo_on_a_gone_last_entry_makes_it_unseen_instead_of_shortening_the_log() -> None:
+    picks = [{"kind": "player", "id": "a"}, {"kind": "unseen"}, {"kind": "gone", "id": "k"}]
+    result = _run(f"L.undoLast({json.dumps(picks)}, [])")
+    assert result["picks"][2] == {"kind": "unseen"} and len(result["picks"]) == 3
+    assert _run(f"L.undoLast({json.dumps(picks[:2])}, [])")["picks"] == picks[:1], "not gone: the entry is removed as before"
+
+
+def test_the_undo_button_names_what_it_will_undo() -> None:
+    picks = [{"kind": "player", "id": "a"}, {"kind": "outside"}, {"kind": "unseen"}, {"kind": "unseen"}, {"kind": "gone", "id": "k"}]
+    label = lambda history, p=picks: _run(f"L.undoLabel({json.dumps(p)}, {json.dumps(history)}, {NAMES})")  # noqa: E731
+    assert label([{"type": "log", "count": 2}, {"type": "gone", "index": 4}]) == "Undo: Gone on K"
+    assert label([]) == "Undo: Gone on K", "no history: the same, never a shorter log"
+    assert label([{"type": "log", "count": 3}], picks[:4]) == "Undo: 3 unseen picks"
+    assert label([], picks[:2]) == "Undo pick 2: not in the list"
+    assert label([], picks[:1]) == "Undo pick 1: A"
+    assert _run(f"L.undoLabel([], [], {NAMES})") == "Undo"
+
+
+def test_refused_edits_have_no_text_to_build_and_allowed_ones_say_what_changes() -> None:
+    log = json.dumps([{"kind": "player", "id": "a"}, {"kind": "player", "id": "b"}, {"kind": "unseen"}, {"kind": "outside"}])
+    assert "error" in _run(f"L.swapPicks({log}, 2, 999, [2])") and "error" in _run(f"L.swapPicks({log}, 2, NaN, [2])")
+    assert "error" in _run(f"L.placeGone({log}, 1, NaN)") and "error" in _run(f"L.placeGone({log}, NaN, 3)")
+    text = _run(f"L.swapText({log}, 1, 2, [2], {NAMES})")
+    assert text == "Swap pick 1 (A) and pick 2 (B)? This changes your roster: pick 2 is yours."
+    assert "roster" not in _run(f"L.swapText({log}, 1, 4, [2], {NAMES})")
+    assert _run(f"L.describePick({log}, 3, {NAMES})") == "pick 3 (unseen)"
+    assert _run(f"L.describePick({log}, 4, {NAMES})") == "pick 4 (not in the list)"
+    assert _run(f"L.describePick({log}, 99, {NAMES})") == "pick 99"
+
+
+def test_a_gone_entry_can_be_confirmed_where_it_already_is() -> None:
+    log = [{"kind": "player", "id": "a"}, {"kind": "gone", "id": "k"}]
+    assert _edit("placeGone(PICKS, 2, 2)", log)["picks"] == [{"kind": "player", "id": "a"}, {"kind": "player", "id": "k"}]
+    assert "error" in _edit("placeGone(PICKS, 2, 1)", log), "another pick must still be unseen"
+
+
+def test_choosing_a_player_replaces_a_wrong_pick_even_my_own_but_not_one_logged_elsewhere() -> None:
+    log = [{"kind": "player", "id": "a"}, {"kind": "player", "id": "b"}, {"kind": "outside"}]
+    assert _edit("choosePlayer(PICKS, 2, 'z')", log)["picks"][1] == {"kind": "player", "id": "z"}
+    assert _edit("choosePlayer(PICKS, 3, 'z')", log)["picks"][2] == {"kind": "player", "id": "z"}
+    assert "error" in _edit("choosePlayer(PICKS, 2, 'a')", log), "he is at pick 1: that is a swap"
+    assert "error" in _edit("choosePlayer(PICKS, 9, 'z')", log)
+    assert "roster" in _run(f"L.chooseText({json.dumps(log)}, 2, 'z', [2], {NAMES})")
+    assert "B goes back to the pool" in _run(f"L.chooseText({json.dumps(log)}, 2, 'z', [2], {NAMES})")

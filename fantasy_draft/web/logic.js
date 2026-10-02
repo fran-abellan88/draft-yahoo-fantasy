@@ -108,6 +108,42 @@ function markGone(picks, id, adp) {
 }
 
 // ---------- editing the log ----------
+// "pick 22 (unseen)", "pick 40 (not in the list)", "pick 24 (Tyrese Maxey)": what a confirmation names. `nameOf` turns a
+// player id into a name.
+function describePick(picks, number, nameOf) {
+  const entry = picks[number - 1];
+  if (!entry) return `pick ${number}`;
+  const what = entry.kind === 'unseen' ? 'unseen' : entry.kind === 'outside' ? 'not in the list' : entry.kind === 'gone' ? `${nameOf(entry.id)}, gone` : nameOf(entry.id);
+  return `pick ${number} (${what})`;
+}
+
+function rosterNote(numbers, myPicks) {
+  const mine = numbers.filter((number) => myPicks.includes(number));
+  return mine.length ? ` This changes your roster: pick ${mine.join(' and pick ')} ${mine.length > 1 ? 'are' : 'is'} yours.` : '';
+}
+
+// The wording of a confirmation, built only for an edit that is allowed (a refused edit has nothing to describe).
+function swapText(picks, a, b, myPicks, nameOf) {
+  return `Swap ${describePick(picks, a, nameOf)} and ${describePick(picks, b, nameOf)}?${rosterNote([a, b], myPicks)}`;
+}
+
+function forgetText(picks, number, nameOf) {
+  const entry = picks[number - 1];
+  const returns = entry.kind === 'player' || entry.kind === 'gone' ? ` ${nameOf(entry.id)} goes back to the pool.` : '';
+  return `Make ${describePick(picks, number, nameOf)} unseen?${returns}`;
+}
+
+function placeText(picks, from, to, nameOf) {
+  const name = nameOf(picks[from - 1].id);
+  return from === to ? `Confirm that ${name} was taken at pick ${to}?` : `Log ${name} at ${describePick(picks, to, nameOf)}? Pick ${from} becomes unseen again.`;
+}
+
+function chooseText(picks, number, id, myPicks, nameOf) {
+  const entry = picks[number - 1];
+  const was = entry.kind === 'player' || entry.kind === 'gone' ? ` ${nameOf(entry.id)} goes back to the pool.` : '';
+  return `Log ${nameOf(id)} at ${describePick(picks, number, nameOf)} instead?${was}${rosterNote([number], myPicks)}`;
+}
+
 // Every edit takes 1-based pick numbers and returns {picks} or {error}, and none can produce a log the server would
 // refuse: an unseen or gone entry never lands on one of the user's own pick numbers (`myPicks`). Edits make the
 // history of Undo meaningless, so the page clears it after one.
@@ -145,16 +181,29 @@ function forgetPick(picks, number, myPicks) {
   return { picks: next };
 }
 
-// Confirm a gone entry: the player was taken at pick `to`, which must be an unseen pick. The entry he was marked
-// at becomes unseen again, and he is now an ordinary player pick.
+// Confirm a gone entry: the player was taken at pick `to`, which is an unseen pick or the pick he is marked at (the
+// guess was right). The entry he was marked at becomes unseen again unless that is `to`, and he is now an ordinary
+// player pick.
 function placeGone(picks, from, to) {
   const error = pickNumberError(picks, from, 'The gone pick') || pickNumberError(picks, to, 'The new pick');
   if (error) return { error };
   if (picks[from - 1].kind !== 'gone') return { error: `Pick ${from} is not a gone entry.` };
-  if (picks[to - 1].kind !== 'unseen') return { error: `Pick ${to} is not an unseen pick, so nothing can be placed there.` };
+  if (from !== to && picks[to - 1].kind !== 'unseen') return { error: `Pick ${to} is not an unseen pick, so nothing can be placed there.` };
   const next = picks.slice();
-  next[to - 1] = { kind: 'player', id: picks[from - 1].id };
   next[from - 1] = { kind: 'unseen' };
+  next[to - 1] = { kind: 'player', id: picks[from - 1].id };
+  return { picks: next };
+}
+
+// "Choose the player": the pick at `number` was logged wrongly and `id`, a player still in the pool, replaces it.
+// A player already logged elsewhere is a swap, which has its own control.
+function choosePlayer(picks, number, id) {
+  const error = pickNumberError(picks, number, 'The pick');
+  if (error) return { error };
+  const elsewhere = picks.findIndex((entry) => entry.id === id);
+  if (elsewhere >= 0) return { error: `He is already logged at pick ${elsewhere + 1}. Use Swap with that pick.` };
+  const next = picks.slice();
+  next[number - 1] = { kind: 'player', id };
   return { picks: next };
 }
 
@@ -190,13 +239,36 @@ function unseenAgain(picks, index) {
   return next;
 }
 
-// The log and history after undoing the last action; null when there is nothing to undo.
-function undoLast(picks, history) {
+// What Undo does next: {gone: index} turns a gone entry back into an unseen pick, {remove: n} drops the last n entries.
+// Without a history a gone last entry still becomes unseen, so Undo never makes the log shorter than Yahoo's.
+function nextUndo(picks, history) {
   if (picks.length === 0) return null;
   const last = history[history.length - 1];
-  if (last && last.type === 'gone') return { picks: unseenAgain(picks, last.index), history: history.slice(0, -1) };
-  if (last && last.type === 'log') return { picks: picks.slice(0, picks.length - last.count), history: history.slice(0, -1) };
-  return { picks: picks.slice(0, -1), history: [] };
+  if (last && last.type === 'gone') return { gone: last.index, fromHistory: true };
+  if (last && last.type === 'log') return { remove: last.count, fromHistory: true };
+  if (picks[picks.length - 1].kind === 'gone') return { gone: picks.length - 1, fromHistory: false };
+  return { remove: 1, fromHistory: false };
+}
+
+// The log and history after undoing the last action; null when there is nothing to undo.
+function undoLast(picks, history) {
+  const action = nextUndo(picks, history);
+  if (!action) return null;
+  const rest = action.fromHistory ? history.slice(0, -1) : [];
+  if (action.gone !== undefined) return { picks: unseenAgain(picks, action.gone), history: rest };
+  return { picks: picks.slice(0, picks.length - action.remove), history: rest };
+}
+
+// What the Undo button says it will do, because after an edit what Undo means changes.
+function undoLabel(picks, history, nameOf) {
+  const action = nextUndo(picks, history);
+  if (!action) return 'Undo';
+  if (action.gone !== undefined) return `Undo: Gone on ${nameOf(picks[action.gone].id)}`;
+  if (action.remove > 1) return `Undo: ${action.remove} unseen picks`;
+  const number = picks.length;
+  const entry = picks[number - 1];
+  const what = entry.kind === 'unseen' ? 'unseen' : entry.kind === 'outside' ? 'not in the list' : nameOf(entry.id);
+  return `Undo pick ${number}: ${what}`;
 }
 
 // A gone entry back to an unseen pick, for a mistake noticed after other picks; null when it is not a gone entry.
@@ -206,5 +278,5 @@ function unmarkGone(picks, history, index) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { clampRuleValue, sanitizeRule, normalizePicks, pickSavedState, planBehind, markGone, sanitizeHistory, undoLast, unmarkGone, swapPicks, forgetPick, placeGone, PICK_KINDS };
+  module.exports = { clampRuleValue, sanitizeRule, normalizePicks, pickSavedState, planBehind, markGone, sanitizeHistory, undoLast, unmarkGone, swapPicks, forgetPick, placeGone, choosePlayer, describePick, swapText, forgetText, placeText, chooseText, undoLabel, PICK_KINDS };
 }

@@ -20,7 +20,7 @@ Your picks are kept in the browser, so reloading the page mid-draft loses nothin
 ## Using the page
 
 - **Click a player** to log the pick that is on the clock. Picks are logged in order and the snake order decides
-  which ones are yours, so the state cannot disagree with the draft. **Undo last pick** removes the latest one.
+  which ones are yours, so the state cannot disagree with the draft. **Undo** reverts the last action (its label says which).
 - **Pick not in the list** logs a pick of a player who is not among the 150. It counts as a pick, nobody leaves the
   pool, and if it is yours it fills one starting slot at any position, at replacement-level value.
 - **I am behind**: type the pick Yahoo is at and the picks you missed become *unseen*. A player the table lists may have

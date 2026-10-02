@@ -156,6 +156,7 @@ function setBusy(busy) {
 
 async function refresh() {
   editing = null; // an open edit was built from the log as it was
+  choosing = null;
   const requestId = ++latestRequest;
   setBusy(true);
   const body = JSON.stringify({ categories: state.categories, picks: state.picks, rule: ruleForRequest(), gamesAdjusted: state.gamesAdjusted, method: state.method });
@@ -210,6 +211,10 @@ function pickedIds() {
 
 function draft(id) {
   if (!analysis || analysis.clock.draftComplete) return;
+  if (choosing) {
+    choosePlayerFor(id);
+    return;
+  }
   if (pickedIds().has(id)) {
     if (refreshFailed) refresh(); // clicking a pick the server has not confirmed tries again
     return;
@@ -316,6 +321,7 @@ function render() {
   renderRoster();
   renderProfile();
   renderLog();
+  renderChoosing();
 }
 
 function renderClock() {
@@ -345,6 +351,7 @@ function renderClock() {
     ? `Round ${clock.round}: picks run right to left. Slot numbers shown, yours is outlined.`
     : `Round ${clock.round}: picks run left to right. Slot numbers shown, yours is outlined.`;
   $('undo').disabled = state.picks.length === 0;
+  $('undo').textContent = undoLabel(state.picks, state.history, nameOf);
   $('outside').disabled = analysis.clock.draftComplete;
 }
 
@@ -381,7 +388,7 @@ function renderHero() {
   // On my turn the player is on the board unless picks were missed: then the doubt is shown and the user checks Yahoo
   const doubt = mine && hasUnseenPicks() && row.availability !== null;
   const odds = doubt
-    ? `${pct(row.availability)} chance he is still on the board. Check Yahoo.`
+    ? (state.rule.type === 'window' ? "Picks were missed. Check he is still on Yahoo's board." : `${pct(row.availability)} chance he is still on the board. Check Yahoo.`)
     : !mine && row.availability !== null ? `${pct(row.availability)} chance he is still there.` : '';
   const lookFirst = doubt ? analysis.lookFirst : [];
   put(hero, 
@@ -716,28 +723,26 @@ function logLabel(entry) {
   return nameOf(entry.id);
 }
 
-// "pick 22 (unseen)", "pick 40 (not in the list)", "pick 24 (Tyrese Maxey)": what a confirmation names
-function describePick(number) {
-  const entry = state.picks[number - 1];
-  const what = entry.kind === 'unseen' ? 'unseen' : entry.kind === 'outside' ? 'not in the list' : entry.kind === 'gone' ? `${nameOf(entry.id)}, gone` : nameOf(entry.id);
-  return `pick ${number} (${what})`;
-}
-
 // Editing the log: which pick is open, and an edit waiting for its confirmation ({picks, text})
 let editing = null;
+// "Choose the player": the pick whose player the next click on a table row replaces
+let choosing = null;
 
 function closeEditing() {
   editing = null;
+  choosing = null;
+  renderChoosing();
   renderLog();
 }
 
-function askToConfirm(result, text) {
+// The wording is built only for an edit that is allowed: a refused edit has nothing to describe
+function askToConfirm(result, textFor) {
   if (result.error) {
     editing.error = result.error;
     editing.pending = null;
   } else {
     editing.error = null;
-    editing.pending = { picks: result.picks, text };
+    editing.pending = { picks: result.picks, text: textFor() };
   }
   renderLog();
 }
@@ -750,29 +755,51 @@ function applyEdit() {
   refresh();
 }
 
+function renderChoosing() {
+  const note = $('choosing-note');
+  note.hidden = choosing === null;
+  if (choosing === null) return;
+  put(note, `Choosing the player for pick ${choosing.pick}: click a player in the table. `, h('button', { type: 'button', onclick: closeEditing }, 'Cancel'));
+}
+
+// A table row was clicked while choosing: that player replaces the pick, after a confirmation
+function choosePlayerFor(id) {
+  const number = choosing.pick;
+  choosing = null;
+  editing = { pick: number, pending: null, error: null };
+  const result = choosePlayer(state.picks, number, id);
+  askToConfirm(result, () => chooseText(state.picks, number, id, pool.myPicks, nameOf));
+  renderChoosing();
+}
+
 function editPanel(entry) {
   const number = entry.pick;
   const mine = pool.myPicks.includes(number);
   const field = (id, label) => h('label', {}, label, ' ', h('input', { id, type: 'number', min: 1, max: state.picks.length, class: 'pick-number' }));
-  const readNumber = (id) => Number($(id).value);
+  const readNumber = (id) => ($(id).value.trim() === '' ? NaN : Number($(id).value));
   const controls = [
+    h('div', { class: 'edit-row' }, h('button', { type: 'button', onclick: () => {
+      choosing = { pick: number };
+      editing = null;
+      renderChoosing();
+      renderLog();
+    } }, 'Choose the player')),
     h('div', { class: 'edit-row' }, field('edit-swap', `Swap pick ${number} with pick`),
       h('button', { type: 'button', onclick: () => {
         const other = readNumber('edit-swap');
-        askToConfirm(swapPicks(state.picks, number, other, pool.myPicks), `Swap ${describePick(number)} and ${describePick(other)}?`);
+        askToConfirm(swapPicks(state.picks, number, other, pool.myPicks), () => swapText(state.picks, number, other, pool.myPicks, nameOf));
       } }, 'Swap')),
   ];
   if (!mine && entry.kind !== 'unseen') {
     controls.push(h('div', { class: 'edit-row' }, h('button', { type: 'button', onclick: () => {
-      const returns = entry.kind === 'player' || entry.kind === 'gone' ? ` ${nameOf(entry.id)} goes back to the pool.` : '';
-      askToConfirm(forgetPick(state.picks, number, pool.myPicks), `Make ${describePick(number)} unseen?${returns}`);
+      askToConfirm(forgetPick(state.picks, number, pool.myPicks), () => forgetText(state.picks, number, nameOf));
     } }, 'I do not know what this pick was')));
   }
   if (entry.kind === 'gone') {
     controls.push(h('div', { class: 'edit-row' }, field('edit-place', `${nameOf(entry.id)} was taken at pick`),
       h('button', { type: 'button', onclick: () => {
         const to = readNumber('edit-place');
-        askToConfirm(placeGone(state.picks, number, to), `Log ${nameOf(entry.id)} at ${describePick(to)}? Pick ${number} becomes unseen again.`);
+        askToConfirm(placeGone(state.picks, number, to), () => placeText(state.picks, number, to, nameOf));
       } }, 'Place')));
   }
   const pending = editing.pending

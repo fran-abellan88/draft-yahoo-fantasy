@@ -146,3 +146,12 @@ def test_on_my_turn_with_unseen_picks_the_page_shows_the_doubt_the_better_player
     assert "markPlayerGone(recommendation.id)" in hero and "He is gone" in hero
     plan = JS[JS.index("function renderPlan"):]
     assert "!hasUnseenPicks()" in plan[: plan.index("\nfunction ", 10)]
+
+
+def test_choosing_a_player_intercepts_the_next_row_click_and_the_hero_says_less_under_the_window_rule() -> None:
+    html = (WEB / "index.html").read_text()
+    assert 'id="choosing-note"' in html
+    draft = JS[JS.index("function draft(id)"): JS.index("function draftOutside")]
+    assert "if (choosing)" in draft and "choosePlayerFor(id)" in draft
+    assert "state.rule.type === 'window'" in JS and "Picks were missed" in JS
+    assert "undoLabel(" in JS
