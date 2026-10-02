@@ -245,6 +245,7 @@ body { margin: 0; }
 .seam-plan { grid-area: plan; max-height: 45vh; } /* the plan scrolls inside itself so the panel below it keeps room */
 .seam-standing { grid-area: standing; }
 .tablecol { grid-area: table; display: flex; flex-direction: column; overflow: hidden; }
+.rail { display: contents; } /* only a wrapper from 2350 px up */
 .team { grid-area: team; }
 .panel.log { grid-area: log; }
 .teams { grid-area: teams; }
@@ -273,15 +274,20 @@ body { margin: 0; }
     grid-template-areas:
       "top top top top"
       "err err err err"
-      "rec table team teams"
-      "plan table team teams"
-      "tabs table team log"
-      "standing table team log";
+      "rec table rail teams"
+      "plan table rail teams"
+      "tabs table rail teams"
+      "standing table rail teams";
   }
+  /* My team is short (ten slots and the bench), so the log shares its column instead of leaving it empty */
+  .rail { grid-area: rail; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+  .rail .team { flex: none; max-height: 60%; }
+  .rail .panel.log { flex: 1 1 0; }
   /* the strip is not drawn, but the row it would have taken stays as small as it can */
   .app { grid-template-rows: auto auto auto minmax(0, auto) 0 minmax(0, 1fr); }
   .seam-standing { grid-row: 5 / 7; }
 }
+
 
 /* 1720 to 2349: 14 teams and the log share a tab panel under the team */
 @media (min-width: 1720px) and (max-width: 2349.98px) {

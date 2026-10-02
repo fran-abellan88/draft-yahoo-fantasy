@@ -284,6 +284,7 @@ function setBusy(busy) {
 }
 
 async function refresh() {
+  if (!$('setting-confirm').hidden) keepSettings(); // a pending change was worded for the draft as it was
   editing = null; // an open edit was built from the log as it was
   choosing = null;
   const requestId = ++latestRequest;
@@ -1060,7 +1061,7 @@ function renderStanding() {
     container,
     h('p', { class: 'note standing-summary' }, summary ? `${summary}.` : ''),
     ...rows,
-    h('p', { class: 'note' }, `Bar: the share of the other 13 teams you beat, ${league.projected.basis}. "Now" counts the first ${league.size} pick${league.size === 1 ? '' : 's'} of each team.`),
+    h('p', { class: 'note' }, `Bar: the share of the other 13 teams you beat, ${league.projected.basis}. "Now" counts the first ${league.size} pick${league.size === 1 ? '' : 's'} of each team, against ${plural(Math.max(league.compared - 1, 0), 'other team')}.`),
     renderWeightsNote(keys, labels),
   );
 }
@@ -1115,7 +1116,7 @@ function renderLeague() {
   );
   const note = leagueView === 'projected'
     ? `${table.basis}: logged picks, your best plan for your team, and the other teams filled in ADP order with lineup limits. A guess at the league, not who will be available.`
-    : `So far: the first ${table.size} pick${table.size === 1 ? '' : 's'} of every team${table.waiting ? `; the ${plural(table.waiting, 'team')} yet to make pick ${table.size} ${table.waiting === 1 ? 'is' : 'are'} scaled up to it` : ''}. Totals per game; FG% and FT% are real ratios; fewer turnovers is better.`;
+    : `So far: the first ${table.size} pick${table.size === 1 ? '' : 's'} of every team. Totals per game; FG% and FT% are real ratios; fewer turnovers is better.${table.waiting ? ` ${plural(table.waiting, 'team')} yet to make pick ${table.size} ${table.waiting === 1 ? 'is' : 'are'} scaled up to it, and a scaled team usually drops a little when it picks.` : ''}${table.leftOut ? ` ${plural(table.leftOut, 'team')} with no player yet ${table.leftOut === 1 ? 'is' : 'are'} left out.` : ''}`;
   const uncounted = table.notCounted ? ` ${plural(table.notCounted, 'pick')} not counted (unseen, gone or not in the list).` : '';
   put(container, views, h('div', { class: 'league-wrap' }, h('table', { class: 'league-table' }, h('thead', {}, head), h('tbody', {}, ...rows))), h('p', { class: 'note' }, note + uncounted));
 }
@@ -1445,7 +1446,7 @@ async function init() {
   draftId = server.id || '';
   const local = readStored(storageKey());
   const source = chooseSource(server.version, server.state, local, readStored(syncKey()));
-  const keptAside = discardsUnconfirmed(source, local, readStored(syncKey()));
+  const keptAside = discardsUnconfirmed(source, local, readStored(syncKey()), server.state);
   if (keptAside) {
     try {
       localStorage.setItem(asideKey(), JSON.stringify(local));
@@ -1461,7 +1462,8 @@ async function init() {
     showNotice(`Continuing a saved draft: ${plural(state.picks.length, 'pick')}${state.rehearsal ? ' (a mock draft)' : ''}. Reset starts a new one.`);
   }
   if (server.problem) showError(server.problem, false, true);
-  else if (source === 'browser' && !draftRefused && state.picks.length > 0) saveToServer(); // a draft the file does not have yet
+  else if (serverVersion > 0 && !draftRefused) showSaved('Saved', true); // the file is what was loaded: say so until the next save
+  if (!server.problem && source === 'browser' && !draftRefused && state.picks.length > 0) saveToServer(); // a draft the file does not have yet
   buildCategories();
   buildPositionChips();
   buildPoolHead();

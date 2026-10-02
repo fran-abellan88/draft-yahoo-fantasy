@@ -77,7 +77,8 @@ def league_table(
     """Totals, ranks, team scores and the user's standing over the first `size` picks of every team.
 
     A team with no credited player yet (it has not picked, or only unseen or outside picks) has nothing to compare:
-    it is left out of every rank and share, shown last, and its totals are None. The team score is the expected number
+    it is left out of every rank and share, shown last, and its totals are None. With a single team compared there is no
+    score or place at all. The team score is the expected number
     of categories the team wins against a random opponent: the sum over the ticked categories of the share of the other
     compared teams it beats. Rows come back best score first, so the page needs no sorting of its own.
     """
@@ -92,8 +93,8 @@ def league_table(
         frame = by_id.loc[ids] if ids else by_id.iloc[0:0]
         counts[slot] = len(ids)
         missing[slot] = len(window) - len(ids)
-        waiting += 1 if len(window) < size else 0
         if ids:
+            waiting += 1 if len(window) < size else 0
             totals[slot] = {key: _total(frame, key, size) for key in keys}
     compared = {key: {slot: totals[slot][key] for slot in totals} for key in keys}
 
@@ -102,6 +103,7 @@ def league_table(
         ranks = {key: _rank(compared[key], slot, CATEGORIES[key].lower_is_better) for key in keys}
         beaten = {key: _beaten(compared[key], slot, CATEGORIES[key].lower_is_better) for key in keys}
         scored[slot] = {"ranks": ranks, "beaten": beaten, "score": sum(beaten.values())}
+    comparable = len(scored) >= 2  # a lone team has nothing to be compared with: no score, no place
     place = {slot: 1 + sum(1 for other in scored.values() if other["score"] > item["score"] + 1e-9) for slot, item in scored.items()}
 
     rows = []
@@ -116,8 +118,8 @@ def league_table(
                 "notCounted": missing[slot],
                 "totals": {key: round(totals[slot][key], 3) for key in keys} if item else None,
                 "ranks": item["ranks"] if item else None,
-                "score": round(item["score"], 2) if item else None,
-                "place": place[slot] if item else None,
+                "score": round(item["score"], 2) if item and comparable else None,
+                "place": place[slot] if item and comparable else None,
             }
         )
     rows.sort(key=lambda row: (row["score"] is None, -(row["score"] or 0.0), row["slot"]))
@@ -133,4 +135,5 @@ def league_table(
         "notCounted": sum(missing.values()),
         "waiting": waiting,
         "compared": len(scored),
+        "leftOut": len(rosters) - len(scored),
     }

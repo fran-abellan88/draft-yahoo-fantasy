@@ -24,3 +24,17 @@ available in the app; the 14-team table updated with every pick, "so far" and pr
 ## Checked in Chrome (port 8100, scratch files)
 
 Mock draft auto-played to pick 55; the projected table came out sorted (5.8/9 down to 3.4/9); So far showed "the 2 teams yet to make pick 4 are scaled up"; Apply, Keep current and closing the panel behaved as described; `/api/autopick` on the real route answered 400; the real page shows mode "real", no saved badge and 14 empty rows. Not checked: light mode, Safari, Firefox, other widths.
+
+## After review 13 (Q1 to Q6)
+
+Reviewer accepted all three parts. Fixed in one commit, suite 467 passed, flake8 clean:
+
+- **Q1** a reloaded draft with a file behind it shows "Saved" again.
+- **Q2** round 1: teams with no player are "left out", not "scaled" (`leftOut` in the league block, `waiting` counts only teams with a player); a lone team has no score or place; Standing says how many other teams it is compared against.
+- **Q3** a browser copy with the same picks as the file raises no "the file never received" notice.
+- **Q4** a pending settings change is dropped when the draft changes (every refresh, Reset included).
+- **Q5** the confirmation names the availability change ("set the ADP window to 4", "judge availability with the ADP window"), with the value after clamping.
+- **Q6** from 2350 px the log sits under My team in the third column and the 14 teams have the fourth to themselves (measured in an iframe at 2500 x 1400: team 380 x 73 at pick 0, log 380 x 1227, 14 teams 540 x 1315).
+- The So far note now says a scaled team usually drops a little when it picks.
+
+Not changed: the Projected table still puts my planned team against ADP-order teams, so being first there is close to automatic (see the user's question on opponent strength; an experiment is proposed, nothing built).

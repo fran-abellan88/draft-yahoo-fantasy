@@ -117,7 +117,8 @@ def test_a_team_that_has_not_picked_yet_is_left_out_and_listed_last(players: pd.
     ids = _ids(players)
     table = league_table(players, rosters_by_slot(_picks(ids[:3]), 14), ["pts", "to"], 1, 2, TEAM_NAMES)
     credited = [row for row in table["teams"] if row["players"]]
-    assert len(credited) == 3 and table["teams"][:3] == credited and table["waiting"] == 11
+    assert len(credited) == 3 and table["teams"][:3] == credited
+    assert table["waiting"] == 0 and table["leftOut"] == 11, "teams with no player are left out, not scaled"
     assert all(row["score"] is None and row["ranks"] is None for row in table["teams"][3:])
     assert sorted(row["ranks"]["pts"] for row in credited) == [1, 2, 3], "ranked among the three"
 
@@ -129,3 +130,10 @@ def test_a_team_one_pick_short_in_the_round_in_progress_is_scaled_up(players: pd
     one = players.set_index("player_id").loc[ids[4]]
     assert short["players"] == 1 and short["totals"]["pts"] == pytest.approx(one["pts"] * 2, abs=1e-3)
     assert table["waiting"] == 13, "pick 15 went to slot 14, the rest are one short"
+
+
+def test_a_lone_team_has_no_score_and_no_place(players: pd.DataFrame) -> None:
+    ids = _ids(players)
+    table = league_table(players, rosters_by_slot(_picks(ids[:1]), 14), ["pts", "to"], 1, 2, TEAM_NAMES)
+    assert table["compared"] == 1 and table["leftOut"] == 13
+    assert all(row["score"] is None and row["place"] is None for row in table["teams"])

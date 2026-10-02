@@ -76,9 +76,12 @@ function chooseSource(serverVersion, serverState, localState, sync) {
 }
 
 // True when the file won although the browser copy had never been confirmed by the server: that copy is then kept aside
-// and the user is told, so nothing is lost without a word.
-function discardsUnconfirmed(source, localState, sync) {
-  return source === 'server' && Boolean(localState) && Boolean(sync) && sync.confirmed === false;
+// and the user is told, so nothing is lost without a word. A copy with the very picks the file holds lost nothing (the
+// page left before the answer came), so it needs no notice.
+function discardsUnconfirmed(source, localState, sync, serverState) {
+  if (source !== 'server' || !localState || !sync || sync.confirmed !== false) return false;
+  const same = serverState && JSON.stringify(localState.picks) === JSON.stringify(serverState.picks);
+  return !same;
 }
 
 // ---------- catching up ----------
@@ -306,7 +309,11 @@ function settingChanges(current, proposed, labels) {
   if (current.method !== proposed.method) changes.push(proposed.method === 'capped' ? 'cap scores at the top 5%' : 'reward big numbers');
   if (current.gamesAdjusted !== proposed.gamesAdjusted) changes.push(proposed.gamesAdjusted ? 'count games missed' : 'ignore games missed');
   if (current.needs !== proposed.needs) changes.push(proposed.needs ? 'favour the categories you can still win' : 'weight every category equally');
-  if (JSON.stringify(current.rule) !== JSON.stringify(proposed.rule)) changes.push('change who will still be there');
+  const ruleNames = { baseSd: 'early-round spread', sdPerAdp: 'spread per ADP place', threshold: 'plan-on odds', slack: 'ADP window' };
+  if (current.rule.type !== proposed.rule.type) changes.push(proposed.rule.type === 'window' ? 'judge availability with the ADP window' : 'judge availability with odds from ADP');
+  for (const [key, label] of Object.entries(ruleNames)) {
+    if (current.rule[key] !== proposed.rule[key]) changes.push(`set the ${label} to ${proposed.rule[key]}`);
+  }
   return changes;
 }
 

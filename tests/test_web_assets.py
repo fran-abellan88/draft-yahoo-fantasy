@@ -314,3 +314,10 @@ def test_the_small_colour_and_badge_fixes_stay() -> None:
     assert "container-type: inline-size" in CSS and "@container" in CSS
     assert "state.picks.length === 0 && serverVersion === 0" in JS
     assert 'title="Whether the draft is saved in the draft file"></div>' in (WEB / "index.html").read_text()
+
+
+def test_the_review_fixes_of_step_8_stay() -> None:
+    assert "showSaved('Saved', true); // the file is what was loaded" in JS, "a reloaded draft says it is saved"
+    assert "keepSettings(); // a pending change was worded for the draft as it was" in JS[JS.index("async function refresh()"):][:200]
+    assert "server.state)" in JS and "a scaled team usually drops a little when it picks" in JS
+    assert '<div class="rail">' in (WEB / "index.html").read_text() and ".rail { display: contents; }" in CSS

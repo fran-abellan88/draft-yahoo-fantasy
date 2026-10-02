@@ -413,5 +413,16 @@ def test_a_pending_settings_change_is_described_in_words() -> None:
         "cap scores at the top 5%",
         "ignore games missed",
         "favour the categories you can still win",
-        "change who will still be there",
+        "set the ADP window to 4",
     ]
+    odds = "{categories: ['pts', 'to'], method: 'uncapped', gamesAdjusted: true, needs: false, rule: {type: 'probability', slack: 3}}"
+    assert changes(odds) == ["judge availability with odds from ADP"]
+
+
+def test_a_browser_copy_with_the_same_picks_as_the_file_needs_no_notice() -> None:
+    def discards(local: str, server: str) -> bool:
+        return _run(f"L.discardsUnconfirmed('server', {local}, {{basedOn: 3, confirmed: false}}, {server})")
+
+    assert discards("{picks: [1, 2]}", "{picks: [1, 2]}") is False, "the page left before the answer came"
+    assert discards("{picks: [1, 2, 3]}", "{picks: [1, 2]}") is True
+    assert discards("{picks: [1, 2]}", "null") is True
