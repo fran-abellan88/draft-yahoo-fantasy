@@ -426,3 +426,4 @@ td.dim { opacity: 0.45; }
 .modes a[aria-current="page"] { background: var(--ink); color: var(--paper); border-color: var(--ink); font-weight: 650; }
 .app[data-mode="mock"] .topbar { border-bottom: 2px solid var(--flag); }
 .app[data-mode="mock"] .modes a[aria-current="page"] { background: var(--flag); border-color: var(--flag); color: var(--paper); }
+.league-views + .range, .range { margin: 0 0 8px; font-weight: 600; }

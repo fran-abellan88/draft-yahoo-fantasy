@@ -306,6 +306,7 @@ class DraftService:
         table["basis"] = f"projected, every team completed by the same planner, {self.rounds} players each"
         table["fallbacks"] = fallbacks
         table["simulated"] = [pick.player_id for pick in simulated[len(picks):]]
+        table["myPlayers"] = [pid for pid in rosters[self.slot] if pid is not None]  # the team this projection gives the user
         return table
 
     def _league(self, picks: List[Pick], keys: List[str], best: Optional[Plan]) -> Dict[str, Any]:

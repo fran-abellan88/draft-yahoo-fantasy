@@ -352,3 +352,11 @@ def test_the_inline_theme_script_leaves_no_global_that_app_js_could_clash_with()
     head = (WEB / "index.html").read_text().split("</head>")[0]
     inline = head[head.index("<script>"): head.index("</script>")]
     assert "(function ()" in inline and "var theme" not in inline, "a global `var theme` once stopped app.js from loading"
+
+
+def test_a_failed_projection_never_leaves_an_older_table_and_my_score_is_shown_under_both_projections() -> None:
+    fetch_league = JS[JS.index("async function fetchPlannerLeague"): JS.index("function scheduleRefresh()")]
+    assert fetch_league.count("plannerLeague = null") >= 3, "other categories, a refused answer and a failed request all clear it"
+    league = JS[JS.index("function renderLeague()"): JS.index("// A gone entry back to an unseen pick")]
+    assert "if the others draft like you" in league and "if they draft by ADP" in league
+    assert "Your team in this projection" in league and "projected.myPlayers" in league

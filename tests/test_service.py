@@ -582,13 +582,12 @@ def test_the_planner_projection_completes_every_team_and_keeps_the_logged_picks(
 
 
 def test_a_poor_logged_pick_lowers_its_team_and_the_user_is_not_first_by_construction(service: DraftService) -> None:
+    """One case, not a law: a rival's mistake can also leave the user lower (the players it frees change everyone's plan)."""
     by_adp = _by_adp(service)
     good = _projection(service, [by_adp[0]])
     poor = _projection(service, [by_adp[-1]])
     team_one = lambda table: next(row for row in table["teams"] if row["slot"] == 1)["score"]  # noqa: E731
     assert team_one(poor) < team_one(good) - 0.5, "his projected stats drop when he takes a poor player"
-    mine = lambda table: next(row for row in table["teams"] if row["mine"])["score"]  # noqa: E731
-    assert mine(poor) >= mine(good) - 1e-9, "a rival's mistake never hurts me"
     assert _projection(service, [])["teams"][0]["place"] == 1
 
 
@@ -597,3 +596,10 @@ def test_the_planner_projection_refuses_what_analyze_refuses(service: DraftServi
         service.project_league({"categories": [], "picks": []})
     with pytest.raises(RequestError):
         service.project_league({"categories": ALL, "picks": ["nobody"]})
+
+
+def test_the_planner_projection_names_the_team_it_gives_the_user(service: DraftService) -> None:
+    logged = _by_adp(service)[:2]
+    table = _projection(service, logged)
+    assert table["myPlayers"][0] == logged[1] and len(table["myPlayers"]) == 8, "my logged pick, then the seven simulated ones"
+    assert set(table["myPlayers"][1:]) <= set(table["simulated"])
