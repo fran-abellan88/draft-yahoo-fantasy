@@ -318,23 +318,24 @@ function settingChanges(current, proposed, labels) {
 }
 
 // ---------- the Score bar ----------
-// A bar is as long as a player is good, between two anchors taken from the players still left: full is the best one,
-// empty is as good as the 60th (or the last one, late in the draft). Two earlier versions failed, so: a fixed span of
-// points behind the best emptied nearly every bar at the start of a draft, when the best three scores are 15 to 20 points
-// above the rest; and calling "the 5th best" full made every better player the same full bar. Nobody saturates now, so
-// two different scores always give two different bars (a point of score is at least a percent of the bar).
-const SCORE_BAR_EMPTY_RANK = 60;
+// A bar is as long as a player is good, from the lowest score left (a short sliver) to the best (full). Three earlier
+// versions failed, so the rules are: nobody saturates (a better score is always a longer bar: calling the 5th best "full"
+// gave 71.3 and 52.0 the same bar) and nobody vanishes (a fixed span of points, or calling the 60th best "empty", left
+// real players with no bar at all). The cost is that early in a draft, when the best scores are far above the rest, most
+// bars are short; they still differ.
+const SCORE_BAR_MINIMUM = 0.05; // the lowest score left still shows this much bar
 
 function scoreBarAnchors(scores) {
-  const sorted = scores.filter((score) => score !== null && score !== undefined).sort((a, b) => b - a);
-  if (sorted.length === 0) return { ceiling: 1, floor: 0 };
-  return { ceiling: sorted[0], floor: sorted[Math.min(SCORE_BAR_EMPTY_RANK, sorted.length) - 1] };
+  const present = scores.filter((score) => score !== null && score !== undefined);
+  if (present.length === 0) return { ceiling: 1, floor: 0 };
+  return { ceiling: Math.max(...present), floor: Math.min(...present) };
 }
 
-// 0 to 1: how much of the bar a score fills
+// SCORE_BAR_MINIMUM to 1: how much of the bar a score fills
 function scoreBarShare(score, anchors) {
   if (anchors.ceiling <= anchors.floor) return 1;
-  return Math.max(0, Math.min(1, (score - anchors.floor) / (anchors.ceiling - anchors.floor)));
+  const along = Math.max(0, Math.min(1, (score - anchors.floor) / (anchors.ceiling - anchors.floor)));
+  return SCORE_BAR_MINIMUM + (1 - SCORE_BAR_MINIMUM) * along;
 }
 
 if (typeof module !== 'undefined' && module.exports) {

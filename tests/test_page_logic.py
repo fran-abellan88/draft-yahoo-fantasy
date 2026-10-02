@@ -463,17 +463,16 @@ def _scores_after(picks: int) -> List[float]:
 
 @pytest.mark.parametrize("picks", [0, 28, 56, 84, 112])
 def test_the_score_bar_tells_the_players_that_matter_apart_at_every_stage_of_the_draft(picks: int) -> None:
-    """Two failures to keep out: at the start a fixed 15-point span left 147 of 150 bars empty, and calling the 5th best
-    score "full" gave 71.3 and 52.0 the same bar."""
+    """Three failures to keep out: a fixed 15-point span left 147 of 150 bars empty at the start; calling the 5th best score
+    "full" gave 71.3 and 52.0 the same bar; calling the 60th best "empty" left everyone below about 39 with no bar."""
     scores = _scores_after(picks)
     template = "(() => { const a = L.scoreBarAnchors(SCORES); return SCORES.map((x) => L.scoreBarShare(x, a)); })()"
     widths = _run(template.replace("SCORES", json.dumps(scores)))
     ordered = sorted(zip(scores, widths), reverse=True)
-    assert ordered[0][1] == 1, "the best score left is the full bar"
-    assert sum(1 for _, width in ordered if width == 1) == 1, "nobody else saturates"
-    assert all(width > 0 for _, width in ordered[:30]), "no player who could be picked next has an empty bar"
-    for (higher, wide), (lower, narrow) in zip(ordered[:30], ordered[1:31]):
+    assert ordered[0][1] == 1 and sum(1 for _, width in ordered if width == 1) == 1, "only the best score is the full bar"
+    assert all(width >= 0.05 for _, width in ordered), "every player left has a bar, however low his score"
+    for (higher, wide), (lower, narrow) in zip(ordered, ordered[1:]):
         assert wide >= narrow, "a better score never has a shorter bar"
         if higher - lower >= 1.0:
-            assert wide - narrow >= 0.005, f"{higher} and {lower} must not look the same"
-    assert len({round(width, 2) for _, width in ordered[:30]}) >= 10, "the bars differ"
+            assert wide - narrow >= 0.01, f"{higher} and {lower} must not look the same"
+    assert len({round(width, 2) for _, width in ordered[:60]}) >= 20, "the bars differ"
