@@ -392,8 +392,22 @@ def test_at_equal_score_the_player_who_fills_more_positions_is_preferred() -> No
     assert _first_pick(pool, flexibility=0.3)[0] == "pg-sg"
 
 
-def test_the_bonus_never_outweighs_a_real_gap_in_score() -> None:
-    pool = _tie_pool(21.0, 20.0)  # the single-position player is clearly better
+def _points_for_score_gap(gap: float) -> float:
+    """The pts difference that makes two players' composite scores differ by `gap`."""
+    pool = _tie_pool(20.0, 21.0)
+    scores = composite_score(pool, ["pts"], compute_bounds(pool, ["pts"]))
+    return gap / float(scores.iloc[1] - scores.iloc[0])
+
+
+@pytest.mark.parametrize("gap, expected", [(0.35, "pg"), (0.25, "pg-sg")])
+def test_the_bonus_decides_only_when_the_score_gap_is_smaller_than_it_is(gap: float, expected: str) -> None:
+    # The rule: a single-position player keeps the pick when he scores more than the bonus (0.3) better
+    pool = _tie_pool(20.0 + _points_for_score_gap(gap), 20.0)
+    assert _first_pick(pool, flexibility=0.3)[0] == expected
+
+
+def test_the_bonus_does_not_move_a_clearly_better_player() -> None:
+    pool = _tie_pool(21.0, 20.0)  # a gap of about 3 score points
     assert _first_pick(pool, flexibility=0.3)[0] == "pg"
 
 

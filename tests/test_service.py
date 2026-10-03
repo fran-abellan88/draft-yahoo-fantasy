@@ -6,7 +6,7 @@ import pytest
 
 from fantasy_draft.data import load_players
 from fantasy_draft.draft import DraftState, my_picks, slot_of_pick
-from fantasy_draft.optimizer import FIRST_PICK_OPTIONS, NODE_BUDGET, OPTION_NODE_BUDGET
+from fantasy_draft.optimizer import FIRST_PICK_OPTIONS, NODE_BUDGET, OPTION_NODE_BUDGET, FirstPickOption, Plan
 from fantasy_draft.service import DraftService, RequestError, parse_rule
 
 ALL = ["fg_pct", "ft_pct", "3ptm", "pts", "reb", "ast", "st", "blk", "to"]
@@ -254,10 +254,26 @@ def test_alternatives_say_whether_they_assume_the_recommended_player_is_gone(ser
     assert waiting["alternativesMode"] == "gone" and on_the_clock["alternativesMode"] == "instead"
 
 
-def test_alternatives_are_never_ahead_of_the_best_plan(service: DraftService) -> None:
+def test_an_alternative_is_ahead_of_the_best_plan_only_when_the_position_bonus_ranked_it_lower(service: DraftService) -> None:
     for made in (0, 1, 10, 26, 40):
         answer = _ask(service, _ids_by_xrank(service)[:made])
-        assert all(alt["behind"] >= 0 for alt in answer["alternatives"]), f"{made} picks made"
+        for alt in answer["alternatives"]:
+            assert alt["behind"] >= 0 or alt.get("byPositions"), f"{made} picks made"
+            assert not alt.get("byPositions") or alt["behind"] < 0.05
+
+
+def _plan(player_id: str, total: float, value: float) -> Plan:
+    return Plan((2,), (player_id,), total, 1.0, value)
+
+
+def test_a_level_or_better_roster_score_that_ranks_lower_is_marked_as_decided_by_positions(service: DraftService) -> None:
+    ids = _ids_by_xrank(service)
+    best, level, ahead, behind = _plan(ids[0], 10.0, 10.6), _plan(ids[1], 10.0, 10.3), _plan(ids[2], 10.2, 10.3), _plan(ids[3], 9.0, 9.1)
+    options = [FirstPickOption(plan.player_ids[0], plan) for plan in (level, ahead, behind)]
+    rule = parse_rule(None)
+    shown = service._alternatives(options, best, rule, DraftState())
+    assert [item["behind"] for item in shown] == [0.0, -0.2, 1.0]  # the roster gap, negative when the option is ahead
+    assert [bool(item.get("byPositions")) for item in shown] == [True, True, False]
 
 
 def test_the_answer_reports_the_main_and_the_busiest_option_search(service: DraftService) -> None:

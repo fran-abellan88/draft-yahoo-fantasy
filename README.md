@@ -125,9 +125,13 @@ last-pick line and the snake strip (hover a slot).
   the first complete round, reaches full effect after four, keeps every weight within 40% of 1, and never
   brings back an unticked category. The weights in use are listed under Standing.
 - **Position flexibility.** The planner ranks plans by their score plus 0.3 points for each position a new pick can
-  fill beyond the first (`FLEXIBILITY_BONUS` in `optimizer.py`), so a PG/SG beats a PG of the same score. It only
-  breaks ties: on the real pool it changes a late pick or two, not the first one. The "Roster score" shown is still the
-  plain sum of the scores. Whether a team can start everyone at once is a separate check and is unchanged.
+  fill beyond the first (`FLEXIBILITY_BONUS` in `optimizer.py`), so a PG/SG beats a PG of the same score. The 0.3 is a
+  judgement, not a calibrated number: it can decide between close players (neighbouring scores differ by 0.1 at the
+  median), and over a whole plan it costs under 0.3 roster points (measured on simulated drafts; on the real pool the
+  first pick is unchanged and one late pick differs). The "Roster score" shown is the plain sum of the scores, and the
+  gaps under "Or take instead" are in roster score too, so an alternative can be level with or ahead of the best plan and
+  still rank lower; the page then says "Ranked lower for positions, not score" and names the extra position. Whether a
+  team can start everyone at once is a separate check and is unchanged.
 - The table marks the recommended player with a star and the players in the plan with their pick ("plan: 58"), tints
   each stat by how good it is in its category and the odds by how likely he is to last, dims unticked categories, and
   when it is your turn the odds column is for your next pick ("At pick 30"). The recommendation says why when another

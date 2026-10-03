@@ -805,6 +805,7 @@ function whyNotTheTopScore(recommendation, plan) {
   const waiting = !analysis.clock.isMine && top.availability !== null && top.availability < state.rule.threshold;
   if (waiting) return `${lead} but is only ${pct(top.availability)} likely to last to pick ${recommendation.pick}.`;
   const alternative = analysis.alternatives.find((candidate) => candidate.id === top.id);
+  if (alternative && alternative.byPositions) return `${lead}, and a plan that starts with him is ${gapWords(alternative.behind)} in roster score, but ${positionsReason(recommendation.id, alternative.id)}.`;
   if (alternative && alternative.behind >= TIE_POINTS) return `${lead} but taking him first makes the whole plan ${oneDecimal(alternative.behind)} lower.`;
   return '';
 }
@@ -926,7 +927,18 @@ function meter(availability, isCurrent) {
 // alternative ties with the best plan there is nothing to choose between.
 const TIE_POINTS = 0.05;
 function alternativesWorthShowing() {
-  return !analysis.search.truncated && analysis.alternatives.some((alt) => alt.behind >= TIE_POINTS);
+  return !analysis.search.truncated && analysis.alternatives.some((alt) => alt.behind >= TIE_POINTS || alt.byPositions);
+}
+
+// The gap is in roster score and can be negative: the plans are ranked with a small bonus for positions, so an
+// alternative can be level with or ahead of the best plan in roster score and still rank below it.
+const gapLabel = (behind) => (behind >= TIE_POINTS ? `\u2212${oneDecimal(behind)}` : behind <= -TIE_POINTS ? `+${oneDecimal(-behind)}` : 'Same score');
+const gapWords = (behind) => (behind <= -TIE_POINTS ? `${oneDecimal(-behind)} higher` : 'level');
+
+// Why the recommended player ranks first although the alternative is level or ahead on roster score
+function positionsReason(recommendedId, alternativeId) {
+  const extra = playerById.get(recommendedId).positions.filter((position) => !playerById.get(alternativeId).positions.includes(position));
+  return extra.length ? `${nameOf(recommendedId)} also plays ${extra.join('/')}` : 'his plan covers more positions';
 }
 
 // When the alternatives are the same team in the other order, say once that the recommended player comes next
@@ -945,14 +957,16 @@ function alternativesBlock() {
     ? `If ${nameOf(analysis.recommendation.id)} is gone by pick ${analysis.recommendation.pick}, take instead`
     : 'Or take instead';
   const items = analysis.alternatives.map((alt) =>
-    h('li', {}, h('strong', {}, nameOf(alt.id)), h('span', { class: 'meta' }, detailOf(alt.id)), h('span', { class: alt.behind >= TIE_POINTS ? 'gap' : 'gap same' }, alt.behind >= TIE_POINTS ? `\u2212${oneDecimal(alt.behind)}` : 'Same score')),
+    h('li', {}, h('strong', {}, nameOf(alt.id)), h('span', { class: 'meta' }, detailOf(alt.id)), h('span', { class: Math.abs(alt.behind) >= TIE_POINTS ? 'gap' : 'gap same' }, gapLabel(alt.behind))),
   );
+  const reasons = analysis.alternatives.filter((alt) => alt.byPositions).map((alt) => `${nameOf(alt.id)}: ${positionsReason(analysis.recommendation.id, alt.id)}.`);
   return h(
     'div',
     { class: 'hero-alts' },
     h('h3', {}, lead),
     h('ul', {}, ...items),
-    h('p', { class: 'note' }, 'How far each plan falls behind the best one. ', helpButton(`The gap is in roster score, for the whole plan, not only the first pick.${thenSentence()}`, 'About the alternatives')),
+    reasons.length ? h('p', { class: 'note' }, `Ranked lower for positions, not score. ${reasons.join(' ')}`) : null,
+    h('p', { class: 'note' }, 'How far each plan falls behind the best one. ', helpButton(`The gap is in roster score, for the whole plan, not only the first pick. Plans are ranked with a small bonus for each extra position a player fills, so one can be level or ahead on roster score and still rank lower; the line above the gap says so.${thenSentence()}`, 'About the alternatives')),
   );
 }
 
@@ -1244,7 +1258,7 @@ function renderPool() {
 }
 
 // --- right rail ---
-// What an incomplete search gives back: the best plan found, which usually starts with the highest-scoring player
+// What an incomplete search gives back: the best plan found, which usually starts with the first player it tried
 // Said whenever picks are unseen: the odds in the table already allow for them
 function renderUnseenNote() {
   const note = $('unseen-note');
@@ -1269,7 +1283,7 @@ function renderSearchNote() {
   const reason = 'The search stopped early: these availability settings let so many players through that checking every plan would take too long.';
   note.textContent = plans.length === 0
     ? `${reason} It stopped before it found a plan. Narrow "Who will still be there?" and try again.`
-    : `${reason} The plan is the best one found, not proven the best${sameStart ? `, and every plan starts with ${nameOf(plans[0].steps[0].id)}, the highest-scoring player it tried first` : ''}.`;
+    : `${reason} The plan is the best one found, not proven the best${sameStart ? `, and every plan starts with ${nameOf(plans[0].steps[0].id)}, the first player it tried` : ''}.`;
   note.hidden = false;
 }
 

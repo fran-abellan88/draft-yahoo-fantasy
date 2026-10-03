@@ -12,7 +12,7 @@ fill (`flexibility`; the service uses FLEXIBILITY_BONUS, direct callers get none
 purpose: the point of planning is the order of the picks, not interactions between players. Taking A at pick 27 and B at
 pick 30 beats the reverse when A will not last and B will.
 
-The search is exact (branch and bound over candidate lists sorted by score) and returns the best
+The search is exact (branch and bound over candidate lists sorted by value) and returns the best
 `top_k` distinct teams. Tests compare it with brute force on small pools.
 
 Work is bounded. Branch and bound is exact but its worst case is huge: when the availability rule lets almost
@@ -37,9 +37,10 @@ from fantasy_draft.draft import MY_SLOT, ROSTER_SIZE, DraftState, my_picks
 from fantasy_draft.lineup import ALL_MASK, all_masks_can_start, position_mask
 from fantasy_draft.scoring import Bounds, category_scores, composite_score, replacement_score
 
-# Score points added to a new pick's value for every position he can fill beyond the first. Small on purpose: it
-# breaks ties between players of equal score (a PG/SG over a PG) and never outweighs a real gap in score. The scores
-# run 0-100 and the usual gap between neighbouring candidates is a point or more.
+# Score points added to a new pick's value for every position he can fill beyond the first. A judgement, not a
+# calibrated number. Neighbouring players differ by a tenth of a point at the median, so the bonus can decide between
+# close players; what keeps it harmless is that over a whole plan it costs under 0.3 roster points (measured on
+# simulated drafts), and the page says so when the bonus decides a pick.
 FLEXIBILITY_BONUS = 0.3
 
 # When nobody clears the availability threshold for a pick, fall back to the likeliest few.
@@ -60,7 +61,7 @@ class Plan:
     player_ids: Tuple[str, ...]
     total_score: float  # sum of composite scores over the whole roster, players already drafted included
     survival: float  # product of each pick's availability probability, a rough chance the plan holds
-    value: float = 0.0  # what plans are ranked by: total_score plus the flexibility bonus of the new picks
+    value: float  # what plans are ranked by: total_score plus the flexibility bonus of the new picks
 
 
 @dataclass(frozen=True)
@@ -303,7 +304,7 @@ def _search(
             return
         for candidate in candidates[k]:
             if cannot_improve(value + candidate.value + suffix_best[k + 1]):
-                break  # candidates are sorted by score, so none of the rest can do better
+                break  # candidates are sorted by value, so none of the rest can do better
             if candidate.player_id in chosen_ids:
                 continue
             if not all_masks_can_start(mine_masks + [c.mask for c in chosen] + [candidate.mask]):
