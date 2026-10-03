@@ -171,7 +171,6 @@ tr.unconfirmed { opacity: 0.6; }
 .hero-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 .hero-who { min-width: 0; }
 .hero .name { font-size: 40px; line-height: 0.98; font-weight: 800; letter-spacing: -0.035em; }
-.hero.yours .name { color: var(--mine); }
 .hero .meta { margin-top: 6px; color: var(--muted); font-size: 15px; }
 .hero-score { text-align: right; flex: none; }
 .hero-score strong { display: block; font-size: 40px; line-height: 1; font-weight: 300; letter-spacing: -0.04em; }
