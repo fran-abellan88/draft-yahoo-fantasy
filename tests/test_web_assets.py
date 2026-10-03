@@ -250,6 +250,35 @@ def test_the_page_never_scrolls_and_each_width_has_its_own_named_areas() -> None
     assert 'data-tab="rec"' not in html and '[data-panel="rec"]' not in CSS
 
 
+def _block(media: str) -> str:
+    """The text of one media query in the stylesheet, up to the next one."""
+    start = CSS.index(f"@media {media}")
+    end = CSS.find("@media", start + 1)
+    return CSS[start:end if end != -1 else len(CSS)]
+
+
+def test_standing_sits_in_the_rail_between_my_team_and_the_log() -> None:
+    html = (WEB / "index.html").read_text()
+    rail = html[html.index('<div class="rail">'):]
+    assert rail.index('data-panel="team"') < rail.index('data-panel="standing"') < rail.index('data-panel="log"')
+    wide = _block("(min-width: 2350px)")
+    assert '"standing' not in wide and ".rail .seam-standing" in wide and "grid-row: 5 / 7" not in wide
+    assert "min-height: 180px" in wide, "the log keeps room for the latest picks"
+
+
+def test_the_plan_has_no_height_cap_from_1720_px_up() -> None:
+    for media in ("(min-width: 2350px)", "(min-width: 1720px) and (max-width: 2349.98px)"):
+        assert ".seam-plan { max-height: none; }" in _block(media), media
+    assert "max-height: 45vh" in CSS, "below 1720 it still scrolls inside itself"
+
+
+def test_from_1720_to_2349_my_team_standing_and_the_rest_share_one_tab_panel_so_no_panel_is_squeezed_to_nothing() -> None:
+    block = _block("(min-width: 1720px) and (max-width: 2349.98px)")
+    assert ".team, .seam-standing, .teams, .panel.log { grid-area: tabp; }" in block
+    assert block.count('"rec table') == 2, "the recommendation spans the two rows beside the tab strip and its panel"
+    assert '"plan table tabp"' in block
+
+
 def test_the_tab_strip_keeps_a_valid_active_tab_when_the_window_changes_width() -> None:
     assert "window.addEventListener('resize', syncTabs)" in JS
     sync = JS[JS.index("function syncTabs"): JS.index("function wireTabs")]

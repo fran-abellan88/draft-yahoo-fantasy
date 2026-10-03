@@ -77,14 +77,16 @@ Your picks are kept in the browser, so reloading the page mid-draft loses nothin
 
 The page never scrolls: it is exactly the window, and a panel that needs more room scrolls inside itself. It is built
 for a window of about 2500 x 1476 placed on the right half of a wide screen, with Yahoo's draft room on the left, so
-the recommendation column is on the dashboard's left edge, next to the seam. From left to right: recommendation, plan
-and category strength; the table (search, position chips, the last logged pick with Undo, then the players); your
-roster and the log; the 14 teams (Projected above So far). Settings (categories, score, who will still
+the recommendation column is on the dashboard's left edge, next to the seam. From left to right: recommendation and the
+plan (all 13 rows); the table (search, position chips, the last logged pick with Undo, then the players); the rail that
+reads as "my team" (your roster, Standing with your category strength, then the log, newest first); the 14 teams
+(Projected above So far). Settings (categories, score, who will still
 be there) open from the button in the top bar, which also shows the choices in one line. Next to it are the **Theme** button
 (Auto follows the system, Light and Dark are remembered in this browser) and **Reset draft**.
 
-Narrower windows keep the same panels and fold them into a tab strip, in this order as the window shrinks: 14 teams
-and log at 2349 px, then your roster and category strength at 1719 px, then the plan and the table at 1239 px. The
+Narrower windows keep the same panels and fold them into a tab strip, in this order as the window shrinks: your
+roster, Standing, 14 teams and log at 2349 px (they share one tab panel beside the table and the plan fills the first
+column), then the plan moves into the right column at 1719 px, then the table and the plan at 1239 px. The
 recommendation never goes into a tab.
 
 ### The league, the other teams and the mock draft

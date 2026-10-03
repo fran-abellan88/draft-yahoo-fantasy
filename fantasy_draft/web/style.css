@@ -372,37 +372,37 @@ body { margin: 0; }
       "top top top top"
       "err err err err"
       "rec table rail teams"
-      "plan table rail teams"
-      "tabs table rail teams"
-      "standing table rail teams";
+      "plan table rail teams";
+    grid-template-rows: auto auto auto minmax(0, 1fr);
   }
-  /* My team is short (ten slots and the bench), so the log shares its column instead of leaving it empty */
+  /* The plan takes the rest of its column. The rail reads as "my team": roster, how it ranks, then the log, which is
+     newest first so a short log still shows the latest picks. (The tab strip is not drawn at this width and has no
+     area, so it adds no row.) */
+  .seam-plan { max-height: none; }
   .rail { grid-area: rail; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
   .rail .team { flex: none; max-height: 60%; }
-  .rail .panel.log { flex: 1 1 0; }
-  /* the strip is not drawn, but the row it would have taken stays as small as it can */
-  .app { grid-template-rows: auto auto auto minmax(0, auto) 0 minmax(0, 1fr); }
-  .seam-standing { grid-row: 5 / 7; }
+  .rail .seam-standing { flex: 0 1 auto; min-height: 0; }
+  .rail .panel.log { flex: 1 1 0; min-height: 180px; }
 }
 
 
-/* 1720 to 2349: 14 teams and the log share a tab panel under the team */
+/* 1720 to 2349: team, standing, 14 teams and log share a tab panel beside the table; the plan fills the first column */
 @media (min-width: 1720px) and (max-width: 2349.98px) {
   .app {
     grid-template-columns: minmax(380px, 400fr) minmax(0, 1045fr) minmax(340px, 380fr);
     grid-template-areas:
       "top top top"
       "err err err"
-      "rec table team"
-      "plan table team"
-      "standing table tabs"
-      "standing table tabp";
-    grid-template-rows: auto auto auto minmax(0, auto) auto minmax(0, 1fr);
+      "rec table tabs"
+      "rec table tabp"
+      "plan table tabp";
+    grid-template-rows: auto auto auto auto minmax(0, 1fr);
   }
-  .seam-standing { grid-row: 5 / 7; }
+  .seam-plan { max-height: none; }
   .tabs { display: flex; }
-  .tabs button[data-tab="teams"], .tabs button[data-tab="log"] { display: inline-block; }
-  .teams, .panel.log { grid-area: tabp; }
+  .tabs button[data-tab="team"], .tabs button[data-tab="standing"], .tabs button[data-tab="teams"], .tabs button[data-tab="log"] { display: inline-block; }
+  .team, .seam-standing, .teams, .panel.log { grid-area: tabp; }
+  .app:not([data-tab="team"]) .team, .app:not([data-tab="standing"]) .seam-standing,
   .app:not([data-tab="teams"]) .teams, .app:not([data-tab="log"]) .panel.log { display: none; }
 }
 
