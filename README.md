@@ -130,6 +130,7 @@ last-pick line and the snake strip (hover a slot).
   are to the other teams in it: more where you are close, less where you dominate or cannot catch up. It starts after
   the first complete round, reaches full effect after four, keeps every weight within 40% of 1, and never
   brings back an unticked category. The weights in use are listed under Standing.
+- **One category order.** Every table and bar lists the categories in the same order: FG%, FT%, 3PTM, PTS, REB, AST, ST, BLK, TO (the main table, the league tables, the Standing bars and the recommendation's stat bars).
 - **Draft button and player card.** In the main table each row has a **Draft** button left of the name; only that button logs
   the pick (it says **Choose** while you are picking the player for an earlier pick). A click on the name, or Enter on a
   row, opens the **player card** in the recommendation box: the same stat bars, the score with last season's, the odds,

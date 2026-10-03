@@ -641,3 +641,11 @@ def test_the_league_tables_keep_a_width_for_the_category_columns() -> None:
     assert "#league .league-table .lcat { min-width: clamp(0px, calc(12cqw - 33px), 64px); }" in CSS
     # `cat` is the category bar of the recommendation box (display: grid): a table cell must not share the name
     assert "class: 'lcat'" in JS and "class: 'cat'," not in JS[JS.index("function leagueCell("): JS.index("function leagueTable(")]
+
+
+def test_the_main_table_lists_the_categories_in_the_order_of_every_other_table() -> None:
+    from fantasy_draft.categories import CATEGORIES
+
+    block = JS[JS.index("const STAT_COLUMNS = ["): JS.index("];", JS.index("const STAT_COLUMNS = ["))]
+    assert re.findall(r"key: '(\w+)'", block) == list(CATEGORIES), "the table, the league tables and the bars share one order"
+    assert list(CATEGORIES)[:2] == ["fg_pct", "ft_pct"]  # the percentages come first

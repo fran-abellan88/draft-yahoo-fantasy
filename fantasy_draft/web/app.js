@@ -18,16 +18,17 @@ const storageKey = () => `${STORAGE_KEY}:${draftId}`;
 const syncKey = () => `${SYNC_KEY}:${draftId}`;
 const asideKey = () => `${ASIDE_KEY}:${draftId}`;
 const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'];
+// The category order of every table and bar on the page (the server's order too): the ratios first
 const STAT_COLUMNS = [
+  { key: 'fg_pct', label: 'FG%', kind: 'rate' },
+  { key: 'ft_pct', label: 'FT%', kind: 'rate' },
+  { key: '3ptm', label: '3PTM', kind: 'number' },
   { key: 'pts', label: 'PTS', kind: 'number' },
   { key: 'reb', label: 'REB', kind: 'number' },
   { key: 'ast', label: 'AST', kind: 'number' },
-  { key: '3ptm', label: '3PTM', kind: 'number' },
   { key: 'st', label: 'ST', kind: 'number' },
   { key: 'blk', label: 'BLK', kind: 'number' },
   { key: 'to', label: 'TO', kind: 'number' },
-  { key: 'fg_pct', label: 'FG%', kind: 'rate' },
-  { key: 'ft_pct', label: 'FT%', kind: 'rate' },
 ];
 const STATUS_TITLES = { Q: 'Questionable', P: 'Probable', O: 'Out', GTD: 'Game-time decision', INJ: 'Injured', NA: 'Not active' };
 const DEFAULT_RULE = { type: 'probability', baseSd: 2, sdPerAdp: 0.2, threshold: 0.5, slack: 3 };
