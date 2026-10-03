@@ -6,9 +6,10 @@ import pytest
 
 from fantasy_draft.data import load_players
 from fantasy_draft.draft import DraftState, my_picks, slot_of_pick
-from fantasy_draft.optimizer import FIRST_PICK_OPTIONS, NODE_BUDGET, OPTION_NODE_BUDGET, FirstPickOption, Plan
+from fantasy_draft.lineup import max_starters
+from fantasy_draft.optimizer import FIRST_PICK_OPTIONS, NODE_BUDGET, OPTION_NODE_BUDGET, FirstPickOption, Plan, fill_picks
 from fantasy_draft.scoring import compute_bounds
-from fantasy_draft.service import DraftService, RequestError, parse_rule
+from fantasy_draft.service import RIVAL_ROUNDS, DraftService, RequestError, parse_rule
 
 ALL = ["fg_pct", "ft_pct", "3ptm", "pts", "reb", "ast", "st", "blk", "to"]
 
@@ -29,7 +30,7 @@ def _ask(service: DraftService, picks: List[str], **extra: Any) -> Dict[str, Any
 def test_pool_payload_describes_the_league_and_every_player(service: DraftService) -> None:
     payload = service.pool_payload()
     league = {key: payload["league"][key] for key in ("teams", "slot", "rounds", "rosterSize")}
-    assert league == {"teams": 14, "slot": 2, "rounds": 8, "rosterSize": 13}
+    assert league == {"teams": 14, "slot": 2, "rounds": 10, "rosterSize": 13}
     assert payload["myPicks"][:8] == [2, 27, 30, 55, 58, 83, 86, 111]
     assert [c["key"] for c in payload["categories"]] == ALL
     assert next(c for c in payload["categories"] if c["key"] == "to")["lowerIsBetter"] is True
@@ -123,10 +124,10 @@ def test_the_window_rule_gives_a_different_answer_shape(service: DraftService) -
 
 
 def test_after_my_last_planned_pick_there_is_no_recommendation(service: DraftService) -> None:
-    ids = _ids_by_xrank(service)[:111]  # picks 1..111, so the eighth-round pick is made
+    ids = _ids_by_xrank(service)[:139]  # picks 1..139, so the tenth-round pick is made
     result = _ask(service, ids)
     assert result["horizonDone"] and result["recommendation"] is None and result["plans"] == []
-    assert result["clock"]["nextMyPick"] == 114
+    assert result["clock"]["nextMyPick"] == 142
     assert all(row["availability"] is None for row in result["pool"])
 
 
@@ -210,7 +211,7 @@ def test_method_must_be_a_known_one(service: DraftService, value: Any) -> None:
 
 def test_the_answer_says_whether_the_search_was_complete(service: DraftService) -> None:
     answer = _ask(service, [])
-    assert answer["search"]["truncated"] is False and 0 < answer["search"]["nodes"] < NODE_BUDGET
+    assert answer["search"]["truncated"] is False and 0 < answer["search"]["nodes"] <= (FIRST_PICK_OPTIONS + 1) * NODE_BUDGET
 
 
 def test_alternatives_are_other_first_picks_priced_against_the_best_plan(service: DraftService) -> None:
@@ -238,7 +239,7 @@ def test_the_work_budget_never_binds_with_default_rules_over_a_whole_draft(servi
     ids = service.players.sort_values("adp_est")["player_id"].tolist()
     busiest_main = busiest_option = 0
     # Every third state, plus the one just before each of my picks, which is where the search is busiest
-    for made in sorted(set(range(0, 112, 3)) | {pick - 1 for pick in my_picks(rounds=8)}):
+    for made in sorted(set(range(0, 140, 6)) | {pick - 1 for pick in my_picks(rounds=10)}):
         answer = service.analyze({"categories": ALL, "picks": ids[:made], **settings})
         assert answer["search"]["truncated"] is False, f"cut short with {made} picks made"
         busiest_main = max(busiest_main, answer["search"]["mainNodes"])
@@ -485,7 +486,7 @@ def test_the_league_block_scores_all_14_teams_so_far_and_projected(service: Draf
     assert league["basis"] == "so far" and league["size"] == 3 and len(league["teams"]) == 14, "the round in progress"
     assert {row["players"] for row in league["teams"]} == {2, 3}
     projected = league["projected"]
-    assert projected["size"] == 8 and {row["players"] for row in projected["teams"]} == {8}
+    assert projected["size"] == 13 and {row["players"] for row in projected["teams"]} == {13}
     mine = next(row for row in projected["teams"] if row["mine"])
     assert mine["name"] == "Fran'stastic Team" and set(mine["totals"]) == set(ALL)
     assert set(league["standing"]) == set(ALL) and all(1 <= value["rank"] <= 14 for value in league["standing"].values())
@@ -602,7 +603,8 @@ def test_the_planner_projection_makes_the_picks_each_team_s_own_recommendation_w
     ids: List[str] = []
     for number in range(1, 21):
         slot = slot_of_pick(number, 14)
-        answer = DraftService(service.players, slot=slot).analyze(
+        rounds = service.rounds if slot == service.slot else RIVAL_ROUNDS  # a rival plans fewer rounds ahead than I do
+        answer = DraftService(service.players, slot=slot, rounds=rounds).analyze(
             {"categories": ALL, "picks": ids, "method": "uncapped", "gamesAdjusted": True}
         )
         ids.append(answer["recommendation"]["id"])
@@ -613,8 +615,8 @@ def test_the_planner_projection_makes_the_picks_each_team_s_own_recommendation_w
 def test_the_planner_projection_completes_every_team_and_keeps_the_logged_picks(service: DraftService) -> None:
     logged = _by_adp(service)[:20]
     table = _projection(service, logged)
-    assert table["size"] == 8 and {row["players"] for row in table["teams"]} == {8} and table["fallbacks"] == 0
-    assert len(table["simulated"]) == 8 * 14 - 20 and len(set(table["simulated"]) | set(logged)) == 8 * 14, "nobody twice"
+    assert table["size"] == 13 and {row["players"] for row in table["teams"]} == {13} and table["fallbacks"] == 0
+    assert len(table["simulated"]) == 13 * 14 - 20 and len(set(table["simulated"]) | set(logged)) == 13 * 14, "nobody twice"
     assert not set(table["simulated"]) & set(logged)
     assert [row["place"] for row in table["teams"]] == sorted(row["place"] for row in table["teams"])
 
@@ -639,7 +641,7 @@ def test_the_planner_projection_refuses_what_analyze_refuses(service: DraftServi
 def test_the_planner_projection_names_the_team_it_gives_the_user(service: DraftService) -> None:
     logged = _by_adp(service)[:2]
     table = _projection(service, logged)
-    assert table["myPlayers"][0] == logged[1] and len(table["myPlayers"]) == 8, "my logged pick, then the seven simulated ones"
+    assert table["myPlayers"][0] == logged[1] and len(table["myPlayers"]) == 13, "my logged pick, then the twelve simulated ones"
     assert set(table["myPlayers"][1:]) <= set(table["simulated"])
 
 
@@ -749,7 +751,7 @@ def test_the_projected_rosters_add_marked_players_in_snake_order(service: DraftS
     for team in projected.values():
         logged = [e for e in team["entries"] if not e["projected"]]
         added = [e for e in team["entries"] if e["projected"]]
-        assert len(logged) + len(added) + len(team["unseen"]) == service.rounds  # an unseen pick still takes a place
+        assert len(logged) + len(added) + len(team["unseen"]) == 13  # an unseen pick still takes a place
         assert [e["pick"] for e in team["entries"]] == sorted(e["pick"] for e in team["entries"])
         assert all(e["pick"] > len(log) for e in added) and all(e["id"] for e in added)
     assert [e["pick"] for e in projected[service.slot]["entries"] if e["projected"]][:2] == [27, 30]
@@ -769,3 +771,28 @@ def test_the_rosters_are_json_safe(service: DraftService) -> None:
     import json
 
     json.dumps(_ask(service, _mixed_log(service))["league"])
+
+
+def test_the_plan_is_ten_exact_picks_and_three_filled_in_that_complete_the_lineup(service: DraftService) -> None:
+    steps = _ask(service, [])["plans"][0]["steps"]
+    assert [step["pick"] for step in steps] == my_picks(rounds=13)
+    assert [step["filled"] for step in steps] == [False] * 10 + [True] * 3
+    assert len({step["id"] for step in steps}) == 13, "nobody twice"
+    positions = {row["id"]: row["positions"] for row in service.pool_payload()["players"]}
+    assert max_starters([positions[step["id"]] for step in steps[:10]]) == 10, "the ten planned picks fill every slot, a PG too"
+
+
+def test_filled_in_picks_take_an_open_starting_slot_before_the_bench() -> None:
+    players = load_players()
+    keys = list(ALL)
+    state = DraftState()
+    rule = parse_rule(None)
+    service = DraftService(players)
+    centers = players[players["pos_list"].map(lambda pos: pos == ["C"])]["player_id"].tolist()[:8]
+    held = tuple(centers)  # eight centers: two start, two more in Util, the rest are bench
+    filled = fill_picks(players, state, keys, service.method_bounds["uncapped"], rule, [139, 142, 167], held, True, "uncapped")
+    positions = dict(zip(players["player_id"], players["pos_list"]))
+    for _, player_id in filled:
+        assert positions[player_id] != ["C"], "a lineup full of centers needs a guard or a forward, not a ninth center"
+    everyone = held + tuple(pid for _, pid in filled)
+    assert max_starters([positions[pid] for pid in everyone]) > max_starters([positions[pid] for pid in held])
