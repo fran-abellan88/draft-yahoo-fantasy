@@ -301,7 +301,7 @@ def test_the_table_marks_the_plan_tints_the_stats_and_the_hero_explains_itself()
 
 
 def test_the_roster_shows_slots_and_the_tab_and_saved_state_are_kept() -> None:
-    assert "analysis.lineup.slots" in JS and "canAdd" in JS and "Eligible at:" not in JS
+    assert "lineup.slots" in JS and "rosterRows(entries, analysis.lineup" in JS and "canAdd" in JS and "Eligible at:" not in JS
     assert "TAB_KEY" in JS and "showSaved('Saved', true)" in JS and 'id="saved-state"' in (WEB / "index.html").read_text()
 
 
@@ -517,7 +517,7 @@ def test_a_badge_never_disappears_from_the_player_table() -> None:
 
 def test_the_team_name_is_the_elastic_column_of_the_league_tables_and_projected_has_no_count() -> None:
     assert re.search(r"\.league-table td\.left \{[^}]*width: 99%; max-width: 0", CSS)
-    assert "leagueTable(projected, keys, labels, false)" in JS, "every projected team has the same number of players"
+    assert "leagueTable(projected, keys, labels, false," in JS, "every projected team has the same number of players"
 
 
 def test_the_top_bar_roster_and_log_use_the_midnight_shapes() -> None:
@@ -577,3 +577,29 @@ def test_every_place_that_shows_positions_uses_the_coloured_letters() -> None:
         assert f'.pos[data-pos="{position}"] {{ color: var(--pos-{position.lower()}); }}' in CSS
         chip = f'.chips button[data-position="{position}"]:not([aria-pressed="true"]) {{ color: var(--pos-{position.lower()}); }}'
         assert chip in CSS
+
+
+def test_the_roster_panel_can_show_any_team() -> None:
+    html = (WEB / "index.html").read_text(encoding="utf-8")
+    for element in ('id="roster-team"', 'id="roster-back"', 'id="roster-basis"', 'id="roster-title"', 'id="roster-note"'):
+        assert element in html, element
+    assert 'data-basis="sofar"' in html and 'data-basis="projected"' in html
+    # One component draws my roster and the others', so they cannot drift apart
+    assert JS.count("rosterRows(") >= 3 and "function rosterRows(" in JS
+    # A team name in either league table is a real button that opens that team, never a click handler on the row
+    assert "class: 'team-link'" in JS and "onclick: () => viewTeam(team.slot, basis)" in JS
+    assert "leagueTable(projected, keys, labels, false, 'projected')" in JS and "leagueTable(now, keys, labels, true, 'sofar')" in JS
+
+
+def test_the_roster_panel_goes_back_to_mine_when_i_log_my_own_pick_and_not_before() -> None:
+    assert "if (analysis.roster.length > lastMineCount) viewSlot = null;" in JS
+    assert JS.index("lastMineCount = analysis.roster.length;") < JS.index("  renderRoster();\n  renderStanding();")
+    other = JS[JS.index("function renderOtherRoster"): JS.index("const ordinal = (value)")]
+    assert "viewSlot = null;" not in other  # no switching while others pick
+
+
+def test_another_teams_roster_never_uses_the_colour_that_means_yours() -> None:
+    assert ".roster.other .slot.filled .pick { background: var(--selected);" in CSS
+    assert "dashed var(--taken)" in CSS  # a projected player has an outlined tile
+    assert ".league-table tr.selected-row td { background: var(--selected); }" in CSS
+    assert "selected-row" not in re.search(r"\.mine-row[^\n]*", CSS).group(0)

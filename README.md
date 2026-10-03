@@ -130,6 +130,15 @@ last-pick line and the snake strip (hover a slot).
   are to the other teams in it: more where you are close, less where you dominate or cannot catch up. It starts after
   the first complete round, reaches full effect after four, keeps every weight within 40% of 1, and never
   brings back an unticked category. The weights in use are listed under Standing.
+- **Other teams' rosters.** Click a team name in either 14-team table, or use the select in the roster panel, to see that
+  team's players in the roster panel: the ten starting slots and the bench with each pick number, then which positions
+  one more player could still start at (what the teams picking before you will look for). **So far** shows the logged
+  picks; **Projected** adds the players the projection gives the team, drawn with a dashed tile and marked "Projected",
+  following the table's Same planner / ADP order switch (ADP order only reaches round 8). An unseen pick is listed as
+  "Not known", a pick not in the list fills a slot at any position, and a gone pick shows "(assumed)". The panel stays on
+  the team you chose while other picks come in, and goes back to yours when you log your own pick or press **Back to your
+  roster**. In a narrow window the click switches to the My team tab. The server sends every team's roster and lineup
+  with the league tables (`rosters`), built by the same matching as your own lineup.
 - **Position colours.** The letters beside every name ("CHI · PG/SG") are coloured by position: PG rose, SG blue, SF yellow,
   PF violet, C mint, with a muted slash between them. Names stay plain so they read well and the recommended row keeps its
   green; the letters carry the identity and the colour is only a glance cue, because no five hues are distinct for every

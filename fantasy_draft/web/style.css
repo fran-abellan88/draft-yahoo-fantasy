@@ -496,6 +496,22 @@ td.dim { opacity: 0.45; }
 .roster .slot.filled .pick { background: var(--mine); border-color: var(--mine); color: var(--on-mine); }
 .roster .slot.bench .pick { background: var(--raised); border-color: var(--raised); }
 
+/* Another team's roster in the roster panel: the title names the team, the green of "yours" is not used for it */
+.roster-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.roster-head h2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.roster-back { flex: none; padding: 4px 12px; font-size: 13px; }
+.roster-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 8px; }
+.roster-tools select { max-width: 100%; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--raised); }
+.roster-tools .league-views { margin: 0; }
+.roster-tools .league-views button { padding: 4px 12px; font-size: 13px; }
+.roster .slot.unseen .pick { border-style: dotted; }
+.roster.other .slot.filled .pick { background: var(--selected); border-color: var(--selected); color: var(--ink); }
+.roster.other .slot.filled.projected .pick, .roster.other .slot.bench.projected .pick { background: transparent; border: 1.5px dashed var(--taken); color: var(--muted); }
+/* A team name in a league table opens that team's roster */
+.team-link { display: block; max-width: 100%; padding: 0; border: 0; border-radius: 4px; background: none; color: inherit; font: inherit; font-weight: inherit; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.team-link:hover:not(:disabled) { border: 0; text-decoration: underline; }
+.league-table tr.selected-row td { background: var(--selected); }
+
 /* Settings changed after the first pick wait here */
 .setting-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--flag); border-radius: 8px; background: var(--flag-soft); color: var(--flag); font-weight: 600; }
 .setting-confirm span { flex: 1 1 320px; }
