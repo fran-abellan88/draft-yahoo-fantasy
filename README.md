@@ -15,6 +15,12 @@ python run_dashboard.py
 The page opens at `http://127.0.0.1:8001/`. The server listens on your computer only and the page loads nothing from
 the internet, so it keeps working if the connection drops during the draft.
 
+**While changing the app**, start it with `python run_dashboard.py --dev`. The page reloads itself when a file under
+`fantasy_draft/web/` changes, and the server restarts itself (same port, same process) when a Python file changes; a
+Python file with a syntax error is reported in the console and the server keeps running until it is fixed. Only the source
+files are watched, never the saved drafts, and the data files are read once at startup, so restart by hand after changing
+them. Leave `--dev` off during a real draft: a normal run watches nothing and the page carries no extra script.
+
 Your picks are kept in the browser, so reloading the page mid-draft loses nothing. **Reset draft** (top bar, press twice; **New mock draft** in a mock draft) clears them.
 
 ## Using the page

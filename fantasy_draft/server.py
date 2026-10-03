@@ -33,6 +33,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
+from fantasy_draft.devmode import DevMode
 from fantasy_draft.saved_draft import Conflict, SavedDraft, SavedDraftError
 from fantasy_draft.service import DraftService, RequestError
 
@@ -56,9 +57,10 @@ STATIC_FILES: Dict[str, Tuple[str, str]] = {
 class DashboardHandler(BaseHTTPRequestHandler):
     """Routes requests to the static files and the draft service."""
 
-    def __init__(self, real: Draft, mock: Optional[Draft], *args: Any, **kwargs: Any) -> None:
+    def __init__(self, real: Draft, mock: Optional[Draft], *args: Any, dev: Optional[DevMode] = None, **kwargs: Any) -> None:
         self.real = real
         self.mock = mock
+        self.dev = dev
         super().__init__(*args, **kwargs)
 
     def parse_request(self) -> bool:
@@ -84,7 +86,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
         service, saved = draft
         if path in STATIC_FILES and (draft is self.real or path == "/"):  # under /mock only the page itself
             filename, content_type = STATIC_FILES[path]
-            self._send(HTTPStatus.OK, (WEB_DIR / filename).read_bytes(), content_type)
+            body = (WEB_DIR / filename).read_bytes()
+            if self.dev is not None and path == "/":  # development mode: the page follows the files (see devmode.py)
+                body = body.replace(b"</body>", b'<script src="/dev.js"></script>\n</body>')
+            self._send(HTTPStatus.OK, body, content_type)
+        elif self.dev is not None and draft is self.real and path == "/dev.js":
+            self._send(HTTPStatus.OK, (WEB_DIR / "dev.js").read_bytes(), "text/javascript; charset=utf-8")
+        elif self.dev is not None and draft is self.real and path == "/api/dev":
+            self._send_json(HTTPStatus.OK, {"stamp": self.dev.stamp()})
         elif path == "/api/pool":
             self._send_json(HTTPStatus.OK, service.pool_payload())
         elif path == "/api/draft":
@@ -174,7 +183,14 @@ class LocalServer(ThreadingHTTPServer):
 
 
 def make_server(
-    service: DraftService, port: int = 0, saved: Optional[SavedDraft] = None, mock: Optional[Draft] = None
+    service: DraftService,
+    port: int = 0,
+    saved: Optional[SavedDraft] = None,
+    mock: Optional[Draft] = None,
+    dev: Optional[DevMode] = None,
 ) -> ThreadingHTTPServer:
-    """Create (but do not start) a server on 127.0.0.1; port 0 picks a free one. `mock` adds the /mock/ draft."""
-    return LocalServer((HOST, port), partial(DashboardHandler, (service, saved or SavedDraft()), mock))
+    """Create (but do not start) a server on 127.0.0.1; port 0 picks a free one. `mock` adds the /mock/ draft.
+
+    `dev` turns on development mode: the page gets a small script that reloads it when the files change.
+    """
+    return LocalServer((HOST, port), partial(DashboardHandler, (service, saved or SavedDraft()), mock, dev=dev))
