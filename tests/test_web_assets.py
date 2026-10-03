@@ -399,7 +399,7 @@ def test_the_planner_projection_is_asked_for_apart_from_the_analysis_and_shown_w
     league = JS[JS.index("function renderLeague()"): JS.index("// A gone entry back to an unseen pick")]
     assert "h3', {}, 'Projected'" in league and "h3', {}, 'So far'" in league, "both tables at once, no switch between them"
     assert "ADP order" in league and "Same planner" in league and "projectedTable()" in JS[JS.index("function renderStanding()"):]
-    assert "minmax(400px, 400fr) minmax(900px, 1045fr) minmax(360px, 380fr) minmax(520px, 540fr)" in CSS
+    assert "minmax(400px, 400fr) minmax(900px, 1130fr) minmax(340px, 340fr) minmax(500px, 500fr)" in CSS
     assert ".league-table td.left { max-width" in CSS
 
 
@@ -512,7 +512,7 @@ def test_the_score_column_is_wide_enough_for_its_bar_and_the_other_cells_pay_for
     # The numbers and the Score bar grow with the table panel (cqw), so a wide table spreads its slack instead of leaving it in Player
     assert ".tablecol { container-type: inline-size; }" in CSS
     assert re.search(r"#pool th:nth-child\(3\), #pool td\.score-cell \{ min-width: clamp\(100px, calc\(15\.2cqw - 54px\), 200px\); \}", CSS)
-    assert "#pool td { padding-inline: clamp(4px, calc(2.5cqw - 22px), 18px); }" in CSS
+    assert "#pool td { padding-inline: clamp(3px, calc(1.5cqw - 13.5px), 18px); }" in CSS
     assert "#pool td { padding: 4px 5px; }" in CSS and "#pool th button { padding: 9px 5px; }" in CSS
     columns = re.findall(r"\{ key: '(\w+)', label", JS[JS.index("const POOL_COLUMNS"): JS.index("function buildPoolHead")])
     assert columns[2] == "score", "the width rule names the third column: keep Score third"
