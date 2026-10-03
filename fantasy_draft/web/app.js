@@ -82,7 +82,7 @@ function put(node, ...children) {
 const pct = (value) => `${Math.round(value * 100)}%`;
 const oneDecimal = (value) => (value === null || value === undefined ? '-' : value.toFixed(1));
 const formatRate = (value) => (value === null || value === undefined ? '-' : value.toFixed(3).replace(/^0/, ''));
-const placesLabel = (value) => `${value > 0 ? '+' : ''}${value.toFixed(1)}`;
+const signed = (value) => `${value > 0 ? '+' : ''}${value.toFixed(1)}`;
 const teamName = (slot) => (pool.league.teamNames ? pool.league.teamNames[slot - 1] : `Slot ${slot}`);
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 const nameOf = (id) => playerById.get(id).name;
@@ -1153,7 +1153,7 @@ function updateYahooGap() {
   yahooGap = new Map(analysis.pool.map((row) => [row.id, place.get(row.id) - row.rank]));
 }
 
-const signed = (value) => (value > 0 ? `+${value}` : value < 0 ? `\u2212${-value}` : '0');
+const placesLabel = (value) => (value > 0 ? `+${value}` : value < 0 ? `\u2212${-value}` : '0');
 
 function sortValue(row, player, key) {
   if (key === 'rank') return row.rank;

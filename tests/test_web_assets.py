@@ -691,3 +691,9 @@ def test_the_table_has_a_sortable_vs_yahoo_column_beside_xrank() -> None:
     columns = JS[JS.index("const POOL_COLUMNS"): JS.index("function buildPoolHead")]
     assert columns.index("key: 'xrank'") < columns.index("key: 'vsyahoo'") < columns.index("key: 'gp'")
     assert "key === 'vsyahoo'" in JS and "updateYahooGap()" in JS
+
+
+def test_signed_keeps_its_one_decimal_for_the_deltas_and_the_vs_yahoo_column_has_its_own_whole_number_label() -> None:
+    assert "const signed = (value) => `${value > 0 ? '+' : ''}${value.toFixed(1)}`;" in JS
+    assert "const placesLabel = (value) =>" in JS and "placesLabel(yahooGap.get(player.id))" in JS
+    assert JS.count("const signed =") == 1 and JS.count("const placesLabel =") == 1
