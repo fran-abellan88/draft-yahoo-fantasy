@@ -23,7 +23,7 @@ from fantasy_draft.flags import build_flags
 from fantasy_draft.lineup import ALL_MASK, POSITION_BIT, STARTING_SLOTS, assign_slots, position_mask
 from fantasy_draft.league import league_table, rosters_by_slot
 from fantasy_draft.needs import category_weights
-from fantasy_draft.optimizer import FirstPickOption, Plan, Recommendation, plan_picks, team_profile
+from fantasy_draft.optimizer import FLEXIBILITY_BONUS, FirstPickOption, Plan, Recommendation, plan_picks, team_profile
 from fantasy_draft.scoring import METHODS, Bounds, category_scores, composite_score, compute_bounds, last_season_scores
 
 MAX_TOP_K = 50
@@ -180,6 +180,7 @@ class DraftService:
                     games_adjusted=games_adjusted,
                     method=method,
                     weights=weights,
+                    flexibility=FLEXIBILITY_BONUS,
                 )
             except ValueError as error:
                 raise RequestError(str(error)) from error
@@ -312,6 +313,7 @@ class DraftService:
                 games_adjusted=games_adjusted,
                 method=method,
                 option_count=0,
+                flexibility=FLEXIBILITY_BONUS,
             )
         except ValueError:
             return None
@@ -559,7 +561,7 @@ class DraftService:
         # does not show the line. Float noise around zero is rounded away.
         shown: List[Dict[str, Any]] = []
         for option in options[:ALTERNATIVES_SHOWN]:
-            gap = best.total_score - option.plan.total_score
+            gap = best.value - option.plan.value
             item: Dict[str, Any] = {"id": option.player_id, "behind": 0.0 if abs(gap) < 1e-9 else _num(gap, 1)}
             if len(option.plan.player_ids) > 1 and option.plan.player_ids[1] == best.player_ids[0]:
                 adp = float(self._by_id.loc[best.player_ids[0], "adp_est"])

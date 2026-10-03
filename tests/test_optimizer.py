@@ -364,3 +364,58 @@ def test_unseen_picks_lower_the_odds_the_plan_relies_on_and_count_as_picks_made(
     assert plain.plans and unseen.plans
     # Same pick on the clock (27), but six of the listed players may in fact be gone
     assert unseen.plans[0].survival < plain.plans[0].survival
+
+
+def _tie_pool(pg_points: float, flexible_points: float) -> pd.DataFrame:
+    """Two players on offer for pick 2: a PG and a PG/SG, plus filler so the score bounds are not degenerate."""
+    return pd.DataFrame(
+        {
+            "player_id": ["pg", "pg-sg", "low", "high"],
+            "player": ["pg", "pg-sg", "low", "high"],
+            "pos_list": [["PG"], ["PG", "SG"], ["C"], ["C"]],
+            "adp_est": [30.0, 30.0, 40.0, 1.0],
+            "pts": [pg_points, flexible_points, 5.0, 40.0],
+        }
+    )
+
+
+def _first_pick(pool: pd.DataFrame, flexibility: float) -> List[str]:
+    state = DraftState(taken=["high"])
+    result = plan_picks(
+        pool, state, ["pts"], compute_bounds(pool, ["pts"]), NormalAdpModel(), rounds=1, top_k=4, flexibility=flexibility, option_count=0
+    )
+    return [plan.player_ids[0] for plan in result.plans]
+
+
+def test_at_equal_score_the_player_who_fills_more_positions_is_preferred() -> None:
+    pool = _tie_pool(20.0, 20.0)
+    assert _first_pick(pool, flexibility=0.3)[0] == "pg-sg"
+
+
+def test_the_bonus_never_outweighs_a_real_gap_in_score() -> None:
+    pool = _tie_pool(21.0, 20.0)  # the single-position player is clearly better
+    assert _first_pick(pool, flexibility=0.3)[0] == "pg"
+
+
+def test_without_a_bonus_the_search_is_unchanged() -> None:
+    pool = _tie_pool(20.0, 19.9)
+    assert _first_pick(pool, flexibility=0.0)[0] == "pg"
+
+
+def test_the_roster_score_stays_the_plain_sum_and_the_bonus_is_kept_apart() -> None:
+    pool = _tie_pool(20.0, 20.0)
+    bounds = compute_bounds(pool, ["pts"])
+    scores = dict(zip(pool["player_id"], composite_score(pool, ["pts"], bounds)))
+    result = plan_picks(
+        pool, DraftState(taken=["high"]), ["pts"], bounds, NormalAdpModel(), rounds=1, top_k=4, flexibility=0.3, option_count=0
+    )
+    best = result.plans[0]
+    assert best.player_ids == ("pg-sg",)
+    assert best.total_score == pytest.approx(scores["pg-sg"])
+    assert best.value == pytest.approx(scores["pg-sg"] + 0.3)
+
+
+def test_the_dashboard_plans_with_the_bonus() -> None:
+    from fantasy_draft import optimizer, service
+
+    assert service.FLEXIBILITY_BONUS == optimizer.FLEXIBILITY_BONUS > 0
