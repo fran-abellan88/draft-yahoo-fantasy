@@ -684,3 +684,59 @@ def test_predictions_exist_only_in_the_real_draft_and_refuse_a_bad_log(service: 
     with pytest.raises(RequestError):
         _predict(service, ["nobody"])
     assert _predict(service, [])["picks"] == [] and _predict(service, [])["summary"]["counted"] == 0
+
+
+def _mixed_log(service: DraftService) -> List[Any]:
+    """Pick 1 unseen, 2 mine, 3 and 5 players, 4 not in the list, 6 gone: every kind a log can hold."""
+    ids = _ids_by_xrank(service)
+    return [{"kind": "unseen"}, ids[1], ids[0], {"kind": "outside"}, ids[2], {"kind": "gone", "id": ids[3]}]
+
+
+def test_every_team_has_its_players_and_lineup_so_far(service: DraftService) -> None:
+    answer = _ask(service, _mixed_log(service))
+    rosters = answer["league"]["rosters"]
+    assert sorted(int(slot) for slot in rosters) == list(range(1, 15))
+    ids = _ids_by_xrank(service)
+    assert [(e["id"], e["pick"], e["kind"], e["projected"]) for e in rosters[3]["entries"]] == [(ids[0], 3, "player", False)]
+    assert rosters[1]["entries"] == [] and rosters[1]["unseen"] == [1]  # an unseen pick has no player and cannot be placed
+    assert rosters[4]["entries"][0]["id"] is None and rosters[4]["entries"][0]["kind"] == "outside"
+    assert any(slot["entry"] == 0 for slot in rosters[4]["slots"])  # a pick not in the list still fills a slot
+    assert [(e["id"], e["kind"]) for e in rosters[6]["entries"]] == [(ids[3], "gone")]  # assumed, but placed like a player
+    for team in rosters.values():
+        placed = [slot["entry"] for slot in team["slots"] if slot["entry"] is not None]
+        assert sorted(placed + team["bench"]) == list(range(len(team["entries"])))
+
+
+def test_my_team_in_the_rosters_is_the_lineup_the_page_already_shows(service: DraftService) -> None:
+    answer = _ask(service, _mixed_log(service))
+    mine = answer["league"]["rosters"][service.slot]
+    assert {key: mine[key] for key in ("slots", "bench", "canAdd")} == answer["lineup"]
+    assert [(e["id"], e["pick"]) for e in mine["entries"]] == [(e["id"], e["pick"]) for e in answer["roster"]]
+
+
+def test_the_projected_rosters_add_marked_players_in_snake_order(service: DraftService) -> None:
+    log = _mixed_log(service)
+    projected = _ask(service, log)["league"]["projected"]["rosters"]
+    for team in projected.values():
+        logged = [e for e in team["entries"] if not e["projected"]]
+        added = [e for e in team["entries"] if e["projected"]]
+        assert len(logged) + len(added) + len(team["unseen"]) == service.rounds  # an unseen pick still takes a place
+        assert [e["pick"] for e in team["entries"]] == sorted(e["pick"] for e in team["entries"])
+        assert all(e["pick"] > len(log) for e in added) and all(e["id"] for e in added)
+    assert [e["pick"] for e in projected[service.slot]["entries"] if e["projected"]][:2] == [27, 30]
+
+
+def test_the_planner_projection_carries_the_rosters_too(service: DraftService) -> None:
+    log = _mixed_log(service)
+    table = service.project_league({"categories": ALL, "picks": log})
+    assert sorted(int(slot) for slot in table["rosters"]) == list(range(1, 15))
+    simulated = table["simulated"]
+    added = [e["id"] for team in table["rosters"].values() for e in team["entries"] if e["projected"]]
+    assert sorted(added) == sorted(simulated)  # every simulated pick sits on exactly one team
+    assert [e["pick"] for e in table["rosters"][service.slot]["entries"] if e["projected"]][0] == 27
+
+
+def test_the_rosters_are_json_safe(service: DraftService) -> None:
+    import json
+
+    json.dumps(_ask(service, _mixed_log(service))["league"])

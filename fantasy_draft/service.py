@@ -292,6 +292,11 @@ class DraftService:
         table["fallbacks"] = fallbacks
         table["simulated"] = [pick.player_id for pick in simulated[len(picks):]]
         table["myPlayers"] = [pid for pid in rosters[self.slot] if pid is not None]  # the team this projection gives the user
+        added: Dict[int, List[str]] = {slot: [] for slot in range(1, self.teams + 1)}
+        for number, pick in enumerate(simulated[len(picks):], start=len(picks) + 1):
+            if pick.player_id is not None:
+                added[slot_of_pick(number, self.teams)].append(pick.player_id)
+        table["rosters"] = self._team_rosters(picks, added)
         return table
 
     def _planner_choice(
@@ -408,11 +413,13 @@ class DraftService:
         rosters = rosters_by_slot(picks, self.teams)
         table = league_table(self.players, rosters, keys, size, self.slot, TEAM_NAMES)
         table["basis"] = "so far"
+        table["rosters"] = self._team_rosters(picks)
         planned = list(best.player_ids) if best else []
         added = project(self.players, picks, self.teams, self.rounds * self.teams, self.slot, set(planned))
         projected_rosters = {slot: rosters[slot] + (planned if slot == self.slot else added[slot]) for slot in rosters}
         projected = league_table(self.players, projected_rosters, keys, self.rounds, self.slot, TEAM_NAMES)
         projected["basis"] = f"projected, {self.rounds} players each"
+        projected["rosters"] = self._team_rosters(picks, {slot: (planned if slot == self.slot else added[slot]) for slot in rosters})
         table["projected"] = projected
         return table
 
@@ -622,15 +629,47 @@ class DraftService:
 
     def _lineup(self, picks: List[Pick], mine_numbers: set) -> Dict[str, Any]:
         """Who starts in each of the ten slots, who sits, and which positions one more player could still start at."""
-        entries = self._roster_masks(picks, mine_numbers)
-        masks = [mask for mask, _ in entries]
+        return self._lineup_of([mask for mask, _ in self._roster_masks(picks, mine_numbers)])
+
+    @staticmethod
+    def _lineup_of(masks: List[int]) -> Dict[str, Any]:
+        """The lineup for any roster, given each player's position mask (indices refer to that list)."""
         owners = assign_slots(masks)
         started = {owner for owner in owners if owner is not None}
         return {
             "slots": [{"slot": name, "entry": owner} for (name, _), owner in zip(STARTING_SLOTS, owners)],
-            "bench": [index for index in range(len(entries)) if index not in started],
+            "bench": [index for index in range(len(masks)) if index not in started],
             "canAdd": [position for position, bit in POSITION_BIT.items() if startable(masks + [bit])],
         }
+
+    def _team_rosters(self, picks: List[Pick], projected: Optional[Dict[int, List[str]]] = None) -> Dict[int, Dict[str, Any]]:
+        """Every team's players with their lineup: the logged picks, then (optionally) the players a projection adds.
+
+        Each entry is `{id, pick, kind, projected}` (`id` is None for a pick not in the list), in pick order, and the lineup
+        refers to entries by index, as for my own roster. An unseen pick is a pick whose player nobody reported: it cannot
+        be placed, so it is listed apart in `unseen`. A "gone" pick has a player (assumed) and is placed like any other.
+        `projected` maps a slot to the ids a projection gives it, which take that team's next picks in snake order.
+        """
+        entries: Dict[int, List[Dict[str, Any]]] = {slot: [] for slot in range(1, self.teams + 1)}
+        unseen: Dict[int, List[int]] = {slot: [] for slot in range(1, self.teams + 1)}
+        for number, pick in enumerate(picks, start=1):
+            slot = slot_of_pick(number, self.teams)
+            if pick.kind == "unseen":
+                unseen[slot].append(number)
+            else:
+                entries[slot].append({"id": pick.player_id, "pick": number, "kind": pick.kind, "projected": False})
+        last = self.rounds * self.teams
+        for slot, ids in (projected or {}).items():
+            numbers = [n for n in range(len(picks) + 1, last + 1) if slot_of_pick(n, self.teams) == slot]
+            for number, player_id in zip(numbers, ids):
+                entries[slot].append({"id": player_id, "pick": number, "kind": "player", "projected": True})
+        rosters: Dict[int, Dict[str, Any]] = {}
+        for slot, team_entries in entries.items():
+            masks = [
+                ALL_MASK if entry["id"] is None else position_mask(self._by_id.loc[entry["id"], "pos_list"]) for entry in team_entries
+            ]
+            rosters[slot] = {"entries": team_entries, "unseen": unseen[slot], **self._lineup_of(masks)}
+        return rosters
 
     def _best_available(self, pool: List[Dict[str, Any]], picks: List[Pick], mine_numbers: set) -> Optional[Dict[str, Any]]:
         """The best-scoring player left whom my lineup can still start, for when no plan covers the pick."""
