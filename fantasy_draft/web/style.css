@@ -347,6 +347,8 @@ body { margin: 0; }
 #pool td { padding: 4px 5px; }
 #pool th button { padding: 9px 5px; }
 #pool th:nth-child(3), #pool td.score-cell { min-width: 100px; }
+/* From 1720 px the Score column is wider, taken from the elastic Player column, so the bar has room to show a difference */
+@media (min-width: 1720px) { #pool th:nth-child(3), #pool td.score-cell { min-width: 130px; } }
 
 /* 2350 and up: every panel has its own place. The columns share extra width in proportion (the fr numbers are their
    widths at 2436 px), so a wider window enlarges every panel, not only the table */
