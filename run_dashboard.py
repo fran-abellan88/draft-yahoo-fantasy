@@ -6,6 +6,7 @@ Start the draft dashboard on this computer and open it in the browser.
     python run_dashboard.py --no-browser
     python run_dashboard.py --draft-file /tmp/trial.json   # a separate saved draft, for trying things out
     python run_dashboard.py --mock-file /tmp/mock.json     # keep the mock draft somewhere else
+    python run_dashboard.py --dev                          # while changing the app: reload the page and restart on edits
 
 The page serves two drafts: the real one at / (you log every pick) and a mock draft at /mock (the other teams pick
 automatically), each with its own saved file. The top bar switches between them.
@@ -14,13 +15,15 @@ The server only listens on 127.0.0.1, so nobody else on the network can reach it
 """
 
 import argparse
+import os
 import sys
 import webbrowser
 from http.server import ThreadingHTTPServer
 from pathlib import Path
-from typing import Tuple
+from typing import Optional, Tuple
 
 from fantasy_draft.data import load_players
+from fantasy_draft.devmode import PORT_ENV, RESTARTED_ENV, DevMode, restart_in_place
 from fantasy_draft.saved_draft import DEFAULT_MOCK_PATH, DEFAULT_PATH, SavedDraft
 from fantasy_draft.server import HOST, make_server
 from fantasy_draft.service import DraftService
@@ -28,11 +31,13 @@ from fantasy_draft.service import DraftService
 PORT_ATTEMPTS = 20
 
 
-def bind(service: DraftService, first_port: int, saved: SavedDraft, mock: Tuple[DraftService, SavedDraft]) -> ThreadingHTTPServer:
+def bind(
+    service: DraftService, first_port: int, saved: SavedDraft, mock: Tuple[DraftService, SavedDraft], dev: Optional[DevMode] = None
+) -> ThreadingHTTPServer:
     """Bind to the first free port at or after `first_port`."""
     for port in range(first_port, first_port + PORT_ATTEMPTS):
         try:
-            return make_server(service, port, saved, mock)
+            return make_server(service, port, saved, mock, dev)
         except OSError:
             print(f"Port {port} is busy, trying the next one")
     raise SystemExit(f"No free port between {first_port} and {first_port + PORT_ATTEMPTS - 1}")
@@ -55,7 +60,15 @@ def main() -> None:
         default=DEFAULT_MOCK_PATH,
         help="where the mock draft is saved (default: %(default)s). It must not be the real draft file",
     )
+    parser.add_argument(
+        "--dev",
+        action="store_true",
+        help="development mode: the page reloads when a file changes and the server restarts when a Python file changes. "
+        "Leave it off during a real draft",
+    )
     args = parser.parse_args()
+    if os.environ.get(PORT_ENV):  # a development restart: keep the port the open page is using
+        args.port = int(os.environ[PORT_ENV])
     if args.mock_file.resolve() == args.draft_file.resolve():
         sys.exit("The mock draft needs its own file, so it cannot mix with the real draft. Use another --mock-file or --draft-file.")
 
@@ -67,7 +80,8 @@ def main() -> None:
         sys.exit(f"Missing data file: {error.filename}. Run fetch_yahoo_players.py first.")
     saved = SavedDraft(args.draft_file)
     mock_saved = SavedDraft(args.mock_file)
-    server = bind(service, args.port, saved, (mock_service, mock_saved))
+    dev = DevMode() if args.dev else None
+    server = bind(service, args.port, saved, (mock_service, mock_saved), dev)
     url = f"http://{HOST}:{server.server_address[1]}/"
     print(f"Draft assistant running at {url}  (Ctrl+C to stop)")
     print(f"Real draft:  {url}  you log every pick. Saved in {saved.path}")
@@ -80,7 +94,10 @@ def main() -> None:
             print(f"Continuing the {label}: {len(state.get('picks', []))} picks (version {version}).")
         else:
             print(f"No saved {label} yet: starting empty.")
-    if not args.no_browser:
+    if dev is not None:
+        dev.watch(server.server_address[1], restart_in_place)
+        print("Development mode: the page reloads on edits and the server restarts when a Python file changes.")
+    if not args.no_browser and not os.environ.get(RESTARTED_ENV):
         webbrowser.open(url)
     try:
         server.serve_forever()
