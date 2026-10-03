@@ -617,8 +617,47 @@ function reset() {
   refresh();
 }
 
+// ---------- notes behind a "?" ----------
+// One popover for every "?" button (static ones in index.html carry their text in data-help, built ones come from helpButton)
+function helpButton(text, label) {
+  return h('button', { type: 'button', class: 'help', 'aria-label': label, 'aria-expanded': 'false', 'data-help': text }, '?');
+}
+
+let helpAnchor = null;
+
+function hideHelp() {
+  if (helpAnchor) helpAnchor.setAttribute('aria-expanded', 'false');
+  helpAnchor = null;
+  $('help-pop').hidden = true;
+}
+
+function showHelp(button) {
+  const pop = $('help-pop');
+  pop.textContent = button.dataset.help;
+  pop.hidden = false;
+  button.setAttribute('aria-expanded', 'true');
+  helpAnchor = button;
+  const box = button.getBoundingClientRect();
+  const width = pop.offsetWidth;
+  pop.style.left = `${Math.max(8, Math.min(box.left, window.innerWidth - width - 8))}px`;
+  const below = box.bottom + 6;
+  pop.style.top = `${below + pop.offsetHeight > window.innerHeight - 8 ? Math.max(8, box.top - pop.offsetHeight - 6) : below}px`;
+}
+
+document.addEventListener('click', (event) => {
+  const button = event.target.closest('.help');
+  const same = button !== null && button === helpAnchor;
+  hideHelp();
+  if (button && !same) showHelp(button);
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') hideHelp();
+});
+window.addEventListener('resize', hideHelp);
+
 // ---------- rendering ----------
 function render() {
+  hideHelp();
   renderTopBar();
   renderClock();
   renderHero();
@@ -874,7 +913,7 @@ function alternativesBlock() {
     { class: 'hero-alts' },
     h('h3', {}, lead),
     h('ul', {}, ...items),
-    h('p', { class: 'note' }, `How far the whole plan falls behind the best one.${thenSentence()}`),
+    h('p', { class: 'note' }, 'How far each plan falls behind the best one. ', helpButton(`The gap is in roster score, for the whole plan, not only the first pick.${thenSentence()}`, 'About the alternatives')),
   );
 }
 
@@ -962,9 +1001,6 @@ function notesFor(row, player) {
   const flags = row.flags;
   if (flags.noLastSeason) notes.push(badge('No 2025-26 stats', 'info', 'No stats last season: injured, a rookie, or missing in Yahoo. The score rests on the projection alone.'));
   if (flags.smallSample) notes.push(badge(`${player.lastSeason.gp} GP in 2025-26`, 'info', 'Too few games last season for the average to mean much.'));
-  if (flags.diverges) {
-    notes.push(badge(`Proj ${signed(row.lastSeasonDelta)} vs 2025-26`, '', `Projected score minus last season's score, on the same scale. Last season: ${oneDecimal(row.lastSeasonScore)}.`));
-  }
   if (flags.lowGames) notes.push(badge(`Proj ${player.gp} GP`, '', 'Projected to miss a lot of games. Scores are per game, so availability is not in the number.'));
   return notes;
 }
@@ -1022,6 +1058,23 @@ function scoreTitle(row) {
   const gap = scoreTop - row.score;
   const behind = gap < 0.05 ? 'The best score left.' : `${oneDecimal(gap)} behind the best score left.`;
   return `Score for your ticked categories. ${behind} Bar: full is the best score left, a short sliver is the lowest left.`;
+}
+
+// Last season's score beside the projection, "60.0 (50.0) ↑": up when he is projected to do better than last season. A player with few
+// games last season keeps the number but no arrow, since an average over a handful of games says nothing about a trend.
+const TREND_MARKS = { up: '↑', down: '↓', same: '≈' };
+const TREND_WORDS = { up: 'better', down: 'worse', same: 'about the same' };
+
+function previousScore(row) {
+  if (row.lastSeasonScore === null || row.lastSeasonScore === undefined) return null;
+  const trend = row.flags.smallSample ? null : scoreTrend(row.lastSeasonDelta);
+  const word = trend ? `${TREND_WORDS[trend]} than last season` : 'too few games last season for a trend';
+  return h(
+    'span',
+    { class: 'prev', title: `2025-26 score on the same scale: ${oneDecimal(row.lastSeasonScore)}. Projected ${signed(row.lastSeasonDelta)} against it: ${word}.` },
+    `(${oneDecimal(row.lastSeasonScore)})`,
+    trend ? h('span', { class: `trend ${trend}`, 'aria-label': TREND_WORDS[trend] }, TREND_MARKS[trend]) : null,
+  );
 }
 
 function applyScoreStyle(choice) {
@@ -1111,7 +1164,7 @@ function renderPool() {
         ...notesFor(row, player),
         ...(hasUnseenPicks() && row.unseenRisk >= UNSEEN_RISK_SHOWN ? [goneButton(player)] : []),
       ])),
-      h('td', { class: 'score score-cell', style: scoreTint(row), title: scoreTitle(row) }, oneDecimal(row.score)),
+      h('td', { class: 'score score-cell', style: scoreTint(row), title: scoreTitle(row) }, oneDecimal(row.score), previousScore(row)),
       oddsCell(oddsAtColumn(row)),
       h('td', { title: player.adpEstimated ? 'Yahoo shows no ADP for him; estimated from nearby ranks' : '' }, `${player.adpEstimated ? '~' : ''}${player.adp.toFixed(1)}`),
       h('td', {}, player.xrank),
@@ -1253,7 +1306,7 @@ function renderStanding() {
     container,
     h('p', { class: 'note standing-summary' }, summary ? `${summary}.` : ''),
     ...rows,
-    h('p', { class: 'note' }, `Bar: the share of the other 13 teams you beat, ${projectedTable().basis}. "Now" counts the first ${league.size} pick${league.size === 1 ? '' : 's'} of each team, against ${plural(Math.max(league.compared - 1, 0), 'other team')}.`),
+    h('p', { class: 'note' }, 'Bar: the share of the other teams you beat. ', helpButton(`The share of the other 13 teams you beat, ${projectedTable().basis}. "Now" counts the first ${league.size} pick${league.size === 1 ? '' : 's'} of each team, against ${plural(Math.max(league.compared - 1, 0), 'other team')}.`, 'About the Standing bars')),
     renderWeightsNote(keys, labels),
   );
 }
@@ -1325,9 +1378,10 @@ function renderLeague() {
   let status = '';
   if (projectedBasis === 'planner' && !usingPlanner) status = plannerFailed ? 'The planner projection failed: showing ADP order.' : 'Updating: showing ADP order meanwhile.';
   else if (usingPlanner && plannerPending) status = 'Updating.';
-  const projectedNote = usingPlanner
-    ? `${projected.basis}: logged picks, then every team, yours too, takes the first player of its own best plan in turn. It shows what well-informed teams would end up with, not who will be available, and your league is probably easier.${projected.fallbacks ? ` ${plural(projected.fallbacks, 'pick')} fell back to ADP order.` : ''}`
-    : `${projected.basis}: logged picks, your best plan for your team, and the other teams filled in ADP order with lineup limits. Your team is built to these categories and the others are not, so it tends to come first.`;
+  const projectedLong = usingPlanner
+    ? `Logged picks, then every team, yours too, takes the first player of its own best plan in turn. It shows what well-informed teams would end up with, not who will be available, and your league is probably easier.${projected.fallbacks ? ` ${plural(projected.fallbacks, 'pick')} fell back to ADP order.` : ''}`
+    : `Logged picks, your best plan for your team, and the other teams filled in ADP order with lineup limits. Your team is built to these categories and the others are not, so it tends to come first.`;
+  const projectedNote = { short: `${projected.basis}.`, long: projectedLong };
   // My Score under both ways of completing the league, whichever one is shown: how much of it depends on the rivals
   const mineScore = (table) => (table.teams.find((team) => team.mine) || {}).score;
   const withPlanner = plannerLeague !== null && plannerKeys === JSON.stringify(state.categories) ? mineScore(plannerLeague) : null;
@@ -1339,7 +1393,7 @@ function renderLeague() {
     ? h('p', { class: 'note' }, `Your team in this projection: ${projected.myPlayers.map(nameOf).join(', ')}. It can differ from your plan, which is made before the others pick.`)
     : null;
   const now = analysis.league;
-  const nowNote = `The first ${now.size} pick${now.size === 1 ? '' : 's'} of every team. Totals per game; FG% and FT% are real ratios; fewer turnovers is better.${now.waiting ? ` ${plural(now.waiting, 'team')} yet to make pick ${now.size} ${now.waiting === 1 ? 'is' : 'are'} scaled up to it, and a scaled team usually drops a little when it picks.` : ''}${now.leftOut ? ` ${plural(now.leftOut, 'team')} with no player yet ${now.leftOut === 1 ? 'is' : 'are'} left out.` : ''}`;
+  const nowNote = `Totals per game; FG% and FT% are real ratios; fewer turnovers is better.${now.waiting ? ` ${plural(now.waiting, 'team')} yet to make pick ${now.size} ${now.waiting === 1 ? 'is' : 'are'} scaled up to it, and a scaled team usually drops a little when it picks.` : ''}${now.leftOut ? ` ${plural(now.leftOut, 'team')} with no player yet ${now.leftOut === 1 ? 'is' : 'are'} left out.` : ''}`;
   const uncounted = now.notCounted ? ` ${plural(now.notCounted, 'pick')} not counted (unseen, gone or not in the list).` : '';
   put(
     container,
@@ -1348,11 +1402,11 @@ function renderLeague() {
     status ? h('p', { class: 'note league-status', role: 'status' }, status) : null,
     range,
     leagueTable(projected, keys, labels),
-    h('p', { class: 'note' }, projectedNote),
+    h('p', { class: 'note' }, projectedNote.short, ' ', helpButton(projectedNote.long, 'About the projection')),
     myTeam,
     h('h3', {}, 'So far'),
     leagueTable(now, keys, labels),
-    h('p', { class: 'note' }, nowNote + uncounted),
+    h('p', { class: 'note' }, `The first ${now.size} pick${now.size === 1 ? '' : 's'} of every team. `, helpButton(nowNote + uncounted, 'About the table so far')),
   );
 }
 

@@ -24,7 +24,7 @@ from fantasy_draft.lineup import ALL_MASK, POSITION_BIT, STARTING_SLOTS, assign_
 from fantasy_draft.league import league_table, rosters_by_slot
 from fantasy_draft.needs import category_weights
 from fantasy_draft.optimizer import FirstPickOption, Plan, Recommendation, plan_picks, team_profile
-from fantasy_draft.scoring import METHODS, Bounds, category_scores, composite_score, compute_bounds
+from fantasy_draft.scoring import METHODS, Bounds, category_scores, composite_score, compute_bounds, last_season_scores
 
 MAX_TOP_K = 50
 DEFAULT_TOP_K = 10
@@ -160,6 +160,7 @@ class DraftService:
             so_far = league_table(self.players, rosters_by_slot(picks, self.teams), keys, rounds_done, self.slot, TEAM_NAMES)
             weights, ramp = category_weights(so_far["standing"], keys, rounds_done)
         scores = composite_score(self.players, keys, self.method_bounds[method], games_adjusted, method, weights)
+        last_season = last_season_scores(self.players, keys, self.method_bounds[method], games_adjusted, method, weights)
         category = category_scores(self.players, keys, self.bounds) * 100.0  # bars stay on the 0-100 capped scale
         flags = build_flags(self.players, keys, self.bounds)
         drafted = {pick.player_id for pick in picks if pick.player_id is not None}
@@ -188,7 +189,7 @@ class DraftService:
         next_mine = clock["nextMyPick"] if clock["nextMyPick"] is not None and clock["nextMyPick"] <= self._horizon_last() else None
         next_mine_probability = rule.probability(adp, next_mine, state.picks_made, state.unseen) if next_mine is not None else None
 
-        pool = self._pool_rows(scores, category, flags, drafted, next_mine_probability)
+        pool = self._pool_rows(scores, last_season, category, flags, drafted, next_mine_probability)
         self._add_unseen_risk(pool, adp, state)
         later_pick = self._later_pick(clock)
         self._add_later(pool, adp, state, rule, later_pick)
@@ -504,6 +505,7 @@ class DraftService:
     def _pool_rows(
         self,
         scores: pd.Series,
+        last_season: pd.Series,
         category: pd.DataFrame,
         flags: pd.DataFrame,
         drafted: set,
@@ -522,8 +524,8 @@ class DraftService:
                     "score": _num(scores[index], 1),
                     "categoryScores": {key: _num(value, 0) for key, value in category.loc[index].items()},
                     "availability": None if availability is None else _num(availability[index], 3),
-                    "lastSeasonScore": _num(flag["ly_composite"], 1),
-                    "lastSeasonDelta": _num(flag["ly_delta"], 1),
+                    "lastSeasonScore": _num(last_season[index], 1),
+                    "lastSeasonDelta": _num(scores[index] - last_season[index], 1),
                     "flags": {
                         "noLastSeason": bool(flag["flag_ly_missing"]),
                         "smallSample": bool(flag["flag_ly_small_sample"]),

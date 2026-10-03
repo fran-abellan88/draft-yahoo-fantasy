@@ -33,6 +33,12 @@ Your picks are kept in the browser, so reloading the page mid-draft loses nothin
   entry in the log has **Unmark**. Every log row has **Edit**: swap two picks, say "I do not know what this pick was"
   (it becomes unseen, a player logged there returns to the pool), or place a gone player at an unseen pick. Each edit
   is confirmed first, cannot put an unseen or gone pick on one of your own pick numbers, and cannot be undone with Undo.
+- **Last season next to the projection**: the Score cell reads `40.7 (31.2) ↑`: the projected score, then the same score
+  computed from 2025-26 per-game stats (same categories, method, need weights and games setting; games count with last
+  season's games played), then an arrow: ↑ projected better, ↓ worse, ≈ within 5 points. A player with under 20 games
+  last season keeps the number but gets no arrow; one with no stats shows nothing.
+- **Notes behind a "?"**: the explanatory notes in Settings, Standing, the 14 teams and the table open from a "?" button
+  (click it, click again or elsewhere or press Esc to close).
 - **Score column**: a bar from the lowest score left (a short sliver) to the best (full), so every player has a bar and two
   different scores always give two different bars. Early in a draft, when the best scores are far above the rest, most bars
   are short but still differ. Settings offers two colour maps instead (by rank: top 5, 15, 30, 60; by

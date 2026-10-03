@@ -338,6 +338,18 @@ function scoreBarShare(score, anchors) {
   return SCORE_BAR_MINIMUM + (1 - SCORE_BAR_MINIMUM) * along;
 }
 
+// A projection that differs from last season's score by at least this many points is called better or worse; a smaller
+// gap is noise (the scale is 0 at the 5th percentile of a category and 100 at the 95th)
+const SCORE_TREND_POINTS = 5;
+
+// 'up' when the projection beats last season, 'down' when it is worse, 'same' inside the noise, null without last season
+function scoreTrend(delta, threshold = SCORE_TREND_POINTS) {
+  if (delta === null || delta === undefined || Number.isNaN(delta)) return null;
+  if (delta >= threshold) return 'up';
+  if (delta <= -threshold) return 'down';
+  return 'same';
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { clampRuleValue, sanitizeRule, normalizePicks, pickSavedState, planBehind, markGone, sanitizeHistory, undoLast, unmarkGone, swapPicks, forgetPick, placeGone, choosePlayer, describePick, swapText, forgetText, placeText, chooseText, undoLabel, chooseSource, discardsUnconfirmed, settingChanges, scoreBarAnchors, scoreBarShare, PICK_KINDS };
+  module.exports = { clampRuleValue, sanitizeRule, normalizePicks, pickSavedState, planBehind, markGone, sanitizeHistory, undoLast, unmarkGone, swapPicks, forgetPick, placeGone, choosePlayer, describePick, swapText, forgetText, placeText, chooseText, undoLabel, chooseSource, discardsUnconfirmed, settingChanges, scoreBarAnchors, scoreBarShare, scoreTrend, PICK_KINDS };
 }

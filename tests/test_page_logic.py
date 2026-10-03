@@ -476,3 +476,11 @@ def test_the_score_bar_tells_the_players_that_matter_apart_at_every_stage_of_the
         if higher - lower >= 1.0:
             assert wide - narrow >= 0.01, f"{higher} and {lower} must not look the same"
     assert len({round(width, 2) for _, width in ordered[:60]}) >= 20, "the bars differ"
+
+
+@pytest.mark.parametrize(
+    "delta,expected",
+    [(10.4, "up"), (5, "up"), (4.9, "same"), (0, "same"), (-4.9, "same"), (-5, "down"), (-30, "down"), (None, None)],
+)
+def test_score_trend_ignores_small_gaps_and_missing_last_season(delta: Any, expected: Any) -> None:
+    assert _run(f"L.scoreTrend({json.dumps(delta)})") == expected

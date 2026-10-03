@@ -425,7 +425,11 @@ body { margin: 0; }
 .saved { font-size: 13px; color: var(--muted); white-space: nowrap; }
 .saved.bad { color: var(--danger); font-weight: 650; }
 td.dim { opacity: 0.45; }
-#pool td.score-cell { font-weight: 700; }
+#pool td.score-cell { font-weight: 700; white-space: nowrap; }
+.prev { margin-left: 6px; font-size: 12px; font-weight: 400; color: var(--muted); }
+.trend { margin-left: 2px; font-weight: 700; }
+.trend.up { color: var(--cool); }
+.trend.down { color: var(--danger); }
 .roster .slot { display: grid; grid-template-columns: 52px 1fr; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line); }
 .roster .slot.open { color: var(--muted); }
 .roster .slot .pick { color: var(--muted); font-weight: 650; font-size: 13px; }
@@ -478,3 +482,10 @@ td.dim { opacity: 0.45; }
 /* A notice is something to know, not a failure: the card colours, and red stays for errors */
 .banner.notice { background: var(--raised); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; font-weight: 500; }
 .banner.notice button { color: var(--ink); border-color: var(--line); background: var(--surface); }
+
+/* A "?" opens a note in the one popover; the note is a few sentences that would otherwise sit under the control */
+.help { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; margin-left: 4px; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: var(--raised); color: var(--muted); font: 700 12px/1 var(--font); vertical-align: middle; cursor: pointer; }
+.help:hover, .help[aria-expanded="true"] { color: var(--ink); border-color: var(--muted); }
+.help-pop { position: fixed; z-index: 20; max-width: min(380px, calc(100vw - 16px)); padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--raised); color: var(--ink); font-size: 13px; line-height: 1.45; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3); }
+.help-pop[hidden] { display: none; }
+.choice-row { display: flex; align-items: center; gap: 4px; }
