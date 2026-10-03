@@ -18,6 +18,7 @@ import pandas as pd
 from fantasy_draft.autopick import next_for_clock, project, startable
 from fantasy_draft.availability import AdpWindow, AvailabilityRule, NormalAdpModel
 from fantasy_draft.categories import CATEGORIES, categories_in
+from fantasy_draft.data import REFERENCE_POOL
 from fantasy_draft.draft import MY_SLOT, PICK_KINDS, ROSTER_SIZE, TEAM_NAMES, TEAMS, DraftState, Pick, my_picks, slot_of_pick
 from fantasy_draft.flags import build_flags
 from fantasy_draft.lineup import ALL_MASK, POSITION_BIT, STARTING_SLOTS, assign_slots, position_mask
@@ -95,8 +96,9 @@ class DraftService:
     def __post_init__(self) -> None:
         self.keys = categories_in(self.players.columns)
         # Bounds cover every category so toggling one never moves the scores of the others
-        self.bounds = compute_bounds(self.players, self.keys)
-        self.method_bounds = {method: compute_bounds(self.players, self.keys, method=method) for method in METHODS}
+        reference = self.players[self.players["xrank"] <= REFERENCE_POOL]  # the scale does not move when the pool grows
+        self.bounds = compute_bounds(reference, self.keys)
+        self.method_bounds = {method: compute_bounds(reference, self.keys, method=method) for method in METHODS}
         self._by_id = self.players.set_index("player_id")
 
     def pool_payload(self) -> Dict[str, Any]:

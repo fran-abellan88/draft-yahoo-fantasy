@@ -49,7 +49,7 @@ FALLBACK_CANDIDATES = 5
 # Search nodes per request. With the default rule a whole simulated draft needs at most about 25,000 for the main
 # search, so these leave a wide margin (tests/test_optimizer.py checks it) and only bind on pathological settings.
 NODE_BUDGET = 150_000
-OPTION_NODE_BUDGET = 30_000  # for each search that fixes one first pick
+OPTION_NODE_BUDGET = 40_000  # for each search that fixes one first pick (the busiest used 16,546 with 245 players)
 FIRST_PICK_OPTIONS = 6
 
 

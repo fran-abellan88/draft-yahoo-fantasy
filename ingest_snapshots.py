@@ -22,8 +22,8 @@ VALID_POSITIONS = {"PG", "SG", "SF", "PF", "C"}
 VALID_STATUS = {"", "Q", "P", "O"}
 STAT_COLS = ["gp", "fg_pct", "ft_pct", "3ptm", "pts", "reb", "ast", "st", "blk", "to"]
 SHARED_COLS = ["player", "team", "positions", "status", "adp"]
-# Only the first 150 XRanks are kept in both datasets; the raw files keep every row that was transcribed
-MAX_XRANK = 150
+# Only the first 250 XRanks are kept in both datasets; the raw files keep every row that was transcribed
+MAX_XRANK = 250
 
 Range = Tuple[str, float, float]
 
@@ -185,6 +185,7 @@ def main() -> int:
         projections_kind = KINDS["projections"]
         projections = pd.read_csv(Path(projections_kind.season_dir) / projections_kind.out_name, keep_default_na=False, na_values=[""])
         projections["status"] = projections["status"].fillna("")
+        projections = projections[projections["xrank"] <= merged["xrank"].max()]  # averages stop where their screenshots do
         problems += cross_check(merged, projections)
     if problems:
         print("\nERROR: invalid data:")
