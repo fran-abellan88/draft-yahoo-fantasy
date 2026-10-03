@@ -34,7 +34,7 @@ import pandas as pd
 
 from fantasy_draft.availability import AvailabilityRule
 from fantasy_draft.draft import MY_SLOT, ROSTER_SIZE, DraftState, my_picks
-from fantasy_draft.lineup import ALL_MASK, all_masks_can_start, position_mask
+from fantasy_draft.lineup import ALL_MASK, STARTING_SLOTS, all_masks_can_start, max_starters_of_masks, position_mask
 from fantasy_draft.scoring import Bounds, category_scores, composite_score, replacement_score
 
 # Score points added to a new pick's value for every position he can fill beyond the first. A judgement, not a
@@ -46,10 +46,12 @@ FLEXIBILITY_BONUS = 0.3
 # When nobody clears the availability threshold for a pick, fall back to the likeliest few.
 FALLBACK_CANDIDATES = 5
 
-# Search nodes per request. With the default rule a whole simulated draft needs at most about 25,000 for the main
-# search, so these leave a wide margin (tests/test_optimizer.py checks it) and only bind on pathological settings.
-NODE_BUDGET = 150_000
-OPTION_NODE_BUDGET = 40_000  # for each search that fixes one first pick (the busiest used 16,546 with 245 players)
+# Search nodes per request. Planning 10 rounds over the 245-player pool, the busiest state of a whole simulated draft needs
+# about 21,000 nodes for the main search with the page's settings (uncapped, games counted) and up to about 290,000 with
+# the capped score, which has many ties (tests/test_service.py checks that half the budget is never needed). Only
+# pathological settings reach the budget; the worst case then takes several seconds.
+NODE_BUDGET = 700_000
+OPTION_NODE_BUDGET = 700_000  # for each search that fixes one first pick (the busiest used about 306,000, capped)
 FIRST_PICK_OPTIONS = 6
 
 
@@ -190,6 +192,45 @@ def plan_picks(
                 options.append(FirstPickOption(first.player_id, found[0]))
         options.sort(key=lambda option: (option.plan.value, option.plan.survival), reverse=True)
     return Recommendation(plans, options, truncated, nodes, assumed_gone, main_nodes, max_option_nodes)
+
+
+def fill_picks(
+    players: pd.DataFrame,
+    state: DraftState,
+    keys: Sequence[str],
+    bounds: Bounds,
+    rule: AvailabilityRule,
+    picks: Sequence[int],
+    held: Sequence[str] = (),
+    games_adjusted: bool = False,
+    method: str = "capped",
+    weights: Optional[Mapping[str, float]] = None,
+    flexibility: float = 0.0,
+    max_candidates: int = 25,
+) -> List[Tuple[int, str]]:
+    """Fill `picks` one at a time, each with the best-value player likely to be there: (pick number, player id).
+
+    For the late rounds the exact search cannot reach. While a starting slot is still open, the best player who fills
+    one comes first (a bench player adds nothing to the week); once the lineup is full, the best value. `held` are
+    players already counted on (the plan's), kept out of the pool. Stops early if nobody is left to take.
+    """
+    scores = pd.Series(composite_score(players, keys, bounds, games_adjusted, method, weights).to_numpy(), index=players["player_id"])
+    positions = {player_id: tuple(pos) for player_id, pos in zip(players["player_id"], players["pos_list"])}
+    masks = [position_mask(positions[player_id]) for player_id in list(state.mine) + list(held)] + [ALL_MASK] * state.mine_outside
+    pool = players[~players["player_id"].isin(set(state.taken) | set(state.mine) | set(held))]
+    filled: List[Tuple[int, str]] = []
+    for pick in picks:
+        candidates = _candidates_for_pick(pool, scores, positions, rule, pick, state.picks_made, state.unseen, max_candidates, flexibility)
+        if not candidates:
+            break
+        choice = candidates[0]
+        starters = max_starters_of_masks(masks)
+        if starters < len(STARTING_SLOTS):
+            choice = next((c for c in candidates if max_starters_of_masks(masks + [c.mask]) > starters), choice)
+        filled.append((pick, choice.player_id))
+        masks.append(choice.mask)
+        pool = pool[pool["player_id"] != choice.player_id]
+    return filled
 
 
 def pick_frequency(plans: Sequence[Plan], pick_index: int = 0) -> pd.DataFrame:

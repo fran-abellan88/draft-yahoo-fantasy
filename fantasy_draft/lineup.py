@@ -91,6 +91,11 @@ def assign_slots(masks: Sequence[int]) -> List[Optional[int]]:
     return slot_owner
 
 
+def max_starters_of_masks(masks: Iterable[int]) -> int:
+    """How many of these players (given as position masks) can start at the same time."""
+    return _max_matching(tuple(sorted(masks)))
+
+
 def max_starters(position_lists: Iterable[Sequence[str]]) -> int:
     """Return how many of these players can start at the same time."""
     return _max_matching(tuple(sorted(position_mask(positions) for positions in position_lists)))

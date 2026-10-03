@@ -208,6 +208,7 @@ tr.unconfirmed { opacity: 0.6; }
 .pick-tile.now { background: var(--mine); color: var(--on-mine); }
 .step:not(:last-of-type)::before { content: ""; position: absolute; left: 28px; top: calc(50% + 17px); height: calc(100% - 34px); width: 2px; background: var(--line); }
 .step .who { min-width: 0; }
+.step.filled { opacity: 0.72; }
 .step .who strong { font-weight: 650; }
 .step .meta { color: var(--muted); font-size: 13px; }
 .plan-foot { padding: 10px 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }

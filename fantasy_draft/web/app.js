@@ -1051,14 +1051,16 @@ function renderPlan() {
     const row = poolRowById.get(step.id);
     return h(
       'div',
-      { class: 'step' },
+      { class: `step${step.filled ? ' filled' : ''}`, title: step.filled ? 'Filled in by score, not searched' : null },
       h('div', { class: `pick-tile${step.pick === analysis.clock.pick && !hasUnseenPicks() ? ' now' : ''}`, title: `Pick ${step.pick}` }, step.pick),
       h('div', { class: 'who' }, h('strong', {}, nameNode(step.id)), h('div', { class: 'meta' }, detailOf(step.id))),
       h('div', { class: 'score-col' }, h('strong', {}, oneDecimal(row.score)), h('div', { class: 'meta' }, 'score')),
       meter(step.availability, step.pick === analysis.clock.pick && !hasUnseenPicks()),
     );
   });
-  const foot = h('div', { class: 'plan-foot' }, `Roster score ${oneDecimal(best.totalScore)}. `, helpButton('The plan is recomputed after each pick.', 'About the plan'));
+  const filled = best.steps.filter((step) => step.filled).length;
+  const filledNote = filled ? `The last ${filled} are filled in by score, not searched, and may not last. ` : '';
+  const foot = h('div', { class: 'plan-foot' }, `Roster score ${oneDecimal(best.totalScore)}${filled ? ' (planned picks)' : ''}. ${filledNote}`, helpButton('The plan is recomputed after each pick.', 'About the plan'));
   put(container, h('div', { class: 'plan' }, rows, foot));
 }
 
@@ -1283,7 +1285,7 @@ function closeCard() {
 
 function renderPool() {
   updateScoreRange();
-  plannedPicks = new Map(analysis.plans.length ? analysis.plans[0].steps.map((step) => [step.id, step.pick]) : []);
+  plannedPicks = new Map(analysis.plans.length ? analysis.plans[0].steps.filter((step) => !step.filled).map((step) => [step.id, step.pick]) : []);
   const pickLabel = columnPick();
   const availabilityHead = $('pool-head').querySelector('button[data-key="availability"]');
   if (availabilityHead) availabilityHead.textContent = pickLabel ? `At pick ${pickLabel}` : 'At your pick';
@@ -1481,7 +1483,7 @@ function renderOtherRoster(slot, list, fitsText) {
   const parts = [`${logged} logged`];
   if (projected) parts.push(`${added} projected`);
   if (team.unseen.length) parts.push(`${team.unseen.length} not known`);
-  const how = projected ? (source === plannerLeague ? 'with the same planner' : `to round ${pool.league.rounds}, in ADP order`) : '';
+  const how = projected ? (source === plannerLeague ? 'with the same planner' : `to round ${pool.league.rosterSize}, in ADP order`) : '';
   put($('roster-note'), parts.join(' · ') + (how ? `. Projected ${how}.` : '.'));
   $('roster-note').hidden = false;
   if (team.entries.length === 0 && team.unseen.length === 0) {

@@ -24,12 +24,13 @@ from fantasy_draft.flags import build_flags
 from fantasy_draft.lineup import ALL_MASK, POSITION_BIT, STARTING_SLOTS, assign_slots, position_mask
 from fantasy_draft.league import league_table, rosters_by_slot
 from fantasy_draft.needs import category_weights
-from fantasy_draft.optimizer import FLEXIBILITY_BONUS, FirstPickOption, Plan, Recommendation, plan_picks, team_profile
+from fantasy_draft.optimizer import FLEXIBILITY_BONUS, FirstPickOption, Plan, Recommendation, fill_picks, plan_picks, team_profile
 from fantasy_draft.scoring import METHODS, Bounds, category_scores, composite_score, compute_bounds, last_season_scores
 
 MAX_TOP_K = 50
 DEFAULT_TOP_K = 10
 PLANS_SHOWN = 5
+RIVAL_ROUNDS = 8  # how many rounds another team plans ahead; its later picks are filled in (searching them all would be slow)
 TIE_SCORE = 0.05  # roster-score gap below which two plans read as the same score (the page uses the same value)
 ALTERNATIVES_SHOWN = 4
 LOOK_FIRST_SHOWN = 3
@@ -86,7 +87,7 @@ class DraftService:
 
     players: pd.DataFrame
     slot: int = MY_SLOT
-    rounds: int = 8
+    rounds: int = 10  # rounds planned exactly; the rest of the roster (ROSTER_SIZE) is filled in by score
     teams: int = TEAMS
     rehearsal: bool = False  # the mock draft: the other teams may pick automatically
     keys: List[str] = field(init=False)
@@ -198,10 +199,11 @@ class DraftService:
         later_pick = self._later_pick(clock)
         self._add_later(pool, adp, state, rule, later_pick)
         best = plans[0] if plans else None
+        fills = {id(plan): self._fill_plan(plan, state, keys, rule, method, games_adjusted, weights) for plan in plans[:PLANS_SHOWN]}
         return {
             "clock": clock,
             "pool": pool,
-            "plans": [self._plan_payload(plan, rule, state) for plan in plans[:PLANS_SHOWN]],
+            "plans": [self._plan_payload(plan, rule, state, fills[id(plan)]) for plan in plans[:PLANS_SHOWN]],
             "alternatives": self._alternatives(recommendation_result.options, best, rule, state),
             "alternativesMode": "gone" if recommendation_result.assumed_gone else "instead",
             "search": {
@@ -232,7 +234,7 @@ class DraftService:
                 "plan": self._profile(list(state.mine) + list(best.player_ids), keys) if best else None,
             },
             "horizonDone": next_mine is None,
-            "league": self._league(picks, keys, best),
+            "league": self._league(picks, keys, list(best.player_ids) + [pid for _, pid in fills[id(best)]] if best else []),
             "needs": {
                 "on": needs_on,
                 "ramp": round(ramp, 2),
@@ -279,7 +281,7 @@ class DraftService:
         rosters = rosters_by_slot(picks, self.teams)
         simulated = list(picks)
         fallbacks = 0
-        for number in range(len(picks) + 1, self.rounds * self.teams + 1):
+        for number in range(len(picks) + 1, ROSTER_SIZE * self.teams + 1):
             slot = slot_of_pick(number, self.teams)
             chosen = self._planner_choice(slot, simulated, keys, rule, method, games_adjusted)
             if chosen is None:
@@ -289,8 +291,8 @@ class DraftService:
                 break
             simulated.append(Pick("player", chosen))
             rosters[slot].append(chosen)
-        table = league_table(self.players, rosters, keys, self.rounds, self.slot, TEAM_NAMES)
-        table["basis"] = f"projected, every team completed by the same planner, {self.rounds} players each"
+        table = league_table(self.players, rosters, keys, ROSTER_SIZE, self.slot, TEAM_NAMES)
+        table["basis"] = f"projected, every team completed by the same planner, {ROSTER_SIZE} players each"
         table["fallbacks"] = fallbacks
         table["simulated"] = [pick.player_id for pick in simulated[len(picks):]]
         table["myPlayers"] = [pid for pid in rosters[self.slot] if pid is not None]  # the team this projection gives the user
@@ -306,10 +308,19 @@ class DraftService:
     ) -> Optional[str]:
         """The first player of team `slot`'s best plan after `picks`: what the recommendation would say for that team.
 
-        None when the search finds no plan (the team has no pick left in the planning horizon, or nobody fits).
-        Only my team plans for the ticked categories (`keys`, my strategy); every other team plans for all of them.
+        None when the search finds no plan (nobody fits). Only my team plans for the ticked categories (`keys`, my
+        strategy); every other team plans for all of them. A team plans `rounds` rounds ahead (RIVAL_ROUNDS for the
+        others); past that the pick is filled in by score, as in my own plan.
         """
         team_keys = keys if slot == self.slot else self.keys
+        horizon = self.rounds if slot == self.slot else RIVAL_ROUNDS
+        number = len(picks) + 1
+        if not any(pick >= number for pick in my_picks(slot, horizon, self.teams)):
+            filled = fill_picks(
+                self.players, self._state_for(slot, picks), team_keys, self.method_bounds[method], rule, [number],
+                games_adjusted=games_adjusted, method=method, flexibility=FLEXIBILITY_BONUS,
+            )
+            return filled[0][1] if filled else None
         try:
             found = plan_picks(
                 self.players,
@@ -318,7 +329,7 @@ class DraftService:
                 self.method_bounds[method],
                 rule,
                 slot,
-                self.rounds,
+                horizon,
                 top_k=DEFAULT_TOP_K,
                 games_adjusted=games_adjusted,
                 method=method,
@@ -347,7 +358,7 @@ class DraftService:
         adp = self.players["adp_est"].to_numpy(dtype=float)
         index = {pid: position for position, pid in enumerate(self.players["player_id"])}
         available = np.ones(len(index), dtype=bool)
-        horizon = self.rounds * self.teams
+        horizon = ROSTER_SIZE * self.teams
         rows: List[Dict[str, Any]] = []
         for number, pick in enumerate(picks, start=1):
             slot = slot_of_pick(number, self.teams)
@@ -403,8 +414,8 @@ class DraftService:
         ]
         return {**tally(rows), "teams": teams}
 
-    def _league(self, picks: List[Pick], keys: List[str], best: Optional[Plan]) -> Dict[str, Any]:
-        """All 14 teams: the picks so far, and projected to the end of the planning horizon.
+    def _league(self, picks: List[Pick], keys: List[str], planned: List[str]) -> Dict[str, Any]:
+        """All 14 teams: the picks so far, and projected to a full roster.
 
         "So far" updates with every pick: it compares the first n picks of each team, n being the round now in progress,
         and a team that has not made its n-th pick yet is scaled up (see league.py), so it never looks weak only because
@@ -419,11 +430,10 @@ class DraftService:
         table = league_table(self.players, rosters, keys, size, self.slot, TEAM_NAMES)
         table["basis"] = "so far"
         table["rosters"] = self._team_rosters(picks)
-        planned = list(best.player_ids) if best else []
-        added = project(self.players, picks, self.teams, self.rounds * self.teams, self.slot, set(planned))
+        added = project(self.players, picks, self.teams, ROSTER_SIZE * self.teams, self.slot, set(planned))
         projected_rosters = {slot: rosters[slot] + (planned if slot == self.slot else added[slot]) for slot in rosters}
-        projected = league_table(self.players, projected_rosters, keys, self.rounds, self.slot, TEAM_NAMES)
-        projected["basis"] = f"projected, {self.rounds} players each"
+        projected = league_table(self.players, projected_rosters, keys, ROSTER_SIZE, self.slot, TEAM_NAMES)
+        projected["basis"] = f"projected, {ROSTER_SIZE} players each"
         projected["rosters"] = self._team_rosters(picks, {slot: (planned if slot == self.slot else added[slot]) for slot in rosters})
         table["projected"] = projected
         return table
@@ -552,12 +562,32 @@ class DraftService:
         rows.sort(key=lambda item: item["rank"])
         return rows
 
-    def _plan_payload(self, plan: Plan, rule: AvailabilityRule, state: DraftState) -> Dict[str, Any]:
+    def _fill_plan(
+        self,
+        plan: Plan,
+        state: DraftState,
+        keys: List[str],
+        rule: AvailabilityRule,
+        method: str,
+        games_adjusted: bool,
+        weights: Optional[Dict[str, float]],
+    ) -> List[Tuple[int, str]]:
+        """The picks after the plan's horizon, up to a full roster, filled in by score (see `fill_picks`)."""
+        last = plan.pick_numbers[-1] if plan.pick_numbers else 0
+        numbers = [number for number in my_picks(self.slot, ROSTER_SIZE, self.teams) if number > last]
+        if not numbers:
+            return []
+        return fill_picks(
+            self.players, state, keys, self.method_bounds[method], rule, numbers, plan.player_ids, games_adjusted, method, weights,
+            FLEXIBILITY_BONUS,
+        )
+
+    def _plan_payload(self, plan: Plan, rule: AvailabilityRule, state: DraftState, filled: List[Tuple[int, str]]) -> Dict[str, Any]:
         steps = []
-        for pick, pid in zip(plan.pick_numbers, plan.player_ids):
+        for pick, pid, is_filled in [(n, p, False) for n, p in zip(plan.pick_numbers, plan.player_ids)] + [(n, p, True) for n, p in filled]:
             adp = float(self._by_id.loc[pid, "adp_est"])
             odds = rule.probability(np.array([adp]), pick, state.picks_made, state.unseen)[0]
-            steps.append({"pick": pick, "id": pid, "availability": _num(odds, 3)})
+            steps.append({"pick": pick, "id": pid, "availability": _num(odds, 3), "filled": is_filled})
         return {"steps": steps, "totalScore": _num(plan.total_score, 1), "survival": _num(plan.survival, 3)}
 
     def _alternatives(
@@ -663,7 +693,7 @@ class DraftService:
                 unseen[slot].append(number)
             else:
                 entries[slot].append({"id": pick.player_id, "pick": number, "kind": pick.kind, "projected": False})
-        last = self.rounds * self.teams
+        last = ROSTER_SIZE * self.teams
         for slot, ids in (projected or {}).items():
             numbers = [n for n in range(len(picks) + 1, last + 1) if slot_of_pick(n, self.teams) == slot]
             for number, player_id in zip(numbers, ids):

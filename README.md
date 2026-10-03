@@ -103,7 +103,7 @@ last-pick line and the snake strip (hover a slot).
   *Same planner* (the default) takes the logged picks and then, in snake order, lets every team, yours too, take the first
   player of its own best plan, the search the recommendation uses, for all nine categories (only your own team follows your ticked ones, so punting a category never changes what the others are assumed to pick). A poor pick by one manager lowers his projected stats and
   leaves more for the rest, and nobody is first by construction. It shows what well-informed teams would end up with, not
-  who will be available, and a real league is probably easier. It takes about half a second from an empty draft, is
+  who will be available, and a real league is probably easier. It takes about a second from an empty draft (another team plans 8 rounds ahead and then fills in by score; you plan 10), is
   asked for apart from the analysis so the recommendation never waits, and shows the ADP projection until it arrives.
   *ADP order* fills the other teams in ADP order with lineup limits; your team is built to these categories and theirs are
   not, so it tends to come first (88% of simulated drafts against ADP rivals, about 30% against rivals that use the
@@ -141,7 +141,7 @@ last-pick line and the snake strip (hover a slot).
   team's players in the roster panel: the ten starting slots and the bench with each pick number, then which positions
   one more player could still start at (what the teams picking before you will look for). **So far** shows the logged
   picks; **Projected** adds the players the projection gives the team, drawn with a dashed tile and marked "Projected",
-  following the table's Same planner / ADP order switch (ADP order only reaches round 8). An unseen pick is listed as
+  following the table's Same planner / ADP order switch (both go to the full 13 players). An unseen pick is listed as
   "Not known", a pick not in the list fills a slot at any position, and a gone pick shows "(assumed)". The panel stays on
   the team you chose while other picks come in, and goes back to yours when you log your own pick or press **Back to your
   roster**. In a narrow window the click switches to the My team tab. The server sends every team's roster and lineup
@@ -201,6 +201,13 @@ have made on the same attempts, per game. That adds up across a roster, which is
 
 The plan is the best set of players for your remaining picks, one per pick, where each is likely to still be there, nobody
 repeats and everyone can start at once. The search is exact, and is tested against brute force.
+
+The search is exact for the first 10 rounds. Searching all 13 is out of reach (the work multiplies with every round: 11 rounds
+already run past 150,000 steps with no plan), and the last three picks matter little, so rounds 11 to 13 are **filled in by
+score**: each takes the best player likely to last, a player who fills a starting slot still open first. They show dimmed in
+the plan and do not count in the "Roster score", which is for the planned picks. Because the ten planned players must all be
+able to start, the plan fills every starting slot, a PG included. The odds shown for the filled-in picks are low: Yahoo's
+ADP says almost everyone is gone by pick 125, and the pool ends at 245.
 
 ## Data
 
