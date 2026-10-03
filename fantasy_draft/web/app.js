@@ -18,16 +18,17 @@ const storageKey = () => `${STORAGE_KEY}:${draftId}`;
 const syncKey = () => `${SYNC_KEY}:${draftId}`;
 const asideKey = () => `${ASIDE_KEY}:${draftId}`;
 const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'];
+// The category order of every table and bar on the page (the server's order too): the ratios first
 const STAT_COLUMNS = [
+  { key: 'fg_pct', label: 'FG%', kind: 'rate' },
+  { key: 'ft_pct', label: 'FT%', kind: 'rate' },
+  { key: '3ptm', label: '3PTM', kind: 'number' },
   { key: 'pts', label: 'PTS', kind: 'number' },
   { key: 'reb', label: 'REB', kind: 'number' },
   { key: 'ast', label: 'AST', kind: 'number' },
-  { key: '3ptm', label: '3PTM', kind: 'number' },
   { key: 'st', label: 'ST', kind: 'number' },
   { key: 'blk', label: 'BLK', kind: 'number' },
   { key: 'to', label: 'TO', kind: 'number' },
-  { key: 'fg_pct', label: 'FG%', kind: 'rate' },
-  { key: 'ft_pct', label: 'FT%', kind: 'rate' },
 ];
 const STATUS_TITLES = { Q: 'Questionable', P: 'Probable', O: 'Out', GTD: 'Game-time decision', INJ: 'Injured', NA: 'Not active' };
 const DEFAULT_RULE = { type: 'probability', baseSd: 2, sdPerAdp: 0.2, threshold: 0.5, slack: 3 };
@@ -85,12 +86,18 @@ const signed = (value) => `${value > 0 ? '+' : ''}${value.toFixed(1)}`;
 const teamName = (slot) => (pool.league.teamNames ? pool.league.teamNames[slot - 1] : `Slot ${slot}`);
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 const nameOf = (id) => playerById.get(id).name;
+// Yahoo's three colours: guards blue, forwards green, centers orange. A name takes the colour of his first listed position
+const POSITION_GROUP = { PG: 'guard', SG: 'guard', SF: 'forward', PF: 'forward', C: 'center' };
+const groupOf = (id) => POSITION_GROUP[playerById.get(id).positions[0]];
+// A player's name, coloured by his group (use it wherever a name labels a row or a card, not inside a sentence)
+const nameNode = (id) => h('span', { class: 'pname', 'data-grp': groupOf(id) }, nameOf(id));
+
 // "PG/SG" as one coloured letter group per position and a muted slash; screen readers still read the text
 function positionsNode(positions) {
   const nodes = [];
   positions.forEach((position, index) => {
     if (index > 0) nodes.push(h('span', { class: 'pos-sep' }, '/'));
-    nodes.push(h('span', { class: 'pos', 'data-pos': position }, position));
+    nodes.push(h('span', { class: 'pos', 'data-pos': position, 'data-grp': POSITION_GROUP[position] }, position));
   });
   return nodes;
 }
@@ -854,7 +861,7 @@ function renderHero() {
     hero.className = 'hero';
     put(hero,
       h('h2', {}, `Rounds ${pool.league.rounds + 1} to ${pool.league.rosterSize} are not planned. Best available who fits your lineup:`),
-      best ? h('p', { class: 'name' }, nameOf(best.id)) : null,
+      best ? h('p', { class: 'name' }, nameNode(best.id)) : null,
       best ? h('p', { class: 'facts' }, detailOf(best.id), `, score ${oneDecimal(best.score)}`) : null,
       best && clock.isMine ? h('div', { class: 'cta' }, h('button', { type: 'button', class: 'primary', onclick: () => draft(best.id) }, `Draft ${nameOf(best.id)}`)) : null,
     );
@@ -880,7 +887,7 @@ function renderHero() {
     h(
       'div',
       { class: 'hero-head' },
-      h('div', { class: 'hero-who' }, h('h2', { class: 'hero-pill' }, pill), h('p', { class: 'name' }, nameOf(recommendation.id)), h('p', { class: 'meta' }, detailOf(recommendation.id))),
+      h('div', { class: 'hero-who' }, h('h2', { class: 'hero-pill' }, pill), h('p', { class: 'name' }, nameNode(recommendation.id)), h('p', { class: 'meta' }, detailOf(recommendation.id))),
       h('div', { class: 'hero-score', title: 'Score for your ticked categories' }, h('strong', {}, oneDecimal(row.score)), h('span', {}, 'Score')),
     ),
     categoryBars(row),
@@ -925,7 +932,7 @@ function renderPlayerCard(hero) {
     h(
       'div',
       { class: 'hero-head' },
-      h('div', { class: 'hero-who' }, h('h2', { class: 'hero-pill' }, 'Player card'), h('p', { class: 'name' }, player.name), h('p', { class: 'meta' }, detailOf(cardId))),
+      h('div', { class: 'hero-who' }, h('h2', { class: 'hero-pill' }, 'Player card'), h('p', { class: 'name' }, nameNode(cardId)), h('p', { class: 'meta' }, detailOf(cardId))),
       h('div', { class: 'hero-score', title: 'Score for your ticked categories' }, h('strong', {}, oneDecimal(row.score)), h('span', {}, last ? ['Score ', last] : 'Score')),
     ),
     categoryBars(row),
@@ -1020,7 +1027,7 @@ function alternativesBlock() {
     ? `If ${nameOf(analysis.recommendation.id)} is gone by pick ${analysis.recommendation.pick}, take instead`
     : 'Or take instead';
   const items = analysis.alternatives.map((alt) =>
-    h('li', {}, h('strong', {}, nameOf(alt.id)), h('span', { class: 'meta' }, detailOf(alt.id)), h('span', { class: Math.abs(alt.behind) >= TIE_POINTS ? 'gap' : 'gap same' }, gapLabel(alt.behind))),
+    h('li', {}, h('strong', {}, nameNode(alt.id)), h('span', { class: 'meta' }, detailOf(alt.id)), h('span', { class: Math.abs(alt.behind) >= TIE_POINTS ? 'gap' : 'gap same' }, gapLabel(alt.behind))),
   );
   const reasons = analysis.alternatives.filter((alt) => alt.byPositions).map((alt) => `${nameOf(alt.id)}: ${positionsReason(analysis.recommendation.id, alt.id)}.`);
   return h(
@@ -1046,7 +1053,7 @@ function renderPlan() {
       'div',
       { class: 'step' },
       h('div', { class: `pick-tile${step.pick === analysis.clock.pick && !hasUnseenPicks() ? ' now' : ''}`, title: `Pick ${step.pick}` }, step.pick),
-      h('div', { class: 'who' }, h('strong', {}, nameOf(step.id)), h('div', { class: 'meta' }, detailOf(step.id))),
+      h('div', { class: 'who' }, h('strong', {}, nameNode(step.id)), h('div', { class: 'meta' }, detailOf(step.id))),
       h('div', { class: 'score-col' }, h('strong', {}, oneDecimal(row.score)), h('div', { class: 'meta' }, 'score')),
       meter(step.availability, step.pick === analysis.clock.pick && !hasUnseenPicks()),
     );
@@ -1302,7 +1309,7 @@ function renderPool() {
     const isRecommended = analysis.recommendation && analysis.recommendation.id === player.id;
     const cells = [
       h('td', {}, row.rank),
-      h('td', { class: 'left player' }, h('div', { class: 'player-line' }, draftButton(player, isRecommended), h('strong', {}, h('button', { type: 'button', class: 'name-link', 'aria-pressed': String(cardId === player.id), title: `Show the player card of ${player.name}`, onclick: () => showCard(player.id) }, player.name)), isRecommended ? h('span', { class: 'pick-tag' }, 'Pick') : null, h('div', { class: 'meta' }, detailOf(player.id)), h('div', { class: 'notes' }, [
+      h('td', { class: 'left player' }, h('div', { class: 'player-line' }, draftButton(player, isRecommended), h('strong', {}, h('button', { type: 'button', class: 'name-link', 'data-grp': groupOf(player.id), 'aria-pressed': String(cardId === player.id), title: `Show the player card of ${player.name}`, onclick: () => showCard(player.id) }, player.name)), isRecommended ? h('span', { class: 'pick-tag' }, 'Pick') : null, h('div', { class: 'meta' }, detailOf(player.id)), h('div', { class: 'notes' }, [
         ...(planned && !isRecommended ? [badge(`plan: ${planned}`, 'info', `The current plan takes him at pick ${planned}`)] : []),
         ...(unconfirmed ? [badge('Logged, not confirmed. Click to retry', 'injury', 'The server has not confirmed this pick yet')] : []),
         ...(pending ? [badge('Logging the pick', 'info', 'Waiting for the server to confirm this pick')] : []),
@@ -1417,7 +1424,7 @@ function buildRosterTools() {
 // One roster: the ten starting slots, the bench, and what is not known. `entries` and `lineup` are as the server sends them
 // for my team and for the others. A projected player has a dashed tile and says so in its note.
 function rosterRows(entries, lineup, unseen, mine) {
-  const who = (entry) => (entry.kind === 'outside' ? 'Not in the list' : entry.kind === 'gone' ? `${nameOf(entry.id)} (assumed)` : nameOf(entry.id));
+  const who = (entry) => (entry.kind === 'outside' ? 'Not in the list' : entry.kind === 'gone' ? [nameNode(entry.id), ' (assumed)'] : nameNode(entry.id));
   const detail = (entry) => (entry.kind === 'outside' ? 'Any position, replacement-level value' : detailOf(entry.id));
   const note = (entry) => [`${entry.projected ? 'Projected · ' : ''}#${entry.pick} · `, detail(entry)].flat();
   const slotRows = lineup.slots.map((slot) => {
@@ -1659,6 +1666,12 @@ function unmark(index) {
   refresh();
 }
 
+// The same label for a log row, with the player's name coloured by his group
+function logLabelNode(entry) {
+  if (entry.kind === 'gone') return [nameNode(entry.id), ' (gone, pick assumed)'];
+  return entry.kind === 'player' ? nameNode(entry.id) : logLabel(entry);
+}
+
 function logLabel(entry) {
   if (entry.kind === 'outside') return 'Not in the list';
   if (entry.kind === 'unseen') return 'Unseen pick';
@@ -1788,7 +1801,7 @@ function renderLog() {
       editing = editing && editing.pick === entry.pick ? null : { pick: entry.pick, pending: null, error: null };
       renderLog();
     } }, 'Edit'));
-    const row = h('li', { class: entry.mine ? 'mine' : '' }, h('span', {}, `#${entry.pick}`), h('span', {}, logLabel(entry), entry.id ? h('span', { class: 'team-name' }, positionsNode(playerById.get(entry.id).positions)) : null, h('span', { class: 'team-name' }, entry.team), predictionMark(entry), h('span', { class: 'row-actions' }, ...buttons)));
+    const row = h('li', { class: entry.mine ? 'mine' : '' }, h('span', {}, `#${entry.pick}`), h('span', {}, logLabelNode(entry), entry.id ? h('span', { class: 'team-name' }, positionsNode(playerById.get(entry.id).positions)) : null, h('span', { class: 'team-name' }, entry.team), predictionMark(entry), h('span', { class: 'row-actions' }, ...buttons)));
     return editing && editing.pick === entry.pick ? [row, editPanel(entry)] : [row];
   });
   put(list, ...rows);

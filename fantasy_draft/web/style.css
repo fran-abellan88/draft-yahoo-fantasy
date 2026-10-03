@@ -25,11 +25,9 @@
   --cool-strong: rgba(31, 85, 144, 0.22); /* stat capsules: a strong value, a good one */
   --cool-mid: rgba(31, 85, 144, 0.1);
   --focus: #1d4ed8;
-  --pos-pg: #b01d5a; /* position letters: text next to a name, never a fill; the letters carry the identity, the colour is the glance cue */
-  --pos-sg: #1a56b0;
-  --pos-sf: #715600;
-  --pos-pf: #7f35b8;
-  --pos-c: #086a54;
+  --pos-guard: #174f9f; /* PG and SG: Yahoo's own three colours. Text only (names and position letters), never a fill */
+  --pos-forward: #10613b; /* SF and PF */
+  --pos-center: #8f3d00; /* C */
   --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
@@ -60,11 +58,9 @@
     --taken: #6c6c74;
     --hover: #2c2c2e;
     --focus: #0a84ff;
-    --pos-pg: #ff7aa2;
-    --pos-sg: #4fa3ff;
-    --pos-sf: #ffd60a;
-    --pos-pf: #d17bff;
-    --pos-c: #63e6be;
+    --pos-guard: #5aa9ff;
+    --pos-forward: #5be0b3;
+    --pos-center: #ff9150;
   }
 }
 
@@ -95,11 +91,9 @@
   --taken: #6c6c74;
   --hover: #2c2c2e;
   --focus: #0a84ff;
-  --pos-pg: #ff7aa2;
-  --pos-sg: #4fa3ff;
-  --pos-sf: #ffd60a;
-  --pos-pf: #d17bff;
-  --pos-c: #63e6be;
+  --pos-guard: #5aa9ff;
+  --pos-forward: #5be0b3;
+  --pos-center: #ff9150;
 }
 
 * { box-sizing: border-box; }
@@ -366,7 +360,7 @@ body { margin: 0; }
    a wide table the numbers get more room and the Score bar more length instead of leaving the gap in the Player column.
    cqw is a share of the table panel's width */
 .tablecol { container-type: inline-size; }
-#pool th:nth-child(3), #pool td.score-cell { min-width: clamp(100px, calc(17.6cqw - 69px), 220px); }
+#pool th:nth-child(3), #pool td.score-cell { min-width: clamp(100px, calc(15.2cqw - 54px), 200px); }
 
 /* 2350 and up: every panel has its own place. The columns share extra width in proportion (the fr numbers are their
    widths at 2436 px), so a wider window enlarges every panel, not only the table */
@@ -511,7 +505,7 @@ td.dim { opacity: 0.45; }
 #pool tbody tr { cursor: default; }
 .draft-btn { flex: none; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 650; }
 .draft-btn.rec { background: var(--mine); border-color: var(--mine); color: var(--on-mine); }
-.name-link { display: block; max-width: 100%; padding: 0; border: 0; border-radius: 4px; background: none; color: inherit; font: inherit; font-weight: inherit; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.name-link { display: block; max-width: 100%; padding: 0; border: 0; border-radius: 4px; background: none; font: inherit; font-weight: inherit; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .name-link:hover:not(:disabled) { border: 0; text-decoration: underline; }
 #pool tr.card-row td { background: var(--selected); }
 #pool tr.card-row td:nth-child(1), #pool tr.card-row td:nth-child(2) { background: var(--selected); }
@@ -595,19 +589,16 @@ td.dim { opacity: 0.45; }
 #pool td.stat { padding: 0 1px; }
 #pool th button { padding: 9px 4px; font-size: 11px; font-weight: 650; letter-spacing: 0.045em; text-transform: uppercase; color: var(--muted); }
 #pool th[aria-sort] button { color: var(--ink); }
-/* Position letters beside a name ("CHI · PG/SG"): each letter takes its position's colour, the slash stays muted */
+/* Position colours follow Yahoo's draft board: guards (PG, SG) blue, forwards (SF, PF) green, centers orange. A player's name
+   takes the colour of his first listed position, and each letter group the colour of its own position */
 .pos { font-weight: 650; }
-.pos[data-pos="PG"] { color: var(--pos-pg); }
-.pos[data-pos="SG"] { color: var(--pos-sg); }
-.pos[data-pos="SF"] { color: var(--pos-sf); }
-.pos[data-pos="PF"] { color: var(--pos-pf); }
-.pos[data-pos="C"] { color: var(--pos-c); }
+[data-grp="guard"] { color: var(--pos-guard); }
+[data-grp="forward"] { color: var(--pos-forward); }
+[data-grp="center"] { color: var(--pos-center); }
 /* The position filter is the legend: a chip that is not chosen shows its letters in their colour */
-.chips button[data-position="PG"]:not([aria-pressed="true"]) { color: var(--pos-pg); }
-.chips button[data-position="SG"]:not([aria-pressed="true"]) { color: var(--pos-sg); }
-.chips button[data-position="SF"]:not([aria-pressed="true"]) { color: var(--pos-sf); }
-.chips button[data-position="PF"]:not([aria-pressed="true"]) { color: var(--pos-pf); }
-.chips button[data-position="C"]:not([aria-pressed="true"]) { color: var(--pos-c); }
+.chips button[data-position="PG"]:not([aria-pressed="true"]), .chips button[data-position="SG"]:not([aria-pressed="true"]) { color: var(--pos-guard); }
+.chips button[data-position="SF"]:not([aria-pressed="true"]), .chips button[data-position="PF"]:not([aria-pressed="true"]) { color: var(--pos-forward); }
+.chips button[data-position="C"]:not([aria-pressed="true"]) { color: var(--pos-center); }
 #pool td { padding-inline: clamp(4px, calc(2.5cqw - 22px), 18px); }
 #pool td.stat { padding-inline: clamp(1px, calc(1.6cqw - 15.7px), 10px); }
 #pool th button { padding-inline: clamp(4px, calc(2.5cqw - 22px), 18px); }
@@ -624,7 +615,6 @@ td.player { width: 99%; max-width: 0; }
 .pick-tag { margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: var(--mine); color: var(--on-mine); font-size: 11px; font-weight: 700; vertical-align: middle; }
 #pool tr.recommended td, #pool tr.recommended:hover td { background: var(--mine-soft); }
 #pool tr.recommended td:nth-child(1), #pool tr.recommended td:nth-child(2) { background: linear-gradient(var(--mine-soft), var(--mine-soft)), var(--surface); }
-#pool tr.recommended td.player strong { color: var(--mine); }
 #pool td.score-cell { position: relative; }
 #pool td.score-cell.bar::after { content: ""; position: absolute; left: 6px; bottom: 4px; height: 3px; width: calc((100% - 12px) * var(--bar)); border-radius: 2px; background: var(--taken); }
 #pool tr.recommended td.score-cell.bar::after { background: var(--mine); }
