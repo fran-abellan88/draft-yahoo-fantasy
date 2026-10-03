@@ -654,6 +654,27 @@ def test_the_prediction_for_the_team_on_the_clock_is_what_its_own_recommendation
     assert _predict(service, _by_adp(service)[:1])["clock"] is None, "pick 2 is mine: the recommendation is the answer"
 
 
+def test_other_teams_plan_for_every_category_whatever_i_tick(service: DraftService) -> None:
+    rule = parse_rule(None)
+    few = [key for key in ALL if key != "to"]
+    for slot in (1, 3, 7):
+        assert service._planner_choice(slot, [], few, rule, "uncapped", True) == service._planner_choice(
+            slot, [], ALL, rule, "uncapped", True
+        )
+    request = {"picks": [], "method": "uncapped", "gamesAdjusted": True}
+    assert (
+        service.predict_picks({**request, "categories": few})["clock"]
+        == service.predict_picks({**request, "categories": ALL})["clock"]
+    )
+
+
+def test_my_own_planner_choice_still_follows_the_ticked_categories(service: DraftService) -> None:
+    rule = parse_rule(None)
+    only = ["blk"]
+    mine = service._planner_choice(service.slot, [], only, rule, "uncapped", True)
+    assert mine == service.analyze({"categories": only, "picks": [], "method": "uncapped", "gamesAdjusted": True})["recommendation"]["id"]
+
+
 def test_each_logged_pick_is_compared_with_the_planner_and_adp_choice_before_it(service: DraftService) -> None:
     by_adp = _by_adp(service)
     planner_first = _predict(service, [])["clock"]["planner"]

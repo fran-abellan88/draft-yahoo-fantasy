@@ -305,12 +305,14 @@ class DraftService:
         """The first player of team `slot`'s best plan after `picks`: what the recommendation would say for that team.
 
         None when the search finds no plan (the team has no pick left in the planning horizon, or nobody fits).
+        Only my team plans for the ticked categories (`keys`, my strategy); every other team plans for all of them.
         """
+        team_keys = keys if slot == self.slot else self.keys
         try:
             found = plan_picks(
                 self.players,
                 self._state_for(slot, picks),
-                keys,
+                team_keys,
                 self.method_bounds[method],
                 rule,
                 slot,
@@ -338,7 +340,8 @@ class DraftService:
         if self.rehearsal:
             raise RequestError("Pick predictions are only available in the real draft")
         keys, picks, rule, method, games_adjusted = self._parse_settings(request)
-        scores = composite_score(self.players, keys, self.method_bounds[method], games_adjusted, method).to_numpy(dtype=float)
+        # The picks compared are other teams' picks, so their rank is by all categories, not by my ticked ones.
+        scores = composite_score(self.players, self.keys, self.method_bounds[method], games_adjusted, method).to_numpy(dtype=float)
         adp = self.players["adp_est"].to_numpy(dtype=float)
         index = {pid: position for position, pid in enumerate(self.players["player_id"])}
         available = np.ones(len(index), dtype=bool)

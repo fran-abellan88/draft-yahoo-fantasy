@@ -101,7 +101,7 @@ last-pick line and the snake strip (hover a slot).
   team, n being the round in progress, and scales up a team that has not made its n-th pick yet. Projected and So far are both shown, one above the other, and both
   follow every pick. Projected has two ways to complete the other teams (the switch above it):
   *Same planner* (the default) takes the logged picks and then, in snake order, lets every team, yours too, take the first
-  player of its own best plan, the search the recommendation uses. A poor pick by one manager lowers his projected stats and
+  player of its own best plan, the search the recommendation uses, for all nine categories (only your own team follows your ticked ones, so punting a category never changes what the others are assumed to pick). A poor pick by one manager lowers his projected stats and
   leaves more for the rest, and nobody is first by construction. It shows what well-informed teams would end up with, not
   who will be available, and a real league is probably easier. It takes about half a second from an empty draft, is
   asked for apart from the analysis so the recommendation never waits, and shows the ADP projection until it arrives.
@@ -109,7 +109,7 @@ last-pick line and the snake strip (hover a slot).
   not, so it tends to come first (88% of simulated drafts against ADP rivals, about 30% against rivals that use the
   planner: `python tools/rival_strength.py` reproduces it). The need weights are not used in either projection.
 - **What the others should pick** (real draft only). Under the clock line, the team on the clock gets two suggestions:
-  "should pick X by the planner, Y by ADP", the first player of that team's own best plan for your ticked categories and the
+  "should pick X by the planner, Y by ADP", the first player of that team's own best plan for all nine categories and the
   best-ADP player who keeps its lineup startable. Every logged pick of the others is then marked **planner**, **ADP**,
   **planner and ADP** or **differs** (hover for both choices, how many picks before or after his ADP he went and his rank by
   score among those left), the Draft log says how often that happened, and **By manager** breaks it down per team with the
