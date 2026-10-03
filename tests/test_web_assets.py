@@ -543,3 +543,37 @@ def test_the_mock_draft_is_marked_beside_the_pick_number() -> None:
     assert "state.rehearsal" in clock and "class: 'mock-tag'" in clock, "a mock draft must never look like the real one"
     assert re.search(r"\.mock-tag \{[^}]*var\(--flag-soft\)[^}]*var\(--flag\)", CSS)
     assert re.search(r"\.tile \.tile-names \{[^}]*font-size: 12px", CSS), "no important text under 12 px"
+
+
+POSITIONS = ["pg", "sg", "sf", "pf", "c"]
+POSITION_BACKGROUNDS = ["surface", "raised", "hover", "mine-soft"]  # cards, inputs, the hovered row, the recommended row
+ROLE_TOKENS = ["mine", "cool", "flag", "danger", "tag-adp", "tag-planner", "focus", "score", "ink", "muted"]
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+@pytest.mark.parametrize("position", POSITIONS)
+@pytest.mark.parametrize("background", POSITION_BACKGROUNDS)
+def test_position_letters_are_readable_on_every_surface_they_sit_on(theme: str, position: str, background: str) -> None:
+    tokens = _themes()[theme]
+    ratio = _contrast(tokens[f"pos-{position}"], tokens[background])
+    assert ratio >= WCAG_TEXT, f"pos-{position} on {background} is {ratio:.2f}:1 in {theme} mode"
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_a_position_colour_never_repeats_another_position_or_a_role(theme: str) -> None:
+    tokens = _themes()[theme]
+    positions = [tokens[f"pos-{position}"] for position in POSITIONS]
+    assert len(set(positions)) == len(positions), "two positions share a colour"
+    roles = {tokens[role] for role in ROLE_TOKENS}
+    assert not set(positions) & roles, "a position colour equals a role colour (mine, cool, flag, danger, tags...)"
+
+
+def test_every_place_that_shows_positions_uses_the_coloured_letters() -> None:
+    assert "function positionsNode(" in JS and "'data-pos': position" in JS
+    detail = JS[JS.index("const detailOf"): JS.index("};", JS.index("const detailOf"))]
+    assert "positionsNode(player.positions)" in detail
+    assert ".positions.join('/')" not in JS, "positions are shown as plain text somewhere"
+    for position in ("PG", "SG", "SF", "PF", "C"):
+        assert f'.pos[data-pos="{position}"] {{ color: var(--pos-{position.lower()}); }}' in CSS
+        chip = f'.chips button[data-position="{position}"]:not([aria-pressed="true"]) {{ color: var(--pos-{position.lower()}); }}'
+        assert chip in CSS

@@ -85,9 +85,19 @@ const signed = (value) => `${value > 0 ? '+' : ''}${value.toFixed(1)}`;
 const teamName = (slot) => (pool.league.teamNames ? pool.league.teamNames[slot - 1] : `Slot ${slot}`);
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 const nameOf = (id) => playerById.get(id).name;
+// "PG/SG" as one coloured letter group per position and a muted slash; screen readers still read the text
+function positionsNode(positions) {
+  const nodes = [];
+  positions.forEach((position, index) => {
+    if (index > 0) nodes.push(h('span', { class: 'pos-sep' }, '/'));
+    nodes.push(h('span', { class: 'pos', 'data-pos': position }, position));
+  });
+  return nodes;
+}
+// Team and positions, as nodes: put them in an element (never in a template string)
 const detailOf = (id) => {
   const player = playerById.get(id);
-  return `${player.team} · ${player.positions.join('/')}`;
+  return [`${player.team} \u00b7 `, ...positionsNode(player.positions)];
 };
 
 // ---------- persistence ----------
@@ -826,7 +836,7 @@ function renderHero() {
     put(hero,
       h('h2', {}, `Rounds ${pool.league.rounds + 1} to ${pool.league.rosterSize} are not planned. Best available who fits your lineup:`),
       best ? h('p', { class: 'name' }, nameOf(best.id)) : null,
-      best ? h('p', { class: 'facts' }, `${detailOf(best.id)}, score ${oneDecimal(best.score)}`) : null,
+      best ? h('p', { class: 'facts' }, detailOf(best.id), `, score ${oneDecimal(best.score)}`) : null,
       best && clock.isMine ? h('div', { class: 'cta' }, h('button', { type: 'button', class: 'primary', onclick: () => draft(best.id) }, `Draft ${nameOf(best.id)}`)) : null,
     );
     return;
@@ -1213,7 +1223,7 @@ function renderPool() {
     const isRecommended = analysis.recommendation && analysis.recommendation.id === player.id;
     const cells = [
       h('td', {}, row.rank),
-      h('td', { class: 'left player' }, h('div', { class: 'player-line' }, h('strong', {}, player.name), isRecommended ? h('span', { class: 'pick-tag' }, 'Pick') : null, h('div', { class: 'meta' }, `${player.team} · ${player.positions.join('/')}`), h('div', { class: 'notes' }, [
+      h('td', { class: 'left player' }, h('div', { class: 'player-line' }, h('strong', {}, player.name), isRecommended ? h('span', { class: 'pick-tag' }, 'Pick') : null, h('div', { class: 'meta' }, detailOf(player.id)), h('div', { class: 'notes' }, [
         ...(planned && !isRecommended ? [badge(`plan: ${planned}`, 'info', `The current plan takes him at pick ${planned}`)] : []),
         ...(unconfirmed ? [badge('Logged, not confirmed. Click to retry', 'injury', 'The server has not confirmed this pick yet')] : []),
         ...(pending ? [badge('Logging the pick', 'info', 'Waiting for the server to confirm this pick')] : []),
@@ -1304,11 +1314,11 @@ function renderRoster() {
   const slotRows = analysis.lineup.slots.map((slot) => {
     const entry = slot.entry === null ? null : entries[slot.entry];
     return entry
-      ? h('li', { class: 'slot filled' }, h('span', { class: 'pick' }, slot.slot), h('span', {}, h('strong', {}, who(entry)), h('div', { class: 'note' }, `#${entry.pick} · ${detail(entry)}`)))
+      ? h('li', { class: 'slot filled' }, h('span', { class: 'pick' }, slot.slot), h('span', {}, h('strong', {}, who(entry)), h('div', { class: 'note' }, `#${entry.pick} \u00b7 `, detail(entry))))
       : h('li', { class: 'slot open' }, h('span', { class: 'pick' }, slot.slot), h('span', { class: 'note' }, 'Open'));
   });
   const bench = analysis.lineup.bench.map((index) =>
-    h('li', { class: 'slot bench' }, h('span', { class: 'pick' }, 'Bench'), h('span', {}, h('strong', {}, who(entries[index])), h('div', { class: 'note' }, `#${entries[index].pick} · ${detail(entries[index])}`))),
+    h('li', { class: 'slot bench' }, h('span', { class: 'pick' }, 'Bench'), h('span', {}, h('strong', {}, who(entries[index])), h('div', { class: 'note' }, `#${entries[index].pick} \u00b7 `, detail(entries[index])))),
   );
   put(list, ...slotRows, ...bench);
   const fits = analysis.lineup.canAdd;
@@ -1613,7 +1623,7 @@ function renderLog() {
       editing = editing && editing.pick === entry.pick ? null : { pick: entry.pick, pending: null, error: null };
       renderLog();
     } }, 'Edit'));
-    const row = h('li', { class: entry.mine ? 'mine' : '' }, h('span', {}, `#${entry.pick}`), h('span', {}, logLabel(entry), entry.id ? h('span', { class: 'team-name' }, playerById.get(entry.id).positions.join('/')) : null, h('span', { class: 'team-name' }, entry.team), predictionMark(entry), h('span', { class: 'row-actions' }, ...buttons)));
+    const row = h('li', { class: entry.mine ? 'mine' : '' }, h('span', {}, `#${entry.pick}`), h('span', {}, logLabel(entry), entry.id ? h('span', { class: 'team-name' }, positionsNode(playerById.get(entry.id).positions)) : null, h('span', { class: 'team-name' }, entry.team), predictionMark(entry), h('span', { class: 'row-actions' }, ...buttons)));
     return editing && editing.pick === entry.pick ? [row, editPanel(entry)] : [row];
   });
   put(list, ...rows);
