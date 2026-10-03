@@ -8,7 +8,8 @@ import pandas as pd
 import pytest
 
 from fantasy_draft.categories import CATEGORIES
-from fantasy_draft.scoring import Bounds, category_scores, composite_score, compute_bounds, games_factor
+from fantasy_draft.data import load_players
+from fantasy_draft.scoring import Bounds, category_scores, composite_score, compute_bounds, games_factor, last_season_scores
 
 GOLDEN_PATH = Path(__file__).parent / "fixtures" / "composite_score_golden.json"
 
@@ -175,3 +176,32 @@ def test_unknown_method_is_rejected() -> None:
     pool = pd.DataFrame({"pts": [10.0, 20.0, 30.0]})
     with pytest.raises(ValueError, match="scoring method"):
         compute_bounds(pool, ["pts"], method="rank")
+
+
+@pytest.mark.parametrize("method", ["capped", "uncapped", "zscore"])
+@pytest.mark.parametrize("games_adjusted", [False, True])
+def test_last_season_is_scored_like_the_projection_when_nothing_changed(method: str, games_adjusted: bool) -> None:
+
+    players = load_players()
+    keys = ["fg_pct", "ft_pct", "3ptm", "pts", "reb", "ast", "st", "blk", "to"]
+    bounds = compute_bounds(players, keys, method=method)
+    same = players.copy()
+    for column in ["fg_impact", "ft_impact", "3ptm", "pts", "reb", "ast", "st", "blk", "to"]:
+        same[f"{column}_ly"] = same[column]
+    same["gp_ly"] = same["gp"]
+    projected = composite_score(players, keys, bounds, games_adjusted, method)
+    assert last_season_scores(same, keys, bounds, games_adjusted, method).to_numpy() == pytest.approx(projected.to_numpy())
+
+
+def test_last_season_counts_the_games_it_was_played_in_and_leaves_gaps_empty() -> None:
+
+    players = load_players()
+    keys = ["pts", "reb"]
+    bounds = compute_bounds(players, keys, method="uncapped")
+    plain = last_season_scores(players, keys, bounds, False, "uncapped")
+    adjusted = last_season_scores(players, keys, bounds, True, "uncapped")
+    kessler = players.index[players["player_id"] == "walker-kessler"][0]  # 5 games last season
+    haliburton = players.index[players["player_id"] == "tyrese-haliburton"][0]  # no stats last season
+    assert adjusted[kessler] == pytest.approx(plain[kessler] * 5 / 82)
+    assert plain.isna().loc[haliburton] and adjusted.isna().loc[haliburton]
+    assert plain.notna().sum() == players["gp_ly"].notna().sum()

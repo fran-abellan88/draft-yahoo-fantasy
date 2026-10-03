@@ -123,6 +123,35 @@ def composite_score(
     return anchor + (composite - anchor) * games_factor(players)
 
 
+def last_season_scores(
+    players: pd.DataFrame,
+    keys: Sequence[str],
+    bounds: Bounds,
+    games_adjusted: bool = False,
+    method: str = "capped",
+    weights: Optional[Mapping[str, float]] = None,
+) -> pd.Series:
+    """Score last season's per-game averages exactly as `composite_score` scores the projections.
+
+    Same bounds, method, weights and games adjustment (with last season's games played instead of the projected
+    ones), so a player's two scores can be compared directly. A player with no stats last season gets NaN.
+    """
+    _check_method(method)
+    columns = [CATEGORIES[key].column for key in keys]
+    last = pd.DataFrame({column: players[f"{column}_ly"] for column in columns}, index=players.index)
+    has_data = last.notna().all(axis=1) & players["gp_ly"].notna()
+    scores = pd.Series(np.nan, index=players.index)
+    if not has_data.any():
+        return scores
+    composite = _composite(last[has_data], keys, bounds, method, weights)
+    if games_adjusted:
+        anchor = _replacement_composite(players, keys, bounds, method, weights)
+        played = (players.loc[has_data, "gp_ly"].astype(float) / SEASON_GAMES).clip(0.0, 1.0)
+        composite = anchor + (composite - anchor) * played
+    scores.loc[has_data] = composite
+    return scores
+
+
 def _composite(
     players: pd.DataFrame, keys: Sequence[str], bounds: Bounds, method: str, weights: Optional[Mapping[str, float]] = None
 ) -> pd.Series:

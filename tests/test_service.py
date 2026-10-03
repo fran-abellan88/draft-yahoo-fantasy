@@ -99,6 +99,20 @@ def test_flags_reach_the_page(service: DraftService) -> None:
     assert rows["walker-kessler"]["flags"]["smallSample"]
     assert rows["joel-embiid"]["flags"]["lowGames"]
     assert rows["tyrese-haliburton"]["lastSeasonScore"] is None
+    assert rows["tyrese-haliburton"]["lastSeasonDelta"] is None
+
+
+@pytest.mark.parametrize("extra", [{}, {"method": "uncapped", "gamesAdjusted": True}, {"method": "zscore"}])
+def test_last_season_score_is_on_the_scale_of_the_score_shown(service: DraftService, extra: Dict[str, Any]) -> None:
+    rows = _ask(service, [], **extra)["pool"]
+    known = [row for row in rows if row["lastSeasonScore"] is not None]
+    assert len(known) > 100
+    for row in known:
+        assert row["lastSeasonDelta"] == pytest.approx(row["score"] - row["lastSeasonScore"], abs=0.11)
+    # Games missed last season lower last season's score only when the page counts games
+    kessler_plain = next(r for r in _ask(service, [], method="uncapped")["pool"] if r["id"] == "walker-kessler")
+    kessler_adjusted = next(r for r in _ask(service, [], method="uncapped", gamesAdjusted=True)["pool"] if r["id"] == "walker-kessler")
+    assert kessler_adjusted["lastSeasonScore"] < kessler_plain["lastSeasonScore"]
 
 
 def test_the_window_rule_gives_a_different_answer_shape(service: DraftService) -> None:

@@ -56,27 +56,27 @@
       </div>
       <div class="settings-grid">
         <div>
-          <h2>Scoring categories</h2>
+          <h2>Scoring categories <button type="button" class="help" aria-label="About the categories" aria-expanded="false" data-help="Untick a category to leave it out of every score and plan.">?</button></h2>
           <div id="categories" class="categories"></div>
-          <p class="note">Untick a category to leave it out of every score and plan.</p>
         </div>
         <div>
           <h2>Score</h2>
-          <label class="choice method"><input type="radio" name="method" value="uncapped"> Reward big numbers</label>
-          <label class="choice method"><input type="radio" name="method" value="capped"> Cap at the top 5%</label>
-          <p class="note">Uncapped counts a 32-point scorer as better than a 26-point one. Capped treats everyone past the top 5% in a category as equal.</p>
-          <h3 class="subhead">Score column</h3>
+          <div class="choice-row">
+            <div>
+              <label class="choice method"><input type="radio" name="method" value="uncapped"> Reward big numbers</label>
+              <label class="choice method"><input type="radio" name="method" value="capped"> Cap at the top 5%</label>
+            </div>
+            <button type="button" class="help" aria-label="About the scoring method" aria-expanded="false" data-help="Uncapped counts a 32-point scorer as better than a 26-point one. Capped treats everyone past the top 5% in a category as equal.">?</button>
+          </div>
+          <h3 class="subhead">Score column <button type="button" class="help" aria-label="About the Score column" aria-expanded="false" data-help="How the Score cell is drawn. The bar is full for the best score left and a short sliver for the lowest, so every player has a bar and two different scores always give two different bars. Hover a score for the exact gap. The number in brackets is the same score computed from 2025-26 per-game stats, with the same categories, method and games setting. The arrow says whether the projection is better (up) or worse (down) than that, from a gap of 5 points; a player with under 20 games last season has no arrow.">?</button></h3>
           <label class="choice"><input type="radio" name="scorestyle" value="bar" checked> Bar: from the lowest score left to the best</label>
           <label class="choice"><input type="radio" name="scorestyle" value="rank"> Colour by rank: top 5, 15, 30, 60</label>
           <label class="choice"><input type="radio" name="scorestyle" value="range"> Colour by range: 5th to 95th percentile</label>
-          <p class="note">How the Score cell is drawn. The bar is full for the best score left and a short sliver for the lowest, so every player has a bar and two different scores always give two different bars. Hover a score for the exact gap.</p>
-          <label class="choice games"><input id="needs" type="checkbox"> Favour the categories I can still win</label>
-          <p class="note">Off, every category counts equally. On, a category where you are close to the other teams counts a little more and one you already dominate or cannot catch a little less, after a few rounds. The weights in use are listed under Standing. Only ticked categories count.</p>
-          <label class="choice games"><input id="games-adjusted" type="checkbox"> Count games missed</label>
-          <p class="note">Scales each score by the share of an 82-game season the player is projected to play, so a player projected for 59 games counts as 72%.</p>
+          <div class="choice-row"><label class="choice games"><input id="needs" type="checkbox"> Favour the categories I can still win</label> <button type="button" class="help" aria-label="About favouring categories" aria-expanded="false" data-help="Off, every category counts equally. On, a category where you are close to the other teams counts a little more and one you already dominate or cannot catch a little less, after a few rounds. The weights in use are listed under Standing. Only ticked categories count.">?</button></div>
+          <div class="choice-row"><label class="choice games"><input id="games-adjusted" type="checkbox"> Count games missed</label> <button type="button" class="help" aria-label="About counting games missed" aria-expanded="false" data-help="Scales each score by the share of an 82-game season the player is projected to play, so a player projected for 59 games counts as 72%.">?</button></div>
         </div>
         <div>
-          <h2>Who will still be there?</h2>
+          <h2>Who will still be there? <button type="button" class="help" aria-label="About the spreads" aria-expanded="false" data-help="Spreads are starting guesses. Real drafts will tell us better values.">?</button></h2>
           <label class="choice"><input type="radio" name="rule" value="probability" checked> Odds from ADP</label>
           <label class="choice"><input type="radio" name="rule" value="window"> ADP window</label>
           <div id="rule-probability" class="fields">
@@ -87,7 +87,6 @@
           <div id="rule-window" class="fields" hidden>
             <label>Plan on a player whose ADP is no more than this many picks earlier <input id="rule-slack" type="number" min="0" max="60" step="1" value="3"></label>
           </div>
-          <p class="note">Spreads are starting guesses. Real drafts will tell us better values.</p>
         </div>
       </div>
     </section>
@@ -136,7 +135,7 @@
           <tbody id="pool-body"></tbody>
         </table>
       </div>
-      <p class="note table-note">Click a player to log the pick that is on the clock. Picks log in order, and the snake order decides which ones are yours.</p>
+      <p class="note table-note">Click a player to log the pick on the clock. <button type="button" class="help" aria-label="About logging picks" aria-expanded="false" data-help="Picks log in order, and the snake order decides which ones are yours.">?</button></p>
     </main>
 
     <div class="rail">
@@ -162,6 +161,8 @@
       <div id="league"></div>
     </section>
   </div>
+
+  <div id="help-pop" class="help-pop" role="note" hidden></div>
 
   <script src="/logic.js"></script>
   <script src="/app.js"></script>
