@@ -16,8 +16,25 @@ JS = (WEB / "app.js").read_text()
 WCAG_TEXT = 4.5
 
 
+TOKEN = r"--([\w-]+):\s*(#[0-9a-fA-F]{6}|rgba\([^)]*\))\s*;"
+
+
 def _tokens(block: str) -> Dict[str, str]:
-    return dict(re.findall(r"--([\w-]+):\s*(#[0-9a-fA-F]{6})\s*;", block))
+    """The tokens of one block as written: a hex colour, or an rgba() that sits on top of whatever is behind it."""
+    return dict(re.findall(TOKEN, block))
+
+
+def _flatten(tokens: Dict[str, str]) -> Dict[str, str]:
+    """Turn every rgba() token into the hex colour it shows over the card, so contrast can be measured."""
+    flat: Dict[str, str] = {}
+    for name, value in tokens.items():
+        if value.startswith("rgba"):
+            red, green, blue, alpha = (float(part) for part in re.findall(r"[\d.]+", value))
+            base = tokens["surface"]
+            channels = [round(alpha * c + (1 - alpha) * int(base[i : i + 2], 16)) for c, i in zip((red, green, blue), (1, 3, 5))]
+            value = "#" + "".join(f"{c:02x}" for c in channels)
+        flat[name] = value
+    return flat
 
 
 def _themes() -> Dict[str, Dict[str, str]]:
@@ -27,7 +44,7 @@ def _themes() -> Dict[str, Dict[str, str]]:
     assert light_block and dark_block and media_block, "the colour tokens moved; update this test"
     light = _tokens(light_block.group(1))
     assert _tokens(media_block.group(1)) == _tokens(dark_block.group(1)), "the two copies of the dark tokens must stay equal"
-    return {"light": light, "dark": {**light, **_tokens(dark_block.group(1))}}
+    return {"light": _flatten(light), "dark": _flatten({**light, **_tokens(dark_block.group(1))})}
 
 
 def _luminance(colour: str) -> float:
@@ -457,3 +474,22 @@ def test_the_score_column_is_wide_enough_for_its_bar_and_the_other_cells_pay_for
     assert "#pool td { padding: 4px 5px; }" in CSS and "#pool th button { padding: 9px 5px; }" in CSS
     columns = re.findall(r"\{ key: '(\w+)', label", JS[JS.index("const POOL_COLUMNS"): JS.index("function buildPoolHead")])
     assert columns[2] == "score", "the width rule names the third column: keep Score third"
+
+
+def test_the_font_stack_starts_with_a_family_chrome_knows() -> None:
+    # ui-sans-serif is ignored by Chrome, which then fell through to Avenir Next
+    stack = re.search(r"--font:\s*([^;]+);", CSS)
+    assert stack and stack.group(1).startswith("system-ui"), "the font stack must start with system-ui"
+
+
+def test_taken_is_never_used_as_a_text_colour() -> None:
+    assert not re.search(r"(?<![\w-])color:\s*var\(--taken\)", CSS), "--taken is for bars and outlines, its contrast is too low for text"
+
+
+def test_midnight_has_the_roles_the_later_steps_need() -> None:
+    dark = _themes()["dark"]
+    for name in ("selected", "cool-strong", "cool-mid"):
+        assert name in dark, f"--{name} is missing from the dark tokens"
+    assert dark["paper"] == "#000000" and dark["surface"] == "#1c1c1e"
+    assert _contrast(dark["ink"], dark["surface"]) >= 15
+    assert _contrast(dark["muted"], dark["surface"]) >= 7
