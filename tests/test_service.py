@@ -276,6 +276,13 @@ def test_a_level_or_better_roster_score_that_ranks_lower_is_marked_as_decided_by
     assert [bool(item.get("byPositions")) for item in shown] == [True, True, False]
 
 
+def test_a_tiny_roster_lead_with_equal_bonuses_is_not_credited_to_positions(service: DraftService) -> None:
+    ids = _ids_by_xrank(service)
+    best, option = _plan(ids[0], 10.03, 10.63), _plan(ids[1], 10.0, 10.6)  # both plans carry a 0.6 bonus
+    shown = service._alternatives([FirstPickOption(ids[1], option)], best, parse_rule(None), DraftState())
+    assert shown[0]["behind"] == 0.0 and "byPositions" not in shown[0]
+
+
 def test_the_answer_reports_the_main_and_the_busiest_option_search(service: DraftService) -> None:
     search = _ask(service, [])["search"]
     assert 0 < search["mainNodes"] < NODE_BUDGET and 0 < search["maxOptionNodes"] < OPTION_NODE_BUDGET

@@ -566,7 +566,9 @@ class DraftService:
         for option in options[:ALTERNATIVES_SHOWN]:
             gap = best.total_score - option.plan.total_score
             item: Dict[str, Any] = {"id": option.player_id, "behind": 0.0 if abs(gap) < 1e-9 else _num(gap, 1)}
-            if best.value - option.plan.value > 1e-9 and gap < TIE_SCORE:
+            # Only when the best plan carries the larger bonus: with equal bonuses a tiny roster lead decided it
+            bonus_edge = (best.value - best.total_score) - (option.plan.value - option.plan.total_score)
+            if bonus_edge > 1e-9 and gap < TIE_SCORE:
                 item["byPositions"] = True
             if len(option.plan.player_ids) > 1 and option.plan.player_ids[1] == best.player_ids[0]:
                 adp = float(self._by_id.loc[best.player_ids[0], "adp_est"])

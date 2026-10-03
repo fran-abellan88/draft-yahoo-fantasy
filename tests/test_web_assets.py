@@ -140,6 +140,8 @@ def test_the_page_shows_a_negative_gap_and_says_when_positions_decided_the_order
     assert "byPositions" in JS and "gapLabel(alt.behind)" in JS
     assert re.search(r"alt\.behind >= TIE_POINTS \|\| alt\.byPositions", JS)  # such a line is worth showing
     assert "Ranked lower for positions, not score." in JS
+    # "also plays" only when the recommended player lists more positions than the alternative
+    assert "recommended.length > alternative.length && extra.length" in JS
 
 
 def test_the_alternatives_line_is_hidden_when_it_says_nothing() -> None:

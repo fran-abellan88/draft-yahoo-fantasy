@@ -127,8 +127,9 @@ last-pick line and the snake strip (hover a slot).
 - **Position flexibility.** The planner ranks plans by their score plus 0.3 points for each position a new pick can
   fill beyond the first (`FLEXIBILITY_BONUS` in `optimizer.py`), so a PG/SG beats a PG of the same score. The 0.3 is a
   judgement, not a calibrated number: it can decide between close players (neighbouring scores differ by 0.1 at the
-  median), and over a whole plan it costs under 0.3 roster points (measured on simulated drafts; on the real pool the
-  first pick is unchanged and one late pick differs). The "Roster score" shown is the plain sum of the scores, and the
+  median), and over a whole plan it costs under 0.3 roster points (measured on simulated drafts). With the page's own
+  settings (uncapped, games counted) it changed no recommendation in 96 simulated states and gives the same 8-step plan
+  from an empty draft; with capped scores one late pick differs. The "Roster score" shown is the plain sum of the scores, and the
   gaps under "Or take instead" are in roster score too, so an alternative can be level with or ahead of the best plan and
   still rank lower; the page then says "Ranked lower for positions, not score" and names the extra position. Whether a
   team can start everyone at once is a separate check and is unchanged.
