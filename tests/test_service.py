@@ -7,6 +7,7 @@ import pytest
 from fantasy_draft.data import load_players
 from fantasy_draft.draft import DraftState, my_picks, slot_of_pick
 from fantasy_draft.optimizer import FIRST_PICK_OPTIONS, NODE_BUDGET, OPTION_NODE_BUDGET, FirstPickOption, Plan
+from fantasy_draft.scoring import compute_bounds
 from fantasy_draft.service import DraftService, RequestError, parse_rule
 
 ALL = ["fg_pct", "ft_pct", "3ptm", "pts", "reb", "ast", "st", "blk", "to"]
@@ -32,7 +33,7 @@ def test_pool_payload_describes_the_league_and_every_player(service: DraftServic
     assert payload["myPicks"][:8] == [2, 27, 30, 55, 58, 83, 86, 111]
     assert [c["key"] for c in payload["categories"]] == ALL
     assert next(c for c in payload["categories"] if c["key"] == "to")["lowerIsBetter"] is True
-    assert len(payload["players"]) == 150
+    assert len(payload["players"]) == 245
     jokic = next(p for p in payload["players"] if p["id"] == "nikola-jokic")
     assert jokic["positions"] == ["C"] and jokic["xrank"] == 1
     assert jokic["lastSeason"]["gp"] == 65
@@ -51,7 +52,7 @@ def test_opening_state(service: DraftService) -> None:
     result = _ask(service, [])
     assert result["clock"]["pick"] == 1 and not result["clock"]["isMine"]
     assert result["clock"]["nextMyPick"] == 2 and result["clock"]["picksUntilMine"] == 1
-    assert [row["rank"] for row in result["pool"]] == list(range(1, 151))
+    assert [row["rank"] for row in result["pool"]] == list(range(1, 246))
     assert result["recommendation"]["pick"] == 2
     assert 1 <= len(result["plans"]) <= 5
     assert result["plans"][0]["steps"][0]["pick"] == 2
@@ -622,7 +623,7 @@ def test_a_poor_logged_pick_lowers_its_team_and_the_user_is_not_first_by_constru
     """One case, not a law: a rival's mistake can also leave the user lower (the players it frees change everyone's plan)."""
     by_adp = _by_adp(service)
     good = _projection(service, [by_adp[0]])
-    poor = _projection(service, [by_adp[-1]])
+    poor = _projection(service, [service.players.loc[service.players["pts"].idxmin(), "player_id"]])  # the weakest of the pool
     team_one = lambda table: next(row for row in table["teams"] if row["slot"] == 1)["score"]  # noqa: E731
     assert team_one(poor) < team_one(good) - 0.5, "his projected stats drop when he takes a poor player"
     assert _projection(service, [])["teams"][0]["place"] == 1
@@ -652,6 +653,13 @@ def test_the_prediction_for_the_team_on_the_clock_is_what_its_own_recommendation
     assert clock["pick"] == 1 and clock["slot"] == 1 and clock["planner"] == own["recommendation"]["id"]
     assert clock["adp"] == _by_adp(service)[0]
     assert _predict(service, _by_adp(service)[:1])["clock"] is None, "pick 2 is mine: the recommendation is the answer"
+
+
+def test_the_scoring_scale_comes_from_the_first_150_so_deeper_players_do_not_move_anyone_s_score(service: DraftService) -> None:
+    top = service.players[service.players["xrank"] <= 150]
+    expected = compute_bounds(top, service.keys, method="uncapped")
+    assert service.method_bounds["uncapped"] == expected
+    assert service.bounds == compute_bounds(top, service.keys)
 
 
 def test_other_teams_plan_for_every_category_whatever_i_tick(service: DraftService) -> None:

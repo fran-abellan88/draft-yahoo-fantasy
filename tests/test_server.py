@@ -62,7 +62,7 @@ def test_pool_endpoint(base_url: str) -> None:
     status, content_type, body = _get(base_url + "/api/pool")
     payload = json.loads(body)
     assert status == 200 and content_type == "application/json"
-    assert len(payload["players"]) == 150 and payload["league"]["slot"] == 2
+    assert len(payload["players"]) == 245 and payload["league"]["slot"] == 2
 
 
 def test_analyze_endpoint(base_url: str) -> None:

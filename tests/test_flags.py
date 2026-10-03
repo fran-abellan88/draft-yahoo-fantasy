@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 from fantasy_draft.categories import categories_in
-from fantasy_draft.data import load_players
+from fantasy_draft.data import REFERENCE_POOL, load_players
 from fantasy_draft.flags import build_flags
 from fantasy_draft.scoring import compute_bounds
 
@@ -64,8 +64,8 @@ def test_flags_on_the_real_pool_are_a_usable_minority() -> None:
     players = load_players()
     keys = categories_in(players.columns)
     assert len(keys) == 9
-    flags = build_flags(players, keys, compute_bounds(players, keys))
-    assert flags["flag_ly_missing"].sum() == 8
+    flags = build_flags(players, keys, compute_bounds(players[players["xrank"] <= REFERENCE_POOL], keys))
+    assert flags["flag_ly_missing"].sum() == 16, "8 in the first 150 and 8 deeper"
     named = players.assign(**flags.to_dict("series")).set_index("player")
     assert named.loc["Joel Embiid", "flag_low_projected_gp"]
     assert named.loc["Walker Kessler", "flag_ly_small_sample"]

@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 
 from fantasy_draft.categories import categories_in
-from fantasy_draft.data import COUNTING_STATS, load_players
+from fantasy_draft.data import COUNTING_STATS, REFERENCE_POOL, load_players
 from fantasy_draft.names import normalize_name, slugify
 
 
@@ -16,9 +16,9 @@ def players() -> pd.DataFrame:
     return load_players()
 
 
-def test_loads_the_top_150_with_unique_ids(players: pd.DataFrame) -> None:
-    assert len(players) == 150
-    assert players["xrank"].tolist() == list(range(1, 151))
+def test_loads_the_top_245_with_unique_ids(players: pd.DataFrame) -> None:
+    assert len(players) == 245
+    assert players["xrank"].tolist() == list(range(1, 246))
     assert players["player_id"].is_unique
 
 
@@ -32,9 +32,9 @@ def test_counting_stats_are_converted_to_per_game(players: pd.DataFrame) -> None
 
 
 def test_per_game_values_are_plausible(players: pd.DataFrame) -> None:
-    assert players["pts"].between(5, 35).all()
-    assert players["to"].between(0.5, 4.5).all()
-    assert players["fga"].between(2, 25).all()
+    assert players["pts"].between(1, 35).all()  # the deep end includes a 15-game Ben Simmons at 2 a game
+    assert players["to"].between(0.3, 4.5).all()
+    assert players["fga"].between(1, 25).all()
 
 
 def test_last_season_is_joined_from_totals_and_blank_when_missing(players: pd.DataFrame) -> None:
@@ -44,7 +44,8 @@ def test_last_season_is_joined_from_totals_and_blank_when_missing(players: pd.Da
     assert jokic["fga_ly"] == pytest.approx(1132 / 65)
     haliburton = players[players["player"] == "Tyrese Haliburton"].iloc[0]
     assert haliburton[[f"{stat}_ly" for stat in COUNTING_STATS]].isna().all()
-    assert players["pts_ly"].isna().sum() == 8
+    assert players["pts_ly"].isna().sum() == 16
+    assert players[players["xrank"] <= REFERENCE_POOL]["pts_ly"].isna().sum() == 8
 
 
 def test_positions_are_parsed(players: pd.DataFrame) -> None:
@@ -65,9 +66,11 @@ def test_baseline_is_makes_over_attempts_and_impact_sums_to_about_zero(players: 
     baselines = players.attrs["baselines"]
     assert 0.44 < baselines["fg"] < 0.50
     assert 0.75 < baselines["ft"] < 0.85
-    # Totals sum to exactly zero; per-game values weight each player by his games, so only roughly
-    weighted = (players["fg_impact"] * players["gp"]).sum()
-    assert abs(weighted) < 1e-6
+    # Totals sum to exactly zero over the pool the baseline comes from (the first 150); per-game values weight each
+    # player by his games, so only roughly
+    reference = players[players["xrank"] <= REFERENCE_POOL]
+    assert abs((reference["fg_impact"] * reference["gp"]).sum()) < 1e-6
+    assert (players["fg_impact"] * players["gp"]).sum() < 0, "the deeper players shoot below it"
 
 
 def test_all_nine_categories_are_available(players: pd.DataFrame) -> None:
@@ -139,3 +142,12 @@ def test_zero_projected_games_is_an_error(tmp_path: Path) -> None:
     files = _files(tmp_path, ["1,1,1.0,Player A"], [_yahoo_row(1, "Player A", 0)], [_yahoo_row(1, "Player A", 80)])
     with pytest.raises(ValueError, match="positive"):
         load_players(**files)
+
+
+def test_a_missing_adp_below_the_reference_pool_goes_after_every_known_adp_in_xrank_order(players: pd.DataFrame) -> None:
+    deep = players[(players["xrank"] > REFERENCE_POOL) & players["adp_estimated"]]
+    assert len(deep) > 50
+    assert (deep["adp_est"] > players["adp"].max()).all()
+    assert deep["adp_est"].is_monotonic_increasing
+    near = players[(players["xrank"] <= REFERENCE_POOL) & players["adp_estimated"]]
+    assert (near["adp_est"] <= players["adp"].max()).all(), "the five estimated inside the reference pool keep the interpolation"

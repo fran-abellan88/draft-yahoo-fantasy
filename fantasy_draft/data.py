@@ -31,6 +31,9 @@ COUNTING_STATS: List[str] = ["3ptm", "pts", "reb", "ast", "st", "blk", "to"]
 ATTEMPT_STATS: List[str] = ["fgm", "fga", "ftm", "fta"]
 PER_GAME_STATS: List[str] = COUNTING_STATS + ATTEMPT_STATS
 LAST_SEASON_SUFFIX = "_ly"
+# The scoring scale (percentile bounds, shooting baselines) is fixed on the first 150 XRanks, the pool it was built on, so
+# the players added below them are scored on the same scale and nobody's score moves when the pool grows.
+REFERENCE_POOL = 150
 
 
 def load_players(
@@ -59,7 +62,8 @@ def load_players(
     keep = [f"{column}{LAST_SEASON_SUFFIX}" for column in ["gp", "mpg", "fg_pct", "ft_pct"] + PER_GAME_STATS]
     players = players.merge(last_season[["match_key"] + keep], on="match_key", how="left")
 
-    baselines = _baselines(projections.loc[projections["match_key"].isin(players["match_key"])])
+    reference = players.loc[players["xrank"] <= REFERENCE_POOL, "match_key"]
+    baselines = _baselines(projections.loc[projections["match_key"].isin(reference)])
     for prefix, rate in (("fg", baselines["fg"]), ("ft", baselines["ft"])):
         for suffix in ("", LAST_SEASON_SUFFIX):
             made, attempted = f"{prefix}m{suffix}", f"{prefix}a{suffix}"
@@ -117,9 +121,14 @@ def _estimate_missing_adp(players: pd.DataFrame) -> pd.DataFrame:
     """
     Yahoo shows no ADP for a few players (nobody drafts them early). Estimate it from the neighbouring
     XRanks so availability can still be modelled; the original column is left untouched.
+
+    Below the reference pool the known ADPs level off around 110 to 120 (the mock drafts do not go that deep) and a
+    missing one means nobody took him at all, so he goes after every player who has an ADP, in XRank order.
     """
     known = players["adp"].notna()
     players["adp_estimated"] = ~known
     players["adp_est"] = players["adp"]
     players.loc[~known, "adp_est"] = np.interp(players.loc[~known, "xrank"], players.loc[known, "xrank"], players.loc[known, "adp"])
+    deep = ~known & (players["xrank"] > REFERENCE_POOL)
+    players.loc[deep, "adp_est"] = players["adp"].max() + 0.01 * (players.loc[deep, "xrank"] - REFERENCE_POOL)
     return players

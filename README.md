@@ -27,7 +27,7 @@ Your picks are kept in the browser, so reloading the page mid-draft loses nothin
 
 - **Click a player** to log the pick that is on the clock. Picks are logged in order and the snake order decides
   which ones are yours, so the state cannot disagree with the draft. **Undo** reverts the last action (its label says which).
-- **Pick not in the list** logs a pick of a player who is not among the 150. It counts as a pick, nobody leaves the
+- **Pick not in the list** logs a pick of a player who is not among the 245. It counts as a pick, nobody leaves the
   pool, and if it is yours it fills one starting slot at any position, at replacement-level value.
 - **I am behind**: type the pick Yahoo is at and the picks you missed become *unseen*. A player the table lists may have
   been taken at one of them, so every availability number allows for that. Press **Gone** on a player you know was taken
@@ -192,7 +192,7 @@ dashboard starts on 8002 instead of 8001. Two things to know:
 
 ## How a score is built
 
-For each category, a player's per-game projection is placed between the 5th and 95th percentile of the 150-player pool
+For each category, a player's per-game projection is placed between the 5th and 95th percentile of the first 150 players (the scale is fixed on them, so the 95 deeper players are scored on it and nobody's score moves when the pool grows)
 (0 to 1, clamped; turnovers are reversed so fewer is better). The score is the mean of the selected categories times 100.
 This is the composite from `nba-yahoo-fantasy-daily-dose`, checked against that project's golden test cases.
 
@@ -206,7 +206,7 @@ repeats and everyone can start at once. The search is exact, and is tested again
 
 | File | Source | Used for |
 |---|---|---|
-| `data/2026-27/projections.csv` | draft-room screenshots, read by hand | XRank, Rank, ADP (only the draft room has them) |
+| `data/2026-27/projections.csv` | draft-room screenshots, read by hand | XRank, Rank, ADP for the first 245 players (only the draft room has them). A missing ADP below the 150th is estimated: after every player who has one |
 | `data/2026-27/yahoo_projections.csv` | Yahoo player list | projected season totals with attempts |
 | `data/2025-26/yahoo_totals.csv` | Yahoo player list | last season's totals with attempts and minutes |
 | `data/2025-26/averages.csv`, `yahoo_averages.csv` | screenshots, Yahoo | cross-check only |
