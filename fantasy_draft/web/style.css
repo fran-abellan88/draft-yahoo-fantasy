@@ -630,3 +630,9 @@ td.player { width: 99%; max-width: 0; }
 .league-table tr.mine-row td:last-child { border-radius: 0 10px 10px 0; }
 /* The league tables need the card's width: 519 px at 14.5 px */
 .teams { padding: 16px 8px; }
+
+/* "vs Yahoo": the places the model ranks a player above (+) or below (-) Yahoo's XRank; only the big gaps are coloured */
+#pool td.vs-yahoo { color: var(--muted); font-variant-numeric: tabular-nums; }
+#pool td.vs-yahoo.up { color: var(--mine); font-weight: 600; }
+#pool td.vs-yahoo.down { color: var(--flag); font-weight: 600; }
+.facts.disagree button { margin-left: 4px; }

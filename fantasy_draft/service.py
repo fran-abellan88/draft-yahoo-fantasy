@@ -25,7 +25,16 @@ from fantasy_draft.lineup import ALL_MASK, POSITION_BIT, STARTING_SLOTS, assign_
 from fantasy_draft.league import league_table, rosters_by_slot
 from fantasy_draft.needs import category_weights
 from fantasy_draft.optimizer import FLEXIBILITY_BONUS, FirstPickOption, Plan, Recommendation, fill_picks, plan_picks, team_profile
-from fantasy_draft.scoring import METHODS, Bounds, category_scores, composite_score, compute_bounds, last_season_scores
+from fantasy_draft.scoring import (
+    METHODS,
+    SEASON_GAMES,
+    Z_SCALE,
+    Bounds,
+    category_scores,
+    composite_score,
+    compute_bounds,
+    last_season_scores,
+)
 
 MAX_TOP_K = 50
 DEFAULT_TOP_K = 10
@@ -33,6 +42,14 @@ PLANS_SHOWN = 5
 RIVAL_ROUNDS = 8  # how many rounds another team plans ahead; its later picks are filled in (searching them all would be slow)
 TIE_SCORE = 0.05  # roster-score gap below which two plans read as the same score (the page uses the same value)
 ALTERNATIVES_SHOWN = 4
+# On my turn, plans whose roster score is within this many points of the best one count as level, and the one whose first
+# player has the better ADP wins (a judgement: about half the median gap between a player's projected and last season's
+# score, not validated; see README). The ADP must be better by at least TIE_ADP_MARGIN picks, so a hair does not flip it.
+TIE_BAND = 1.5
+TIE_ADP_MARGIN = 2.0
+# "Yahoo disagrees" is shown when an available player ranks this many places better by XRank than the pick, and scores lower
+YAHOO_GAP = 15
+DISAGREE_MIN_POINTS = 0.5
 LOOK_FIRST_SHOWN = 3
 LOOK_FIRST_FLOOR = 0.10  # below this chance a player is treated as gone and not suggested
 DISPLAY_STATS = ["pts", "reb", "ast", "3ptm", "st", "blk", "to", "fg_pct", "ft_pct", "fga", "fta"]
@@ -199,12 +216,24 @@ class DraftService:
         later_pick = self._later_pick(clock)
         self._add_later(pool, adp, state, rule, later_pick)
         best = plans[0] if plans else None
+        options = recommendation_result.options
+        market: Optional[Dict[str, Any]] = None
+        if best is not None and clock["isMine"] and not recommendation_result.assumed_gone:
+            chosen, options, market = self._market_tie(best, options)
+            if chosen is not best:
+                plans = [chosen] + [plan for plan in plans if plan.player_ids != chosen.player_ids]
+                best = chosen
+        disagreement = (
+            self._disagreement(best, next_mine, pool, drafted, scores, keys, method, games_adjusted, weights, clock, rule)
+            if best is not None and next_mine is not None
+            else None
+        )
         fills = {id(plan): self._fill_plan(plan, state, keys, rule, method, games_adjusted, weights) for plan in plans[:PLANS_SHOWN]}
         return {
             "clock": clock,
             "pool": pool,
             "plans": [self._plan_payload(plan, rule, state, fills[id(plan)]) for plan in plans[:PLANS_SHOWN]],
-            "alternatives": self._alternatives(recommendation_result.options, best, rule, state),
+            "alternatives": self._alternatives(options, best, rule, state),
             "alternativesMode": "gone" if recommendation_result.assumed_gone else "instead",
             "search": {
                 "truncated": recommendation_result.truncated,
@@ -213,7 +242,8 @@ class DraftService:
                 "mainNodes": recommendation_result.main_nodes,
                 "maxOptionNodes": recommendation_result.max_option_nodes,
             },
-            "recommendation": self._recommendation(best, next_mine),
+            "recommendation": self._recommendation(best, next_mine, market),
+            "disagreement": disagreement,
             "laterPick": later_pick,
             "lineup": self._lineup(picks, mine_numbers),
             "bestAvailable": self._best_available(pool, picks, mine_numbers),
@@ -740,10 +770,120 @@ class DraftService:
         found.sort(key=lambda row: -row["score"])
         return [{"id": row["id"], "availability": row["availability"]} for row in found[:LOOK_FIRST_SHOWN]]
 
-    def _recommendation(self, best: Optional[Plan], next_mine: Optional[int]) -> Optional[Dict[str, Any]]:
+    def _recommendation(
+        self, best: Optional[Plan], next_mine: Optional[int], market: Optional[Dict[str, Any]] = None
+    ) -> Optional[Dict[str, Any]]:
         if best is None or next_mine is None:
             return None
-        return {"pick": next_mine, "id": best.player_ids[0]}
+        recommendation: Dict[str, Any] = {"pick": next_mine, "id": best.player_ids[0]}
+        if market is not None:
+            recommendation["marketTie"] = market
+        return recommendation
+
+    def _market_tie(self, best: Plan, options: List[FirstPickOption]) -> Tuple[Plan, List[FirstPickOption], Optional[Dict[str, Any]]]:
+        """On my turn: among the best plan and the plans within TIE_BAND of its roster score, the first player with the best ADP.
+
+        Roster score is the sum of the scores of the players (the bonus for positions is not counted), so "level" means
+        level in what the page calls Roster score. Returns the plan to recommend, the options with the plan it replaced
+        among them, and what to say; the plan unchanged and no note when the market has nothing to add.
+        """
+        adp = lambda player_id: float(self._by_id.loc[player_id, "adp_est"])  # noqa: E731
+        level = [option for option in options if best.total_score - option.plan.total_score <= TIE_BAND]
+        if not level:
+            return best, options, None
+        leader = min(level, key=lambda option: (adp(option.player_id), -option.plan.value))
+        if adp(best.player_ids[0]) - adp(leader.player_id) < TIE_ADP_MARGIN:
+            return best, options, None
+        others = [FirstPickOption(best.player_ids[0], best)] + [option for option in options if option is not leader]
+        others.sort(key=lambda option: (option.plan.value, option.plan.survival), reverse=True)
+        note = {
+            "over": best.player_ids[0],
+            "gap": _num(abs(best.total_score - leader.plan.total_score), 1),
+            "adp": _num(adp(leader.player_id), 1),
+            "adpOver": _num(adp(best.player_ids[0]), 1),
+            "band": TIE_BAND,
+        }
+        return leader.plan, others, note
+
+    def _score_parts(
+        self, keys: List[str], method: str, games_adjusted: bool, weights: Optional[Dict[str, float]]
+    ) -> Tuple[pd.DataFrame, pd.Series]:
+        """What each ticked category adds to every player's score (score points), and the rest (the games adjustment's anchor).
+
+        The composite is a weighted mean of the category scores times a scale, then pulled toward replacement level by
+        the share of the season he plays, so each category's share is its part of that mean times the games share. For
+        the z-score method replacement level is not 0, which is what the leftover column carries.
+        """
+        scale = Z_SCALE if method == "zscore" else 100.0
+        categories = category_scores(self.players, keys, self.method_bounds[method], method)
+        share = pd.Series({key: (1.0 if weights is None else weights[key]) for key in keys})
+        share = share / share.sum()
+        games = (self.players["gp"].astype(float) / SEASON_GAMES).clip(0.0, 1.0) if games_adjusted else 1.0
+        parts = categories.mul(share, axis=1).mul(games, axis=0) * scale
+        total = composite_score(self.players, keys, self.method_bounds[method], games_adjusted, method, weights)
+        return parts, total - parts.sum(axis=1)
+
+    def _disagreement(
+        self,
+        best: Plan,
+        next_mine: int,
+        pool: List[Dict[str, Any]],
+        drafted: set,
+        scores: pd.Series,
+        keys: List[str],
+        method: str,
+        games_adjusted: bool,
+        weights: Optional[Dict[str, float]],
+        clock: Dict[str, Any],
+        rule: AvailabilityRule,
+    ) -> Optional[Dict[str, Any]]:
+        """When Yahoo ranks an available player far above the recommended one, why the model does not, and what punting would do.
+
+        Candidates are the players who rank at least YAHOO_GAP places better by XRank among those left, score at least
+        DISAGREE_MIN_POINTS lower, and are really on offer (on the board now, or likely to last to my pick). The best
+        XRank among them is shown with the ticked category that costs him most against the pick, and where he and the pick
+        would rank with that category left out (the page offers it as a button).
+        """
+        pick_id = best.player_ids[0]
+        left = self.players[~self.players["player_id"].isin(drafted)].sort_values("xrank")
+        yahoo_rank = {player_id: index + 1 for index, player_id in enumerate(left["player_id"])}
+        by_id = {row["id"]: row for row in pool}
+        pick_score = float(scores.loc[self.players["player_id"] == pick_id].iloc[0])
+        found: Optional[str] = None
+        for player_id in left["player_id"]:
+            if yahoo_rank[player_id] > yahoo_rank[pick_id] - YAHOO_GAP:
+                break
+            row = by_id.get(player_id)
+            if row is None:
+                continue
+            offered = clock["isMine"] or (row["availability"] is not None and row["availability"] >= rule.threshold)
+            if offered and pick_score - float(row["score"]) >= DISAGREE_MIN_POINTS:
+                found = player_id
+                break
+        if found is None:
+            return None
+        parts, _ = self._score_parts(keys, method, games_adjusted, weights)
+        index = self.players.set_index("player_id").index
+        delta = parts.iloc[index.get_loc(found)] - parts.iloc[index.get_loc(pick_id)]
+        costly = str(delta.idxmin())
+        result: Dict[str, Any] = {
+            "id": found,
+            "pickId": pick_id,
+            "yahooRank": yahoo_rank[found],
+            "pickYahooRank": yahoo_rank[pick_id],
+            "scoreGap": _num(pick_score - float(by_id[found]["score"]), 1),
+            "category": {"key": costly, "label": CATEGORIES[costly].label, "delta": _num(float(delta[costly]), 1)},
+            "punt": None,
+        }
+        if len(keys) > 1 and float(delta[costly]) < 0:
+            rest = [key for key in keys if key != costly]
+            rest_weights = None if weights is None else {key: weights[key] for key in rest}
+            punted = composite_score(self.players, rest, self.method_bounds[method], games_adjusted, method, rest_weights)
+            available = ~self.players["player_id"].isin(drafted)
+            pool_scores = punted[available]
+            rank = lambda player_id: int(1 + (pool_scores > punted[self.players["player_id"] == player_id].iloc[0]).sum())  # noqa: E731
+            result["punt"] = {"rank": rank(found), "pickRank": rank(pick_id)}
+        return result
 
     def _profile(self, player_ids: List[str], keys: List[str]) -> Optional[Dict[str, Any]]:
         if not player_ids:

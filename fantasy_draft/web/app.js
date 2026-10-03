@@ -82,7 +82,7 @@ function put(node, ...children) {
 const pct = (value) => `${Math.round(value * 100)}%`;
 const oneDecimal = (value) => (value === null || value === undefined ? '-' : value.toFixed(1));
 const formatRate = (value) => (value === null || value === undefined ? '-' : value.toFixed(3).replace(/^0/, ''));
-const signed = (value) => `${value > 0 ? '+' : ''}${value.toFixed(1)}`;
+const placesLabel = (value) => `${value > 0 ? '+' : ''}${value.toFixed(1)}`;
 const teamName = (slot) => (pool.league.teamNames ? pool.league.teamNames[slot - 1] : `Slot ${slot}`);
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 const nameOf = (id) => playerById.get(id).name;
@@ -826,6 +826,42 @@ function toggleSettings() {
   $('settings-toggle').setAttribute('aria-expanded', String(!panel.hidden));
 }
 
+// The market decided: the plans were level on roster score, so the first player Yahoo drafters take earlier is recommended
+function marketTieNote(recommendation) {
+  const tie = recommendation.marketTie;
+  if (!tie) return '';
+  return `Level with ${nameOf(tie.over)} (${oneDecimal(tie.gap)} apart, inside the ${tie.band} band). Yahoo drafters take ${nameOf(recommendation.id)} first (ADP ${oneDecimal(tie.adp)} against ${oneDecimal(tie.adpOver)}).`;
+}
+
+// Yahoo ranks someone much higher than the pick: say why the model does not, and offer the what-if as a button
+function disagreementBlock() {
+  const d = analysis.disagreement;
+  if (!d) return null;
+  const category = d.category;
+  const back = Math.max(0, Math.abs(category.delta) - d.scoreGap);
+  const why = category.delta < 0
+    ? ` ${category.label} alone costs him ${oneDecimal(Math.abs(category.delta))}${back >= 0.5 ? `, and his other categories win back ${oneDecimal(back)}` : ''}.`
+    : '';
+  const text = `Yahoo ranks ${nameOf(d.id)} ${ordinal(d.yahooRank)} and ${nameOf(d.pickId)} ${ordinal(d.pickYahooRank)}. Here ${nameOf(d.id)} scores ${oneDecimal(d.scoreGap)} less.${why}`;
+  const punt = d.punt && state.categories.length > 1 ? d.punt : null;
+  return h(
+    'p',
+    { class: 'facts disagree' },
+    text,
+    punt ? ` Without ${category.label} he is ${ordinal(punt.rank)} by score (${nameOf(d.pickId)} ${ordinal(punt.pickRank)}). ` : '',
+    punt ? h('button', { type: 'button', class: 'gone', title: `Untick ${category.label}: it leaves every score and the plan`, onclick: () => puntCategory(category.key) }, `Punt ${category.label}`) : null,
+  );
+}
+
+// Unticks a category through the same flow as the settings panel, so after the first pick it asks to apply first
+function puntCategory(key) {
+  const box = $('categories').querySelector(`input[value="${key}"]`);
+  if (!box || !box.checked) return;
+  box.checked = false;
+  settingChanged();
+  if (!$('setting-confirm').hidden && $('settings').hidden) toggleSettings(); // the confirmation lives in the settings panel
+}
+
 // One line when the recommendation is not the best score in the table, so the page never seems to contradict itself
 function whyNotTheTopScore(recommendation, plan) {
   const top = analysis.pool[0];
@@ -882,6 +918,7 @@ function renderHero() {
   const timing = mine ? '' : `After ${plural(clock.picksUntilMine, 'more pick')}.`;
   const lookFirst = doubt ? analysis.lookFirst : [];
   const reason = whyNotTheTopScore(recommendation, plan);
+  const tieNote = marketTieNote(recommendation);
   const facts = [timing, odds].filter(Boolean).join(' ');
   put(hero,
     h(
@@ -893,6 +930,8 @@ function renderHero() {
     categoryBars(row),
     facts ? h('p', { class: 'facts' }, facts) : null,
     reason ? h('p', { class: 'facts' }, reason) : null,
+    tieNote ? h('p', { class: 'facts' }, tieNote) : null,
+    disagreementBlock(),
     analysis.search.truncated ? h('p', { class: 'facts' }, 'Approximate: the search was cut short. See the note under Plan.') : null,
     alternativesBlock(),
     lookFirst.length
@@ -1072,6 +1111,7 @@ const POOL_COLUMNS = [
   { key: 'availability', label: 'At your pick', left: false, defaultDirection: -1, title: 'Chance he is still available when you next pick' },
   { key: 'adp', label: 'ADP', left: false, defaultDirection: 1 },
   { key: 'xrank', label: 'XRank', left: false, defaultDirection: 1, title: "Yahoo's own expert ranking" },
+  { key: 'vsyahoo', label: 'vs Yahoo', left: false, defaultDirection: -1, title: "Places he ranks higher by score than by Yahoo's XRank, among the players left. Plus: the model likes him more than Yahoo does; minus: less." },
   { key: 'gp', label: 'GP', left: false, defaultDirection: -1, title: 'Games projected for 2026-27' },
   ...STAT_COLUMNS.map((column) => ({ key: column.key, label: column.label, left: false, defaultDirection: column.key === 'to' ? 1 : -1 })),
 ];
@@ -1105,6 +1145,16 @@ function oddsAtColumn(row) {
   return analysis.clock.isMine ? row.later : row.availability;
 }
 
+// Among the players left: his place by XRank minus his place by score, so +17 means the model ranks him 17 places higher
+let yahooGap = new Map();
+function updateYahooGap() {
+  const byXrank = [...analysis.pool].sort((a, b) => playerById.get(a.id).xrank - playerById.get(b.id).xrank);
+  const place = new Map(byXrank.map((row, index) => [row.id, index + 1]));
+  yahooGap = new Map(analysis.pool.map((row) => [row.id, place.get(row.id) - row.rank]));
+}
+
+const signed = (value) => (value > 0 ? `+${value}` : value < 0 ? `\u2212${-value}` : '0');
+
 function sortValue(row, player, key) {
   if (key === 'rank') return row.rank;
   if (key === 'name') return player.name;
@@ -1112,6 +1162,7 @@ function sortValue(row, player, key) {
   if (key === 'availability') return oddsAtColumn(row);
   if (key === 'adp') return player.adp;
   if (key === 'xrank') return player.xrank;
+  if (key === 'vsyahoo') return yahooGap.get(player.id);
   if (key === 'gp') return player.gp;
   return player.stats[key];
 }
@@ -1285,6 +1336,7 @@ function closeCard() {
 
 function renderPool() {
   updateScoreRange();
+  updateYahooGap();
   plannedPicks = new Map(analysis.plans.length ? analysis.plans[0].steps.filter((step) => !step.filled).map((step) => [step.id, step.pick]) : []);
   const pickLabel = columnPick();
   const availabilityHead = $('pool-head').querySelector('button[data-key="availability"]');
@@ -1322,6 +1374,7 @@ function renderPool() {
       oddsCell(oddsAtColumn(row)),
       h('td', { title: player.adpEstimated ? 'Yahoo shows no ADP for him; estimated from nearby ranks' : '' }, `${player.adpEstimated ? '~' : ''}${player.adp.toFixed(1)}`),
       h('td', {}, player.xrank),
+      h('td', { class: `vs-yahoo${yahooGap.get(player.id) >= 15 ? ' up' : yahooGap.get(player.id) <= -15 ? ' down' : ''}` }, placesLabel(yahooGap.get(player.id))),
       h('td', {}, player.gp),
       ...STAT_COLUMNS.map((column) => statCell(column, player, row)),
     ];

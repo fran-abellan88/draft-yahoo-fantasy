@@ -599,7 +599,10 @@ def _projection(service: DraftService, ids: List[str]) -> Dict[str, Any]:
     return service.project_league({"categories": ALL, "picks": ids, "method": "uncapped", "gamesAdjusted": True})
 
 
-def test_the_planner_projection_makes_the_picks_each_team_s_own_recommendation_would(service: DraftService) -> None:
+def test_the_planner_projection_makes_the_picks_each_team_s_own_recommendation_would(
+    service: DraftService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("fantasy_draft.service.TIE_BAND", -1.0)  # the market tie-break is for my own turn, not part of the plan
     ids: List[str] = []
     for number in range(1, 21):
         slot = slot_of_pick(number, 14)
@@ -806,3 +809,80 @@ def test_a_cut_short_first_pick_comparison_does_not_make_the_plan_look_approxima
     assert search["truncated"] is False, "the plans themselves are still exact"
     assert search["optionsTruncated"] is True
     assert _ask(service, [], method="uncapped", gamesAdjusted=True)["plans"][0]["steps"][0]["id"] == "nikola-jokic"
+
+
+def _without(service: DraftService, excluded: set, count: int) -> List[str]:
+    """The first `count` players by XRank who are not excluded: a log in which the excluded are still on the board."""
+    return [pid for pid in service.players.sort_values("xrank")["player_id"] if pid not in excluded][:count]
+
+
+KD_KAWHI_GIANNIS = {"giannis-antetokounmpo", "kevin-durant", "kawhi-leonard"}
+
+
+def test_on_my_turn_level_plans_go_to_the_first_player_with_the_better_adp(service: DraftService) -> None:
+    answer = _ask(service, _without(service, KD_KAWHI_GIANNIS, 26), method="uncapped", gamesAdjusted=True)
+    recommendation = answer["recommendation"]
+    assert answer["clock"]["isMine"] and recommendation["pick"] == 27
+    assert recommendation["id"] == "kevin-durant" and recommendation["marketTie"]["over"] == "kawhi-leonard"
+    tie = recommendation["marketTie"]
+    assert tie["gap"] <= tie["band"] and tie["adp"] < tie["adpOver"] - 2
+    assert answer["plans"][0]["steps"][0]["id"] == "kevin-durant", "the plan the page shows starts with the recommended player"
+    assert "kawhi-leonard" in [alternative["id"] for alternative in answer["alternatives"]], "the player the market replaced is an option"
+
+
+def test_the_market_decides_nothing_while_i_am_waiting_or_outside_the_band(
+    service: DraftService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    log = _without(service, KD_KAWHI_GIANNIS, 26)
+    waiting = _ask(service, log[:24], method="uncapped", gamesAdjusted=True)
+    assert not waiting["clock"]["isMine"] and "marketTie" not in waiting["recommendation"]
+    monkeypatch.setattr("fantasy_draft.service.TIE_BAND", 0.5)  # Kawhi leads KD by 1.0 on roster score: no longer level
+    narrow = _ask(service, log, method="uncapped", gamesAdjusted=True)["recommendation"]
+    assert narrow["id"] == "kawhi-leonard" and "marketTie" not in narrow
+
+
+def test_the_category_parts_add_up_to_the_score_and_the_rest_is_the_games_anchor(service: DraftService) -> None:
+    for method in ("capped", "uncapped", "zscore"):
+        for games in (False, True):
+            parts, rest = service._score_parts(ALL, method, games, None)
+            from fantasy_draft.scoring import composite_score
+
+            total = composite_score(service.players, ALL, service.method_bounds[method], games, method)
+            assert (parts.sum(axis=1) + rest - total).abs().max() < 1e-9
+            if method != "zscore" or not games:
+                assert rest.abs().max() < 1e-9, "only the z-score method with games counted has a non-zero replacement level"
+
+
+def _disagreement(service: DraftService, pick_id: str) -> Any:
+    from fantasy_draft.optimizer import Plan
+    from fantasy_draft.scoring import composite_score
+
+    answer = _ask(service, [], method="uncapped", gamesAdjusted=True)
+    scores = composite_score(service.players, ALL, service.method_bounds["uncapped"], True, "uncapped")
+    best = Plan((2,), (pick_id,), 0.0, 1.0, 0.0)
+    return service._disagreement(best, 2, answer["pool"], set(), scores, ALL, "uncapped", True, None, {"isMine": True}, parse_rule(None))
+
+
+def test_yahoo_disagrees_says_why_giannis_scores_lower_than_kawhi_and_what_punting_would_do(service: DraftService) -> None:
+    found = _disagreement(service, "kawhi-leonard")
+    assert found["id"] == "giannis-antetokounmpo" and found["yahooRank"] == 6 and found["pickYahooRank"] == 37
+    assert found["category"]["key"] == "ft_pct" and found["category"]["delta"] < -found["scoreGap"], "FT% costs more than the whole gap"
+    assert found["punt"] == {"rank": 4, "pickRank": 30}
+    assert _disagreement(service, "kevin-durant") is None, "eight places apart is not a disagreement"
+
+
+def test_the_answer_carries_the_disagreement_only_with_a_recommendation(service: DraftService) -> None:
+    assert "disagreement" in _ask(service, [])
+    finished = _ask(service, _by_adp(service)[:139])
+    assert finished["recommendation"] is None and finished["disagreement"] is None
+
+
+def test_the_snapshot_has_every_player_the_settings_the_scores_and_the_plan() -> None:
+    from tools.snapshot import build_snapshot
+
+    snapshot = build_snapshot()
+    assert len(snapshot) == 245 and snapshot["xrank"].is_monotonic_increasing
+    assert snapshot["settings"].nunique() == 1 and "uncapped" in snapshot["settings"].iloc[0]
+    assert snapshot.loc[snapshot["player_id"] == "nikola-jokic", "plan_pick"].iloc[0] == 2
+    assert snapshot["plan_pick"].notna().sum() == 10 and snapshot["plan_pick_filled_in"].notna().sum() == 3
+    assert {"score", "cat_ft_pct", "adp", "xrank", "rank"} <= set(snapshot.columns)
