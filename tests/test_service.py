@@ -30,7 +30,7 @@ def _ask(service: DraftService, picks: List[str], **extra: Any) -> Dict[str, Any
 def test_pool_payload_describes_the_league_and_every_player(service: DraftService) -> None:
     payload = service.pool_payload()
     league = {key: payload["league"][key] for key in ("teams", "slot", "rounds", "rosterSize")}
-    assert league == {"teams": 14, "slot": 2, "rounds": 10, "rosterSize": 13}
+    assert league == {"teams": 14, "slot": 2, "rounds": 8, "rosterSize": 13}
     assert payload["myPicks"][:8] == [2, 27, 30, 55, 58, 83, 86, 111]
     assert [c["key"] for c in payload["categories"]] == ALL
     assert next(c for c in payload["categories"] if c["key"] == "to")["lowerIsBetter"] is True
@@ -124,10 +124,10 @@ def test_the_window_rule_gives_a_different_answer_shape(service: DraftService) -
 
 
 def test_after_my_last_planned_pick_there_is_no_recommendation(service: DraftService) -> None:
-    ids = _ids_by_xrank(service)[:139]  # picks 1..139, so the tenth-round pick is made
+    ids = _ids_by_xrank(service)[:111]  # picks 1..111, so the eighth-round pick is made
     result = _ask(service, ids)
     assert result["horizonDone"] and result["recommendation"] is None and result["plans"] == []
-    assert result["clock"]["nextMyPick"] == 142
+    assert result["clock"]["nextMyPick"] == 114
     assert all(row["availability"] is None for row in result["pool"])
 
 
@@ -179,7 +179,7 @@ def test_games_adjustment_lowers_scores_of_players_projected_to_miss_games(servi
     adjusted = {row["id"]: row["score"] for row in _ask(service, [], gamesAdjusted=True)["pool"]}
     gp = service.players.set_index("player_id")["gp"]
     for pid, score in plain.items():
-        expected = score * min(gp[pid], 82) / 82
+        expected = score * min(gp[pid], 70) / 70
         assert adjusted[pid] == pytest.approx(expected, abs=0.1), pid
     assert any(adjusted[pid] < plain[pid] - 5 for pid in plain)
 
@@ -239,7 +239,7 @@ def test_the_work_budget_never_binds_with_default_rules_over_a_whole_draft(servi
     ids = service.players.sort_values("adp_est")["player_id"].tolist()
     busiest_main = busiest_option = 0
     # Every third state, plus the one just before each of my picks, which is where the search is busiest
-    for made in sorted(set(range(0, 140, 6)) | {pick - 1 for pick in my_picks(rounds=10)}):
+    for made in sorted(set(range(0, 112, 3)) | {pick - 1 for pick in my_picks(rounds=8)}):
         answer = service.analyze({"categories": ALL, "picks": ids[:made], **settings})
         assert answer["search"]["truncated"] is False, f"cut short with {made} picks made"
         busiest_main = max(busiest_main, answer["search"]["mainNodes"])
@@ -776,13 +776,13 @@ def test_the_rosters_are_json_safe(service: DraftService) -> None:
     json.dumps(_ask(service, _mixed_log(service))["league"])
 
 
-def test_the_plan_is_ten_exact_picks_and_three_filled_in_that_complete_the_lineup(service: DraftService) -> None:
+def test_the_plan_is_eight_exact_picks_and_five_filled_in_that_complete_the_roster(service: DraftService) -> None:
     steps = _ask(service, [])["plans"][0]["steps"]
     assert [step["pick"] for step in steps] == my_picks(rounds=13)
-    assert [step["filled"] for step in steps] == [False] * 10 + [True] * 3
+    assert [step["filled"] for step in steps] == [False] * 8 + [True] * 5
     assert len({step["id"] for step in steps}) == 13, "nobody twice"
     positions = {row["id"]: row["positions"] for row in service.pool_payload()["players"]}
-    assert max_starters([positions[step["id"]] for step in steps[:10]]) == 10, "the ten planned picks fill every slot, a PG too"
+    assert max_starters([positions[step["id"]] for step in steps]) == 10, "the thirteen players fill every starting slot, a PG too"
 
 
 def test_filled_in_picks_take_an_open_starting_slot_before_the_bench() -> None:
@@ -793,7 +793,7 @@ def test_filled_in_picks_take_an_open_starting_slot_before_the_bench() -> None:
     service = DraftService(players)
     centers = players[players["pos_list"].map(lambda pos: pos == ["C"])]["player_id"].tolist()[:8]
     held = tuple(centers)  # eight centers: two start, two more in Util, the rest are bench
-    filled = fill_picks(players, state, keys, service.method_bounds["uncapped"], rule, [139, 142, 167], held, True, "uncapped")
+    filled = fill_picks(players, state, keys, service.method_bounds["uncapped"], rule, [114, 139, 142], held, True, "uncapped")
     positions = dict(zip(players["player_id"], players["pos_list"]))
     for _, player_id in filled:
         assert positions[player_id] != ["C"], "a lineup full of centers needs a guard or a forward, not a ninth center"
@@ -867,13 +867,13 @@ def test_yahoo_disagrees_says_why_giannis_scores_lower_than_kawhi_and_what_punti
     found = _disagreement(service, "kawhi-leonard")
     assert found["id"] == "giannis-antetokounmpo" and found["yahooRank"] == 6 and found["pickYahooRank"] == 37
     assert found["category"]["key"] == "ft_pct" and found["category"]["delta"] < -found["scoreGap"], "FT% costs more than the whole gap"
-    assert found["punt"] == {"rank": 4, "pickRank": 30}
+    assert found["punt"] == {"rank": 4, "pickRank": 27}
     assert _disagreement(service, "kevin-durant") is None, "eight places apart is not a disagreement"
 
 
 def test_the_answer_carries_the_disagreement_only_with_a_recommendation(service: DraftService) -> None:
     assert "disagreement" in _ask(service, [])
-    finished = _ask(service, _by_adp(service)[:139])
+    finished = _ask(service, _by_adp(service)[:111])
     assert finished["recommendation"] is None and finished["disagreement"] is None
 
 
@@ -884,5 +884,27 @@ def test_the_snapshot_has_every_player_the_settings_the_scores_and_the_plan() ->
     assert len(snapshot) == 245 and snapshot["xrank"].is_monotonic_increasing
     assert snapshot["settings"].nunique() == 1 and "uncapped" in snapshot["settings"].iloc[0]
     assert snapshot.loc[snapshot["player_id"] == "nikola-jokic", "plan_pick"].iloc[0] == 2
-    assert snapshot["plan_pick"].notna().sum() == 10 and snapshot["plan_pick_filled_in"].notna().sum() == 3
+    assert snapshot["plan_pick"].notna().sum() == 8 and snapshot["plan_pick_filled_in"].notna().sum() == 5
     assert {"score", "cat_ft_pct", "adp", "xrank", "rank"} <= set(snapshot.columns)
+
+
+def test_every_row_carries_the_score_of_the_other_method_beside_the_chosen_one(service: DraftService) -> None:
+    from fantasy_draft.scoring import composite_score
+
+    for method, other in (("uncapped", "capped"), ("capped", "uncapped"), ("zscore", "uncapped")):
+        answer = _ask(service, [], method=method, gamesAdjusted=True)
+        assert answer["altMethod"] == other
+        expected = composite_score(service.players, ALL, service.method_bounds[other], True, other)
+        by_id = dict(zip(service.players["player_id"], expected))
+        assert all(row["altScore"] == pytest.approx(by_id[row["id"]], abs=0.06) for row in answer["pool"])
+    assert [row["rank"] for row in _ask(service, [], method="capped")["pool"]] == list(range(1, 246)), "the chosen score still ranks"
+
+
+def test_a_player_projected_for_70_games_or_more_counts_a_full_season(service: DraftService) -> None:
+    from fantasy_draft.scoring import FULL_CREDIT_GAMES, games_factor
+
+    assert FULL_CREDIT_GAMES == 70
+    factor = games_factor(service.players)
+    gp = service.players["gp"]
+    assert (factor[gp >= 70] == 1.0).all() and (factor[gp < 70] == gp[gp < 70] / 70).all()
+    assert (gp >= 70).sum() > 50 and (gp < 70).sum() > 50

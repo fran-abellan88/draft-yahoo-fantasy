@@ -27,7 +27,7 @@ from fantasy_draft.needs import category_weights
 from fantasy_draft.optimizer import FLEXIBILITY_BONUS, FirstPickOption, Plan, Recommendation, fill_picks, plan_picks, team_profile
 from fantasy_draft.scoring import (
     METHODS,
-    SEASON_GAMES,
+    FULL_CREDIT_GAMES,
     Z_SCALE,
     Bounds,
     category_scores,
@@ -45,6 +45,8 @@ ALTERNATIVES_SHOWN = 4
 # On my turn, plans whose roster score is within this many points of the best one count as level, and the one whose first
 # player has the better ADP wins (a judgement: about half the median gap between a player's projected and last season's
 # score, not validated; see README). The ADP must be better by at least TIE_ADP_MARGIN picks, so a hair does not flip it.
+# The score method the page shows beside the chosen one, so the effect of the other choice is visible at once
+ALTERNATIVE_METHOD = {"capped": "uncapped", "uncapped": "capped", "zscore": "uncapped"}
 TIE_BAND = 1.5
 TIE_ADP_MARGIN = 2.0
 # "Yahoo disagrees" is shown when an available player ranks this many places better by XRank than the pick, and scores lower
@@ -104,7 +106,7 @@ class DraftService:
 
     players: pd.DataFrame
     slot: int = MY_SLOT
-    rounds: int = 10  # rounds planned exactly; the rest of the roster (ROSTER_SIZE) is filled in by score
+    rounds: int = 8  # rounds planned exactly; the rest of the roster (ROSTER_SIZE) is filled in by score
     teams: int = TEAMS
     rehearsal: bool = False  # the mock draft: the other teams may pick automatically
     keys: List[str] = field(init=False)
@@ -212,6 +214,11 @@ class DraftService:
         next_mine_probability = rule.probability(adp, next_mine, state.picks_made, state.unseen) if next_mine is not None else None
 
         pool = self._pool_rows(scores, last_season, category, flags, drafted, next_mine_probability)
+        alt_method = ALTERNATIVE_METHOD[method]
+        alt_scores = composite_score(self.players, keys, self.method_bounds[alt_method], games_adjusted, alt_method, weights)
+        alt_by_id = dict(zip(self.players["player_id"], alt_scores))
+        for row in pool:
+            row["altScore"] = _num(alt_by_id[row["id"]], 1)
         self._add_unseen_risk(pool, adp, state)
         later_pick = self._later_pick(clock)
         self._add_later(pool, adp, state, rule, later_pick)
@@ -232,6 +239,7 @@ class DraftService:
         return {
             "clock": clock,
             "pool": pool,
+            "altMethod": alt_method,
             "plans": [self._plan_payload(plan, rule, state, fills[id(plan)]) for plan in plans[:PLANS_SHOWN]],
             "alternatives": self._alternatives(options, best, rule, state),
             "alternativesMode": "gone" if recommendation_result.assumed_gone else "instead",
@@ -818,7 +826,7 @@ class DraftService:
         categories = category_scores(self.players, keys, self.method_bounds[method], method)
         share = pd.Series({key: (1.0 if weights is None else weights[key]) for key in keys})
         share = share / share.sum()
-        games = (self.players["gp"].astype(float) / SEASON_GAMES).clip(0.0, 1.0) if games_adjusted else 1.0
+        games = (self.players["gp"].astype(float) / FULL_CREDIT_GAMES).clip(0.0, 1.0) if games_adjusted else 1.0
         parts = categories.mul(share, axis=1).mul(games, axis=0) * scale
         total = composite_score(self.players, keys, self.method_bounds[method], games_adjusted, method, weights)
         return parts, total - parts.sum(axis=1)

@@ -115,12 +115,12 @@ def test_selected_category_without_bounds_is_rejected() -> None:
 
 
 def test_games_adjustment_scales_the_composite_by_the_share_of_the_season() -> None:
-    players = pd.DataFrame({"pts": [10.0, 20.0, 30.0], "gp": [82.0, 41.0, 90.0]})
+    players = pd.DataFrame({"pts": [10.0, 20.0, 30.0], "gp": [70.0, 35.0, 90.0]})
     bounds = {"pts": (10.0, 30.0)}
     plain = composite_score(players, ["pts"], bounds)
     adjusted = composite_score(players, ["pts"], bounds, games_adjusted=True)
     assert list(plain) == [0.0, 50.0, 100.0]
-    assert list(adjusted) == [0.0, 25.0, 100.0]  # 41 games is half a season; more than 82 is not a bonus
+    assert list(adjusted) == [0.0, 25.0, 100.0]  # 35 games is half of the 70 that count in full; more than 70 is not a bonus
 
 
 def test_games_adjustment_is_off_by_default_and_needs_games() -> None:
@@ -161,7 +161,7 @@ def test_zscore_is_distance_from_the_mean_in_standard_deviations_with_turnovers_
 
 
 def test_zscore_games_adjustment_pulls_towards_replacement_level_not_towards_average() -> None:
-    pool = pd.DataFrame({"pts": [10.0, 20.0, 30.0, 40.0], "gp": [41.0, 41.0, 82.0, 82.0]})
+    pool = pd.DataFrame({"pts": [10.0, 20.0, 30.0, 40.0], "gp": [35.0, 35.0, 70.0, 70.0]})
     bounds = compute_bounds(pool, ["pts"], method="zscore")
     plain = composite_score(pool, ["pts"], bounds, method="zscore")
     adjusted = composite_score(pool, ["pts"], bounds, games_adjusted=True, method="zscore")
@@ -202,6 +202,6 @@ def test_last_season_counts_the_games_it_was_played_in_and_leaves_gaps_empty() -
     adjusted = last_season_scores(players, keys, bounds, True, "uncapped")
     kessler = players.index[players["player_id"] == "walker-kessler"][0]  # 5 games last season
     haliburton = players.index[players["player_id"] == "tyrese-haliburton"][0]  # no stats last season
-    assert adjusted[kessler] == pytest.approx(plain[kessler] * 5 / 82)
+    assert adjusted[kessler] == pytest.approx(plain[kessler] * 5 / 70)
     assert plain.isna().loc[haliburton] and adjusted.isna().loc[haliburton]
     assert plain.notna().sum() == players["gp_ly"].notna().sum()

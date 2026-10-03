@@ -46,13 +46,13 @@ FLEXIBILITY_BONUS = 0.3
 # When nobody clears the availability threshold for a pick, fall back to the likeliest few.
 FALLBACK_CANDIDATES = 5
 
-# Search nodes per request. Planning 10 rounds over the 245-player pool, the busiest state of a whole simulated draft needs
-# about 20,000 nodes for the main search with the page's settings (uncapped, games counted) and up to about 60,000 with the
-# capped score (tests/test_service.py checks that half the budget is never needed). Unticking a category makes ties
-# likelier and the search harder: up to about 190,000 for the plans, and some first-pick comparisons (games counted) need
-# more than their budget, so those are approximate and say so (`options_truncated`) while the plans stay exact.
-NODE_BUDGET = 700_000
-OPTION_NODE_BUDGET = 250_000  # for each search that fixes one first pick; only the comparison is approximate if one is cut
+# Search nodes per request. Planning 8 rounds over the 245-player pool, the busiest state of a whole simulated draft needs
+# a few thousand nodes for the main search and under 10,000 for a first-pick comparison, whatever the score method and
+# however many categories are ticked (measured; tests/test_service.py checks that half the budget is never needed).
+# Planning 10 rounds was 100 times slower with a category unticked, which is why the plan is exact for 8 and filled in
+# after that. Only pathological settings reach the budget, and then a cut-short comparison says so (`options_truncated`).
+NODE_BUDGET = 150_000
+OPTION_NODE_BUDGET = 30_000  # for each search that fixes one first pick; only the comparison is approximate if one is cut
 FIRST_PICK_OPTIONS = 6
 
 
