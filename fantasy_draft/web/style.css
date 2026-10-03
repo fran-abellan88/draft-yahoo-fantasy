@@ -507,6 +507,23 @@ td.dim { opacity: 0.45; }
 .roster .slot.unseen .pick { border-style: dotted; }
 .roster.other .slot.filled .pick { background: var(--selected); border-color: var(--selected); color: var(--ink); }
 .roster.other .slot.filled.projected .pick, .roster.other .slot.bench.projected .pick { background: transparent; border: 1.5px dashed var(--taken); color: var(--muted); }
+/* The main table: Draft is a button beside the name, and the name opens the player card in the recommendation box */
+#pool tbody tr { cursor: default; }
+.draft-btn { flex: none; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 650; }
+.draft-btn.rec { background: var(--mine); border-color: var(--mine); color: var(--on-mine); }
+.name-link { display: block; max-width: 100%; padding: 0; border: 0; border-radius: 4px; background: none; color: inherit; font: inherit; font-weight: inherit; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.name-link:hover:not(:disabled) { border: 0; text-decoration: underline; }
+#pool tr.card-row td { background: var(--selected); }
+#pool tr.card-row td:nth-child(1), #pool tr.card-row td:nth-child(2) { background: var(--selected); }
+#pool tr.recommended.card-row td, #pool tr.recommended.card-row td:nth-child(1), #pool tr.recommended.card-row td:nth-child(2) { background: linear-gradient(var(--mine-soft), var(--mine-soft)), var(--selected); }
+.hero.viewing h2.hero-pill { background: var(--selected); color: var(--ink); }
+.hero.viewing .cta .primary { flex: 1 1 100%; }
+
+/* The league tables: the category columns keep a width that grows with the panel (and does not collapse while the table is
+   still empty), so the team column does not take all the slack. cqw is a share of the 14 teams panel's width */
+.teams { container-type: inline-size; }
+#league .league-table .lcat { min-width: clamp(0px, calc(12cqw - 33px), 64px); }
+
 /* A team name in a league table opens that team's roster */
 .team-link { display: block; max-width: 100%; padding: 0; border: 0; border-radius: 4px; background: none; color: inherit; font: inherit; font-weight: inherit; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .team-link:hover:not(:disabled) { border: 0; text-decoration: underline; }
@@ -537,6 +554,8 @@ td.dim { opacity: 0.45; }
 
 /* What the team on the clock should pick, and how each logged pick compared */
 .topbar .predict-line { margin: 2px 0 0; font-size: 14px; color: var(--cool); font-weight: 600; }
+.topbar .predict-line { min-height: 1.4em; }
+.topbar .predict-line.empty { visibility: hidden; }
 .prediction-summary { margin: 0 0 8px; max-width: none; }
 .managers { margin: 0 0 8px; font-size: 13px; }
 .managers summary { cursor: pointer; color: var(--muted); }

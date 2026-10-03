@@ -130,6 +130,12 @@ last-pick line and the snake strip (hover a slot).
   are to the other teams in it: more where you are close, less where you dominate or cannot catch up. It starts after
   the first complete round, reaches full effect after four, keeps every weight within 40% of 1, and never
   brings back an unticked category. The weights in use are listed under Standing.
+- **Draft button and player card.** In the main table each row has a **Draft** button left of the name; only that button logs
+  the pick (it says **Choose** while you are picking the player for an earlier pick). A click on the name, or Enter on a
+  row, opens the **player card** in the recommendation box: the same stat bars, the score with last season's, the odds,
+  and Draft / Back to the recommendation. The card closes on Back, Esc, the same name again, when that player is drafted
+  and when it becomes your turn, so the recommendation is never hidden when you pick. Enter in the search box still logs
+  the pick when exactly one player matches.
 - **Other teams' rosters.** Click a team name in either 14-team table, or use the select in the roster panel, to see that
   team's players in the roster panel: the ten starting slots and the bench with each pick number, then which positions
   one more player could still start at (what the teams picking before you will look for). **So far** shows the logged
