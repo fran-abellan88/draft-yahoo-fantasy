@@ -37,6 +37,10 @@ Your picks are kept in the browser, so reloading the page mid-draft loses nothin
   computed from 2025-26 per-game stats (same categories, method, need weights and games setting; games count with last
   season's games played), then an arrow: ↑ projected better, ↓ worse, ≈ within 5 points. A player with under 20 games
   last season keeps the number but gets no arrow; one with no stats shows nothing.
+- **Midnight look**: black page, `#1c1c1e` cards with radius 20 and no borders, system font, capsules only on strong stats
+  (80+ strong, 60 to 79 lighter, under 25 muted), 34 px rows, a hero with one bar per ticked category, odds as rings in the
+  plan, three tiles in Standing, a segmented Real/Mock switch, a snake of circles and slot chips in the roster. The spec is
+  `DASHBOARD_MIDNIGHT_SPEC.md`.
 - **Notes behind a "?"**: the explanatory notes in Settings, Standing, the 14 teams and the table open from a "?" button
   (click it, click again or elsewhere or press Esc to close).
 - **Score column**: a bar from the lowest score left (a short sliver) to the best (full), so every player has a bar and two

@@ -506,3 +506,11 @@ def test_a_badge_never_disappears_from_the_player_table() -> None:
 def test_the_team_name_is_the_elastic_column_of_the_league_tables_and_projected_has_no_count() -> None:
     assert re.search(r"\.league-table td\.left \{[^}]*width: 99%; max-width: 0", CSS)
     assert "leagueTable(projected, keys, labels, false)" in JS, "every projected team has the same number of players"
+
+
+def test_the_top_bar_roster_and_log_use_the_midnight_shapes() -> None:
+    assert "class: 'clock-pick'" in JS and ".clock-pick { display: block; font-size: 22px" in CSS
+    assert re.search(r"\.snake \.cell \{[^}]*width: 25px[^}]*border-radius: 50%", CSS), "the snake is a row of 25 px circles"
+    assert re.search(r"\.modes a\[aria-current=\"page\"\] \{[^}]*background: var\(--selected\)", CSS), "the draft switch is a segmented control"
+    assert re.search(r"\.roster \.slot \.pick \{[^}]*width: 40px; height: 28px; border-radius: 9px", CSS), "slot chips"
+    assert ".team-name::before" in CSS, "the log joins its details with a middle dot"

@@ -676,13 +676,15 @@ function render() {
 function renderClock() {
   const clock = analysis.clock;
   const line = $('clock-line');
+  // "Pick 27" large, the round and who is choosing under it
+  const clockText = (pick, text) => put(line, h('strong', { class: 'clock-pick' }, pick), h('span', { class: 'clock-sub' }, text));
   if (clock.draftComplete) {
-    line.textContent = 'The draft is complete.';
+    clockText('Draft complete', 'Good luck this season.');
   } else if (clock.isMine) {
-    line.textContent = `Pick ${clock.pick} (round ${clock.round}): ${teamName(pool.league.slot)}, you're up.`;
+    clockText(`Pick ${clock.pick}`, `Round ${clock.round} · ${teamName(pool.league.slot)}, you're on the clock`);
   } else {
-    const wait = clock.picksUntilMine === null ? '' : ` You pick at ${clock.nextMyPick}, after ${plural(clock.picksUntilMine, 'more pick')}.`;
-    line.textContent = `Pick ${clock.pick} (round ${clock.round}): ${clock.teamOnClock} is choosing.${wait}`;
+    const wait = clock.picksUntilMine === null ? '' : ` · You pick at ${clock.nextMyPick}, after ${plural(clock.picksUntilMine, 'more pick')}`;
+    clockText(`Pick ${clock.pick}`, `Round ${clock.round} · ${clock.teamOnClock} is choosing${wait}`);
   }
 
   const slots = Array.from({ length: pool.league.teams }, (_, index) => index + 1);
@@ -1283,11 +1285,11 @@ function renderRoster() {
   const slotRows = analysis.lineup.slots.map((slot) => {
     const entry = slot.entry === null ? null : entries[slot.entry];
     return entry
-      ? h('li', { class: 'slot filled' }, h('span', { class: 'pick' }, slot.slot), h('span', {}, h('strong', {}, who(entry)), h('div', { class: 'note' }, `#${entry.pick}, ${detail(entry)}`)))
-      : h('li', { class: 'slot open' }, h('span', { class: 'pick' }, slot.slot), h('span', { class: 'note' }, 'open'));
+      ? h('li', { class: 'slot filled' }, h('span', { class: 'pick' }, slot.slot), h('span', {}, h('strong', {}, who(entry)), h('div', { class: 'note' }, `#${entry.pick} · ${detail(entry)}`)))
+      : h('li', { class: 'slot open' }, h('span', { class: 'pick' }, slot.slot), h('span', { class: 'note' }, 'Open'));
   });
   const bench = analysis.lineup.bench.map((index) =>
-    h('li', { class: 'slot bench' }, h('span', { class: 'pick' }, 'Bench'), h('span', {}, h('strong', {}, who(entries[index])), h('div', { class: 'note' }, `#${entries[index].pick}, ${detail(entries[index])}`))),
+    h('li', { class: 'slot bench' }, h('span', { class: 'pick' }, 'Bench'), h('span', {}, h('strong', {}, who(entries[index])), h('div', { class: 'note' }, `#${entries[index].pick} · ${detail(entries[index])}`))),
   );
   put(list, ...slotRows, ...bench);
   const fits = analysis.lineup.canAdd;
