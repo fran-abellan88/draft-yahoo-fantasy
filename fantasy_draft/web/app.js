@@ -677,7 +677,8 @@ function renderClock() {
   const clock = analysis.clock;
   const line = $('clock-line');
   // "Pick 27" large, the round and who is choosing under it
-  const clockText = (pick, text) => put(line, h('strong', { class: 'clock-pick' }, pick), h('span', { class: 'clock-sub' }, text));
+  const clockText = (pick, text) =>
+    put(line, h('strong', { class: 'clock-pick' }, pick, state.rehearsal ? h('span', { class: 'mock-tag', title: 'This is the mock draft, not the real one' }, 'Mock') : null), h('span', { class: 'clock-sub' }, text));
   if (clock.draftComplete) {
     clockText('Draft complete', 'Good luck this season.');
   } else if (clock.isMine) {

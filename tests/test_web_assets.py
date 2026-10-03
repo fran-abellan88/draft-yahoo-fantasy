@@ -524,3 +524,10 @@ def test_the_category_bars_show_the_stat_and_standing_names_its_categories() -> 
     assert "class: 'tile-names'" in JS, "the categories are named in the tile, not only in its title"
     meta_rule = re.search(r"\.player-line \.meta \{[^}]*flex: 0 1000 auto", CSS)
     assert meta_rule, "the meta line gives way completely before the name"
+
+
+def test_the_mock_draft_is_marked_beside_the_pick_number() -> None:
+    clock = JS[JS.index("const clockText"): JS.index("if (clock.draftComplete)")]
+    assert "state.rehearsal" in clock and "class: 'mock-tag'" in clock, "a mock draft must never look like the real one"
+    assert re.search(r"\.mock-tag \{[^}]*var\(--flag-soft\)[^}]*var\(--flag\)", CSS)
+    assert re.search(r"\.tile \.tile-names \{[^}]*font-size: 12px", CSS), "no important text under 12 px"
