@@ -21,6 +21,9 @@
   --danger-soft: #f0d3ce;
   --taken: #737c89; /* bars and borders, never text */
   --hover: #dcd8cf;
+  --selected: #d0ccc2; /* the chosen segment of a segmented control */
+  --cool-strong: rgba(31, 85, 144, 0.22); /* stat capsules: a strong value, a good one */
+  --cool-mid: rgba(31, 85, 144, 0.1);
   --focus: #1d4ed8;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
@@ -44,7 +47,7 @@
     --on-mine: #00210b;
     --score: #6c6c74;
     --tag-planner: #bf5af2;
-    --tag-adp: #ffd60a;
+    --tag-adp: #ff375f;
     --flag: #ff9f0a;
     --flag-soft: rgba(255, 159, 10, 0.18);
     --danger: #ff6b61;
@@ -74,7 +77,7 @@
   --on-mine: #00210b;
   --score: #6c6c74;
   --tag-planner: #bf5af2;
-  --tag-adp: #ffd60a;
+  --tag-adp: #ff375f;
   --flag: #ff9f0a;
   --flag-soft: rgba(255, 159, 10, 0.18);
   --danger: #ff6b61;
@@ -292,7 +295,6 @@ body { margin: 0; }
 .panel { min-width: 0; min-height: 0; overflow: auto; }
 /* Every panel is a card: roster, log, Standing and the 14 teams used to sit straight on the page background */
 .team, .panel.log, .seam-plan, .seam-standing, .teams { background: var(--surface); border-radius: 20px; padding: 16px 18px; }
-.teams { padding: 8px; } /* the league tables need the width: 523 px of 540 at 12 px */
 .seam-rec { grid-area: rec; overflow: visible; }
 .seam-plan { grid-area: plan; max-height: 45vh; } /* the plan scrolls inside itself so the panel below it keeps room */
 .seam-standing { grid-area: standing; }
@@ -495,3 +497,38 @@ td.dim { opacity: 0.45; }
 .help-pop { position: fixed; z-index: 20; max-width: min(380px, calc(100vw - 16px)); padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--raised); color: var(--ink); font-size: 13px; line-height: 1.45; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3); }
 .help-pop[hidden] { display: none; }
 .choice-row { display: flex; align-items: center; gap: 4px; }
+
+/* Midnight, step 2: the two kinds of table. Only strong values are marked, with a capsule instead of a fill on every cell */
+.cap { display: inline-block; padding: 2px 4px; border-radius: 7px; }
+.cap.strong { background: var(--cool-strong); font-weight: 700; }
+.cap.mid { background: var(--cool-mid); font-weight: 600; }
+.cap.weak { color: var(--muted); font-weight: 450; }
+
+#pool { font-size: 15px; font-weight: 500; }
+#pool tbody tr { height: 34px; }
+#pool td { height: 34px; padding: 0 4px; }
+#pool td.stat { padding: 0 1px; }
+#pool th button { padding: 9px 4px; font-size: 11px; font-weight: 650; letter-spacing: 0.045em; text-transform: uppercase; color: var(--muted); }
+#pool th[aria-sort] button { color: var(--ink); }
+td.player strong { font-weight: 600; }
+td.player .meta { font-size: 13px; font-weight: 450; }
+td.player { max-width: 330px; overflow: hidden; text-overflow: ellipsis; }
+.prev { font-size: 12.5px; }
+.pick-tag { margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: var(--mine); color: var(--on-mine); font-size: 11px; font-weight: 700; vertical-align: middle; }
+#pool tr.recommended td, #pool tr.recommended:hover td { background: var(--mine-soft); }
+#pool tr.recommended td:nth-child(1), #pool tr.recommended td:nth-child(2) { background: linear-gradient(var(--mine-soft), var(--mine-soft)), var(--surface); }
+#pool tr.recommended td.player strong { color: var(--mine); }
+#pool td.score-cell { position: relative; }
+#pool td.score-cell.bar::after { content: ""; position: absolute; left: 6px; bottom: 4px; height: 3px; width: calc((100% - 12px) * var(--bar)); border-radius: 2px; background: var(--taken); }
+#pool tr.recommended td.score-cell.bar::after { background: var(--mine); }
+
+.league-table { font-size: 14.5px; font-weight: 500; font-stretch: 80%; }
+.league-table th { padding: 6px 3px; font-size: 10.5px; font-weight: 650; font-stretch: 86%; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.league-table td { height: 30px; padding: 0 3px; }
+.league-table td.left { max-width: 149px; font-stretch: 76%; }
+.league-table .cap { padding: 2px 1px; border-radius: 5px; }
+.league-table tr.mine-row td { background: var(--mine-soft); box-shadow: none; font-weight: 700; }
+.league-table tr.mine-row td:first-child { border-radius: 10px 0 0 10px; }
+.league-table tr.mine-row td:last-child { border-radius: 0 10px 10px 0; }
+/* The league tables need the card's width: 519 px at 14.5 px */
+.teams { padding: 16px 8px; }

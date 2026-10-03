@@ -484,3 +484,11 @@ def test_the_score_bar_tells_the_players_that_matter_apart_at_every_stage_of_the
 )
 def test_score_trend_ignores_small_gaps_and_missing_last_season(delta: Any, expected: Any) -> None:
     assert _run(f"L.scoreTrend({json.dumps(delta)})") == expected
+
+
+@pytest.mark.parametrize(
+    "score,expected",
+    [(100, "strong"), (80, "strong"), (79.9, "mid"), (60, "mid"), (59.9, ""), (25, ""), (24.9, "weak"), (0, "weak"), (None, "")],
+)
+def test_only_strong_stats_get_a_capsule_and_weak_ones_are_muted(score: Any, expected: str) -> None:
+    assert _run(f"L.statLevel({json.dumps(score)})") == expected

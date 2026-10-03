@@ -281,8 +281,9 @@ def test_the_need_weights_are_a_setting_that_is_saved_requested_and_shown() -> N
 
 
 def test_the_table_marks_the_plan_tints_the_stats_and_the_hero_explains_itself() -> None:
-    assert "★" in JS and "plan: ${planned}" in JS
+    assert "pick-tag" in JS and "plan: ${planned}" in JS
     assert "statCell(column, player, row)" in JS and "row.categoryScores[column.key]" in JS and "td.dim" in CSS
+    assert "statLevel(" in JS and "background: var(--cool-strong)" in CSS, "a capsule only on strong stats, no fill on every cell"
     assert "UNSEEN_RISK_SHOWN" in JS and "row.unseenRisk >= UNSEEN_RISK_SHOWN" in JS, "Gone only where the unseen picks matter"
     assert "whyNotTheTopScore(recommendation, plan)" in JS and "Current plan:" in JS and "Today's plan" not in JS
     assert "Odds the whole plan holds" not in JS and "Other strong plans" not in JS
@@ -405,7 +406,7 @@ def test_the_columns_grow_together_the_table_starts_on_adp_and_the_score_has_its
     columns = re.findall(r"grid-template-columns:([^;]*);", CSS)
     assert columns and not any(re.search(r"(?<![\w(,] )\b(?:380|400|420|540)px\s*(?:minmax|;|$)", value) for value in columns)
     assert "sort: { key: 'adp', direction: 1 }" in JS
-    score_tint = JS[JS.index("const scoreFill"): JS.index("// A stat tinted")]
+    score_tint = JS[JS.index("const scoreFill"): JS.index("// A stat marked by")]
     assert "scoreTint(row)" in JS and "var(--score)" in score_tint and "var(--cool)" not in score_tint
     for kind in ("planner", "adp", "both"):
         assert f".predict-mark.{kind}" in CSS
@@ -451,7 +452,7 @@ def test_the_score_column_defaults_to_a_bar_of_the_gap_to_the_best_player_left_a
     assert html.count('name="scorestyle"') == 3 and 'value="bar" checked' in html
     assert "let scoreStyle = 'bar';" in JS and "SCORE_STYLES = ['bar', 'rank', 'range']" in JS
     tint = JS[JS.index("function scoreTint(row)"): JS.index("function scoreTitle")]
-    assert "linear-gradient(to right" in tint and "scoreBarShare(score, scoreAnchors)" in tint and "SCORE_BAR_SPAN" not in JS
+    assert "--bar:" in tint and "::after" in CSS and "scoreBarShare(score, scoreAnchors)" in tint and "SCORE_BAR_SPAN" not in JS
     assert "row.rank <= limit" in tint, "colour by rank uses the rank among the players left, not the score"
     assert "localStorage.setItem(SCORE_STYLE_KEY" in JS and "scorestyle" in JS[JS.index("function wireControls()"):], "a browser preference"
     assert "behind the best score left" in JS

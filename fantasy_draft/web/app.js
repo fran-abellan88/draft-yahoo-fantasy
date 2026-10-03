@@ -1042,8 +1042,7 @@ function scoreTint(row) {
   const score = row.score;
   if (score === null || score === undefined) return '';
   if (scoreStyle === 'bar') {
-    const width = Math.round(100 * scoreBarShare(score, scoreAnchors));
-    return `background: linear-gradient(to right, ${scoreFill(SCORE_TINT_MAX)} ${width}%, transparent ${width}%)`;
+    return `--bar: ${scoreBarShare(score, scoreAnchors).toFixed(3)}`; // drawn by .score-cell.bar::after
   }
   if (scoreStyle === 'rank') {
     const tier = SCORE_RANK_TIERS.find(([limit]) => row.rank <= limit);
@@ -1083,12 +1082,13 @@ function applyScoreStyle(choice) {
   if (input) input.checked = true;
 }
 
-// A stat tinted by how good it is in its category (0 to 100 on the capped scale); unticked categories are dimmed
+// A stat marked by how good it is in its category (0 to 100 on the capped scale): a capsule for strong values, muted for weak
+// ones, nothing for the rest; unticked categories are dimmed
 function statCell(column, player, row) {
-  const score = row.categoryScores[column.key];
   const ticked = state.categories.includes(column.key);
-  const style = ticked && score !== null && score !== undefined ? `background: color-mix(in srgb, var(--cool) ${Math.round(Math.max(0, Math.min(100, score)) * 0.22)}%, transparent)` : '';
-  return h('td', { class: ticked ? '' : 'dim', style }, column.kind === 'rate' ? formatRate(player.stats[column.key]) : oneDecimal(player.stats[column.key]));
+  const level = ticked ? statLevel(row.categoryScores[column.key]) : '';
+  const text = column.kind === 'rate' ? formatRate(player.stats[column.key]) : oneDecimal(player.stats[column.key]);
+  return h('td', { class: ticked ? 'stat' : 'stat dim' }, level ? h('span', { class: `cap ${level}` }, text) : text);
 }
 
 // Only offered while picks are unseen; it must not also log the row, so its clicks and keys stop here
@@ -1157,14 +1157,14 @@ function renderPool() {
     const isRecommended = analysis.recommendation && analysis.recommendation.id === player.id;
     const cells = [
       h('td', {}, row.rank),
-      h('td', { class: 'left player' }, h('strong', {}, isRecommended ? `★ ${player.name}` : player.name), h('div', { class: 'meta' }, `${player.team}, ${player.positions.join('/')}`), h('div', { class: 'notes' }, [
+      h('td', { class: 'left player' }, h('strong', {}, player.name, isRecommended ? h('span', { class: 'pick-tag' }, 'Pick') : null), h('div', { class: 'meta' }, `${player.team} · ${player.positions.join('/')}`), h('div', { class: 'notes' }, [
         ...(planned && !isRecommended ? [badge(`plan: ${planned}`, 'info', `The current plan takes him at pick ${planned}`)] : []),
         ...(unconfirmed ? [badge('Logged, not confirmed. Click to retry', 'injury', 'The server has not confirmed this pick yet')] : []),
         ...(pending ? [badge('Logging the pick', 'info', 'Waiting for the server to confirm this pick')] : []),
         ...notesFor(row, player),
         ...(hasUnseenPicks() && row.unseenRisk >= UNSEEN_RISK_SHOWN ? [goneButton(player)] : []),
       ])),
-      h('td', { class: 'score score-cell', style: scoreTint(row), title: scoreTitle(row) }, oneDecimal(row.score), previousScore(row)),
+      h('td', { class: `score score-cell${scoreStyle === 'bar' ? ' bar' : ''}`, style: scoreTint(row), title: scoreTitle(row) }, oneDecimal(row.score), previousScore(row)),
       oddsCell(oddsAtColumn(row)),
       h('td', { title: player.adpEstimated ? 'Yahoo shows no ADP for him; estimated from nearby ranks' : '' }, `${player.adpEstimated ? '~' : ''}${player.adp.toFixed(1)}`),
       h('td', {}, player.xrank),
@@ -1175,7 +1175,7 @@ function renderPool() {
       'tr',
       {
         tabindex: '0',
-        class: unconfirmed || pending ? 'unconfirmed' : '',
+        class: [unconfirmed || pending ? 'unconfirmed' : '', isRecommended ? 'recommended' : ''].filter(Boolean).join(' '),
         'data-id': player.id,
         title: `Log ${player.name} as the pick on the clock`,
         onclick: () => rowPicked(player.id),
@@ -1324,13 +1324,19 @@ function projectedTable() {
   return planner ? plannerLeague : analysis.league.projected;
 }
 
-function tintFor(rank, teams) {
-  const good = teams > 1 ? (teams - rank) / (teams - 1) : 0.5; // 1 for the best, 0 for the worst
-  return `background: color-mix(in srgb, var(--cool) ${Math.round(good * 30)}%, transparent)`;
+// The rank as a 0-100 score (100 for the best team, 0 for the worst), marked like a stat in the player table
+function rankLevel(rank, teams) {
+  return statLevel(teams > 1 ? (100 * (teams - rank)) / (teams - 1) : 50);
 }
 
 function cellValue(key, value) {
   return key === 'fg_pct' || key === 'ft_pct' ? formatRate(value) : oneDecimal(value);
+}
+
+function leagueCell(key, team, compared) {
+  const level = rankLevel(team.ranks[key], compared);
+  const text = cellValue(key, team.totals[key]);
+  return h('td', { title: `${ordinal(team.ranks[key])} of ${compared}` }, level ? h('span', { class: `cap ${level}` }, text) : text);
 }
 
 function leagueTable(table, keys, labels) {
@@ -1354,7 +1360,7 @@ function leagueTable(table, keys, labels) {
       ...keys.map((key) =>
         team.totals === null
           ? h('td', { class: 'dim' }, '')
-          : h('td', { style: tintFor(team.ranks[key], table.compared), title: `${ordinal(team.ranks[key])} of ${table.compared}` }, cellValue(key, team.totals[key])),
+          : leagueCell(key, team, table.compared),
       ),
     ),
   );
