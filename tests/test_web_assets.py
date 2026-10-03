@@ -511,6 +511,16 @@ def test_the_team_name_is_the_elastic_column_of_the_league_tables_and_projected_
 def test_the_top_bar_roster_and_log_use_the_midnight_shapes() -> None:
     assert "class: 'clock-pick'" in JS and ".clock-pick { display: block; font-size: 22px" in CSS
     assert re.search(r"\.snake \.cell \{[^}]*width: 25px[^}]*border-radius: 50%", CSS), "the snake is a row of 25 px circles"
-    assert re.search(r"\.modes a\[aria-current=\"page\"\] \{[^}]*background: var\(--selected\)", CSS), "the draft switch is a segmented control"
+    switch = re.search(r"\.modes a\[aria-current=\"page\"\] \{[^}]*background: var\(--selected\)", CSS)
+    assert switch, "the draft switch is a segmented control"
     assert re.search(r"\.roster \.slot \.pick \{[^}]*width: 40px; height: 28px; border-radius: 9px", CSS), "slot chips"
     assert ".team-name::before" in CSS, "the log joins its details with a middle dot"
+
+
+def test_the_category_bars_show_the_stat_and_standing_names_its_categories() -> None:
+    bars = JS[JS.index("function categoryBars(row)"): JS.index("// A ring that fills")]
+    assert "player.stats[category.key]" in bars, "the stat on top of each bar"
+    assert "among the players in the pool" in bars, "the 0 to 100 score is in the title"
+    assert "class: 'tile-names'" in JS, "the categories are named in the tile, not only in its title"
+    meta_rule = re.search(r"\.player-line \.meta \{[^}]*flex: 0 1000 auto", CSS)
+    assert meta_rule, "the meta line gives way completely before the name"

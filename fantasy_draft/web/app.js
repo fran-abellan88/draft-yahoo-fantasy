@@ -879,14 +879,15 @@ function renderHero() {
 
 // One column per ticked category: how the player ranks in it among everyone in the pool (0 to 100), tall and cyan when strong
 function categoryBars(row) {
+  const player = playerById.get(row.id);
   const ticked = pool.categories.filter((category) => state.categories.includes(category.key));
   const columns = ticked.map((category) => {
     const score = row.categoryScores[category.key];
     const known = score !== null && score !== undefined;
     return h(
       'div',
-      { class: `cat ${known ? statLevel(score) : ''}`, title: known ? `${category.label}: ${Math.round(score)} of 100 among the players in the pool` : category.label },
-      h('span', { class: 'cat-value' }, known ? Math.round(score) : '-'),
+      { class: `cat ${known ? statLevel(score) : ''}`, title: known ? `${category.label}: ${Math.round(score)} of 100 among the players in the pool (the bar)` : category.label },
+      h('span', { class: 'cat-value' }, category.key === 'fg_pct' || category.key === 'ft_pct' ? formatRate(player.stats[category.key]) : oneDecimal(player.stats[category.key])),
       h('div', { class: 'cat-track' }, h('div', { class: 'cat-fill', style: `height: ${Math.max(8, known ? score : 0)}%` })),
       h('span', { class: 'cat-label' }, category.label),
     );
@@ -972,7 +973,7 @@ function renderPlan() {
       meter(step.availability, step.pick === analysis.clock.pick && !hasUnseenPicks()),
     );
   });
-  const foot = h('div', { class: 'plan-foot' }, `Roster score ${oneDecimal(best.totalScore)}. The plan is recomputed after each pick.`);
+  const foot = h('div', { class: 'plan-foot' }, `Roster score ${oneDecimal(best.totalScore)}. `, helpButton('The plan is recomputed after each pick.', 'About the plan'));
   put(container, h('div', { class: 'plan' }, rows, foot));
 }
 
@@ -1036,8 +1037,8 @@ function notesFor(row, player) {
   const notes = [];
   if (player.status) notes.push(badge(player.status, 'injury', STATUS_TITLES[player.status] || 'Injury report'));
   const flags = row.flags;
-  if (flags.noLastSeason) notes.push(badge('No 2025-26 stats', 'info', 'No stats last season: injured, a rookie, or missing in Yahoo. The score rests on the projection alone.'));
-  if (flags.smallSample) notes.push(badge(`${player.lastSeason.gp} GP in 2025-26`, 'info', 'Too few games last season for the average to mean much.'));
+  if (flags.noLastSeason) notes.push(badge('No 25-26 stats', 'info', 'No stats last season: injured, a rookie, or missing in Yahoo. The score rests on the projection alone.'));
+  if (flags.smallSample) notes.push(badge(`${player.lastSeason.gp} GP in 25-26`, 'info', `Only ${player.lastSeason.gp} games in 2025-26, too few for the average to mean much.`));
   if (flags.lowGames) notes.push(badge(`Proj ${player.gp} GP`, '', 'Projected to miss a lot of games. Scores are per game, so availability is not in the number.'));
   return notes;
 }
@@ -1339,7 +1340,7 @@ function renderStanding() {
   const groups = { Winning: [], Close: [], Behind: [] };
   for (const key of keys) groups[standingGroup(projectedTable().standing[key].beaten)].push(labels[key]);
   const tiles = Object.entries(groups).map(([name, names]) =>
-    h('div', { class: `tile ${name.toLowerCase()}`, title: names.length ? `${name}: ${names.join(', ')}` : `No category is ${name.toLowerCase()}` }, h('strong', {}, names.length), h('span', {}, name)),
+    h('div', { class: `tile ${name.toLowerCase()}`, title: names.length ? `${name}: ${names.join(', ')}` : `No category is ${name.toLowerCase()}` }, h('strong', {}, names.length), h('span', {}, name), h('span', { class: 'tile-names' }, names.join(' · '))),
   );
   put(
     container,
