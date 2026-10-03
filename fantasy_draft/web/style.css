@@ -173,17 +173,38 @@ tr.unconfirmed { opacity: 0.6; }
 /* Recommendation */
 .hero { background: var(--surface); border-radius: 20px; padding: 16px 18px; }
 .hero h2 { font-size: 15px; color: var(--muted); font-weight: 600; margin-bottom: 4px; }
-.hero .name { font-size: 36px; line-height: 1.1; font-weight: 750; letter-spacing: -0.01em; }
+.hero h2.hero-pill { display: inline-block; margin: 0 0 8px; padding: 4px 12px; border-radius: 999px; background: var(--raised); color: var(--muted); font-size: 13px; font-weight: 650; letter-spacing: 0; }
+.hero.yours h2.hero-pill { background: var(--mine-soft); color: var(--mine); }
+.hero-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.hero-who { min-width: 0; }
+.hero .name { font-size: 40px; line-height: 0.98; font-weight: 800; letter-spacing: -0.035em; }
 .hero.yours .name { color: var(--mine); }
-.hero .facts { margin-top: 6px; color: var(--muted); }
-.hero .then { margin-top: 14px; max-width: 70ch; }
-.hero .cta { margin-top: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.hero .meta { margin-top: 6px; color: var(--muted); font-size: 15px; }
+.hero-score { text-align: right; flex: none; }
+.hero-score strong { display: block; font-size: 40px; line-height: 1; font-weight: 300; letter-spacing: -0.04em; }
+.hero-score span { color: var(--muted); font-size: 13px; }
+.hero .facts { margin-top: 8px; color: var(--muted); }
+.hero .cta { margin-top: 14px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.hero .cta .primary { flex: 1 1 100%; padding: 12px; border-radius: 14px; font-size: 16px; }
+
+/* Nine category bars: one column per ticked category, as tall as the player ranks in it */
+.cat-bars { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: 5px; margin-top: 14px; text-align: center; }
+.cat { display: grid; gap: 4px; }
+.cat-value { font-size: 12px; font-weight: 600; color: var(--muted); }
+.cat.strong .cat-value { color: var(--cool); font-weight: 750; }
+.cat-track { display: flex; align-items: flex-end; height: 44px; border-radius: 7px; background: var(--raised); overflow: hidden; }
+.cat-fill { width: 100%; background: var(--taken); }
+.cat.strong .cat-fill { background: var(--cool); }
+.cat.mid .cat-fill { background: color-mix(in srgb, var(--cool) 55%, var(--taken)); }
+.cat-label { font-size: 10px; font-weight: 650; color: var(--muted); }
+
 
 /* Plan */
 .plan { background: var(--raised); border-radius: 14px; overflow: hidden; }
-.step { display: grid; grid-template-columns: 52px minmax(0, 1fr) 48px 110px; gap: 12px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--line); }
-.step:first-child { border-top: 0; }
-.step .pick { font-weight: 700; }
+.step { position: relative; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto 74px; gap: 12px; align-items: center; padding: 5px 12px; }
+.pick-tile { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; background: var(--selected); font-weight: 700; font-size: 14px; }
+.pick-tile.now { background: var(--mine); color: var(--on-mine); }
+.step:not(:last-of-type)::before { content: ""; position: absolute; left: 28px; top: calc(50% + 17px); height: calc(100% - 34px); width: 2px; background: var(--line); }
 .step .who { min-width: 0; }
 .step .who strong { font-weight: 650; }
 .step .meta { color: var(--muted); font-size: 13px; }
@@ -198,20 +219,26 @@ button.gone { padding: 1px 8px; font-size: 12px; margin-left: 6px; }
 .search-note { margin: 0 0 10px; padding: 8px 12px; background: var(--flag-soft); color: var(--flag); border-radius: 6px; font-size: 13px; max-width: 80ch; }
 /* Shown when a reply takes longer than a moment, so a slow answer is not mistaken for a frozen page */
 #app.busy .hero, #app.busy #plan { opacity: 0.5; transition: opacity 0.15s; }
-.hero-alts { margin-top: 12px; }
+.hero-alts { margin-top: 14px; padding: 8px 14px; border-radius: 14px; background: var(--raised); }
 .hero-alts h3 { margin: 0 0 4px; font-size: 14px; font-weight: 600; color: var(--muted); }
 .hero-alts ul { margin: 0; padding: 0; list-style: none; }
-.hero-alts li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; padding: 3px 0; border-top: 1px solid var(--line); }
+.hero-alts li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; padding: 5px 0; border-top: 1px solid var(--line); }
+.hero-alts li strong { font-weight: 600; }
+.hero-alts .gap { color: var(--muted); }
+.hero-alts .gap.same { color: var(--mine); }
 .hero-alts li:first-child { border-top: 0; }
 .hero-alts .meta { color: var(--muted); font-size: 13px; align-self: center; }
 .hero-alts .gap { font-variant-numeric: tabular-nums; align-self: center; }
 .subhead { margin: 14px 0 6px; font-size: 14px; font-weight: 650; }
 td.wont-last { color: var(--flag); font-weight: 650; }
 
-.meter { display: grid; gap: 3px; font-size: 13px; color: var(--muted); }
-.meter .track { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
-.meter .fill { height: 100%; background: var(--cool); }
-.meter .fill.low { background: var(--taken); }
+.odds { display: flex; align-items: center; justify-content: flex-end; gap: 6px; font-size: 13px; color: var(--muted); }
+.odds .ring { width: 24px; height: 24px; }
+.ring-track { fill: none; stroke: var(--line); stroke-width: 4.2; }
+.ring-fill { fill: none; stroke: var(--cool); stroke-width: 4.2; stroke-linecap: round; }
+.odds.low { color: var(--flag); font-weight: 650; }
+.odds.low .ring-fill { stroke: var(--flag); }
+.odds.on-clock { color: var(--mine); font-weight: 650; font-size: 12px; white-space: nowrap; }
 
 /* Pool */
 .filters { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; align-items: center; }
@@ -232,10 +259,9 @@ th[aria-sort="ascending"] button::after { content: " \25B2"; font-size: 10px; }
 th[aria-sort="descending"] button::after { content: " \25BC"; font-size: 10px; }
 tbody tr { cursor: pointer; }
 tbody tr:hover { background: var(--hover); }
-td.player { min-width: 260px; white-space: nowrap; }
+td.player { white-space: nowrap; }
 td.player strong { font-weight: 650; }
-td.player .meta { display: inline; margin-left: 8px; color: var(--muted); font-size: 13px; }
-td.player .notes { display: inline; margin-left: 4px; }
+td.player .meta { color: var(--muted); font-size: 13px; }
 .score { font-weight: 700; }
 
 .badge { display: inline-block; margin: 1px 4px 1px 0; padding: 1px 7px; border-radius: 999px; font-size: 12px; background: var(--flag-soft); color: var(--flag); }
@@ -409,14 +435,23 @@ body { margin: 0; }
   .app:not([data-tab="log"]) .panel.log { display: none; }
   .seam-plan { max-height: none; }
   .hero .name { font-size: 22px; }
-  .step { grid-template-columns: 44px 1fr; }
-  .step .meter, .step .score-col { grid-column: 2; }
+  .step { grid-template-columns: 34px 1fr; }
+  .step .odds, .step .score-col { grid-column: 2; }
 }
 
 /* Standing and the 14 teams */
 .standing-row { grid-template-columns: 44px 1fr 120px; }
 .standing-row .rank { text-align: right; color: var(--muted); font-size: 12px; }
-.standing-summary { margin: 0 0 10px; color: var(--ink); }
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+.tile { display: grid; gap: 2px; padding: 8px 10px; border-radius: 14px; background: var(--raised); }
+.tile strong { font-size: 26px; line-height: 1.1; font-weight: 750; }
+.tile span { font-size: 12px; color: var(--muted); }
+.tile.winning strong { color: var(--mine); }
+.tile.behind strong { color: var(--flag); }
+.standing-row .bar { height: 7px; }
+.standing-row.winning .bar.roster > span { background: var(--mine); }
+.standing-row.close .bar.roster > span { background: var(--muted); }
+.standing-row.behind .bar.roster > span { background: var(--flag); }
 .league-views { display: flex; gap: 6px; margin-bottom: 8px; }
 .league-views button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 .league-wrap { overflow: auto; border-radius: 14px; background: var(--raised); }
@@ -512,7 +547,13 @@ td.dim { opacity: 0.45; }
 #pool th[aria-sort] button { color: var(--ink); }
 td.player strong { font-weight: 600; }
 td.player .meta { font-size: 13px; font-weight: 450; }
-td.player { max-width: 330px; overflow: hidden; text-overflow: ellipsis; }
+/* The Player column takes what the numbers leave. In it the meta line gives way first, then the name; a badge never does */
+td.player { width: 99%; max-width: 0; }
+.player-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.player-line strong { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.player-line .meta { flex: 0 10 auto; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.player-line .notes { flex: none; display: flex; align-items: center; margin: 0; }
+.player-line .pick-tag { flex: none; margin: 0; }
 .prev { font-size: 12.5px; }
 .pick-tag { margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: var(--mine); color: var(--on-mine); font-size: 11px; font-weight: 700; vertical-align: middle; }
 #pool tr.recommended td, #pool tr.recommended:hover td { background: var(--mine-soft); }
@@ -525,8 +566,8 @@ td.player { max-width: 330px; overflow: hidden; text-overflow: ellipsis; }
 .league-table { font-size: 14.5px; font-weight: 500; font-stretch: 80%; }
 .league-table th { padding: 6px 3px; font-size: 10.5px; font-weight: 650; font-stretch: 86%; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
 .league-table td { height: 30px; padding: 0 3px; }
-.league-table td.left { max-width: 149px; font-stretch: 76%; }
-.league-table .cap { padding: 2px 1px; border-radius: 5px; }
+.league-table td.left { width: 99%; max-width: 0; font-stretch: 76%; } /* the team name is the elastic column; its title shows the whole name */
+.league-table .cap { padding: 2px 0; border-radius: 5px; }
 .league-table tr.mine-row td { background: var(--mine-soft); box-shadow: none; font-weight: 700; }
 .league-table tr.mine-row td:first-child { border-radius: 10px 0 0 10px; }
 .league-table tr.mine-row td:last-child { border-radius: 0 10px 10px 0; }

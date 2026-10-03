@@ -285,7 +285,7 @@ def test_the_table_marks_the_plan_tints_the_stats_and_the_hero_explains_itself()
     assert "statCell(column, player, row)" in JS and "row.categoryScores[column.key]" in JS and "td.dim" in CSS
     assert "statLevel(" in JS and "background: var(--cool-strong)" in CSS, "a capsule only on strong stats, no fill on every cell"
     assert "UNSEEN_RISK_SHOWN" in JS and "row.unseenRisk >= UNSEEN_RISK_SHOWN" in JS, "Gone only where the unseen picks matter"
-    assert "whyNotTheTopScore(recommendation, plan)" in JS and "Current plan:" in JS and "Today's plan" not in JS
+    assert "whyNotTheTopScore(recommendation, plan)" in JS and "You pick at ${recommendation.pick}" in JS and "Today's plan" not in JS
     assert "Odds the whole plan holds" not in JS and "Other strong plans" not in JS
     assert "analysis.bestAvailable" in JS and "are not planned" in JS
     assert "oddsAtColumn(row)" in JS and "analysis.laterPick" in JS
@@ -323,7 +323,7 @@ def test_text_stays_readable_on_the_strongest_tint_of_a_table_cell(theme: str) -
 def test_green_means_only_mine_and_the_odds_and_stats_use_the_second_hue() -> None:
     tints = [line for line in JS.splitlines() if "color-mix" in line]
     assert tints and all(("var(--cool)" in line or "var(--score)" in line) and "var(--mine)" not in line for line in tints)
-    assert ".meter .fill { height: 100%; background: var(--cool); }" in CSS
+    assert ".ring-fill { fill: none; stroke: var(--cool);" in CSS
     assert "accent-color: var(--cool)" in CSS
 
 
@@ -494,3 +494,15 @@ def test_midnight_has_the_roles_the_later_steps_need() -> None:
     assert dark["paper"] == "#000000" and dark["surface"] == "#1c1c1e"
     assert _contrast(dark["ink"], dark["surface"]) >= 15
     assert _contrast(dark["muted"], dark["surface"]) >= 7
+
+
+def test_a_badge_never_disappears_from_the_player_table() -> None:
+    # The name and the meta line give way (with an ellipsis) before a badge does, and the Player column takes what the numbers leave
+    assert "td.player { width: 99%; max-width: 0; }" in CSS
+    assert re.search(r"\.player-line \.notes \{[^}]*flex: none", CSS)
+    assert re.search(r"\.player-line \.meta \{[^}]*text-overflow: ellipsis", CSS)
+
+
+def test_the_team_name_is_the_elastic_column_of_the_league_tables_and_projected_has_no_count() -> None:
+    assert re.search(r"\.league-table td\.left \{[^}]*width: 99%; max-width: 0", CSS)
+    assert "leagueTable(projected, keys, labels, false)" in JS, "every projected team has the same number of players"

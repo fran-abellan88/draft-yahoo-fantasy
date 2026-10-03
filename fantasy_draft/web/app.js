@@ -87,7 +87,7 @@ const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 const nameOf = (id) => playerById.get(id).name;
 const detailOf = (id) => {
   const player = playerById.get(id);
-  return `${player.team}, ${player.positions.join('/')}`;
+  return `${player.team} · ${player.positions.join('/')}`;
 };
 
 // ---------- persistence ----------
@@ -830,27 +830,30 @@ function renderHero() {
 
   const row = poolRowById.get(recommendation.id);
   const plan = analysis.plans[0];
-  const laterSteps = plan.steps.slice(1, 4).map((step) => `${nameOf(step.id)} at ${step.pick}`);
   const mine = clock.isMine;
   hero.className = `hero${mine ? ' yours' : ''}`;
 
-  const heading = mine
-    ? `Pick ${recommendation.pick} is yours. Take`
-    : `You pick at ${recommendation.pick}, after ${plural(clock.picksUntilMine, 'more pick')}. Current plan:`;
+  const pill = mine ? `Your pick · ${recommendation.pick}` : `You pick at ${recommendation.pick}`;
   // On my turn the player is on the board unless picks were missed: then the doubt is shown and the user checks Yahoo
   const doubt = mine && hasUnseenPicks() && row.availability !== null;
   const odds = doubt
     ? (state.rule.type === 'window' ? "Picks were missed. Check he is still on Yahoo's board." : `${pct(row.availability)} chance he is still on the board. Check Yahoo.`)
     : !mine && row.availability !== null ? `${pct(row.availability)} chance he is still there.` : '';
+  const timing = mine ? '' : `After ${plural(clock.picksUntilMine, 'more pick')}.`;
   const lookFirst = doubt ? analysis.lookFirst : [];
   const reason = whyNotTheTopScore(recommendation, plan);
-  put(hero, 
-    h('h2', {}, heading),
-    h('p', { class: 'name' }, nameOf(recommendation.id)),
-    h('p', { class: 'facts' }, `${detailOf(recommendation.id)}, score ${oneDecimal(row.score)}${odds ? `. ${odds}` : ''}`),
+  const facts = [timing, odds].filter(Boolean).join(' ');
+  put(hero,
+    h(
+      'div',
+      { class: 'hero-head' },
+      h('div', { class: 'hero-who' }, h('h2', { class: 'hero-pill' }, pill), h('p', { class: 'name' }, nameOf(recommendation.id)), h('p', { class: 'meta' }, detailOf(recommendation.id))),
+      h('div', { class: 'hero-score', title: 'Score for your ticked categories' }, h('strong', {}, oneDecimal(row.score)), h('span', {}, 'Score')),
+    ),
+    categoryBars(row),
+    facts ? h('p', { class: 'facts' }, facts) : null,
     reason ? h('p', { class: 'facts' }, reason) : null,
     analysis.search.truncated ? h('p', { class: 'facts' }, 'Approximate: the search was cut short. See the note under Plan.') : null,
-    laterSteps.length ? h('p', { class: 'then' }, `Then ${laterSteps.join(', ')}.`) : null,
     alternativesBlock(),
     lookFirst.length
       ? h('p', { class: 'facts' }, 'If still on the board, look first at: ', ...lookFirst.flatMap((entry) => [
@@ -872,15 +875,47 @@ function renderHero() {
   );
 }
 
+// One column per ticked category: how the player ranks in it among everyone in the pool (0 to 100), tall and cyan when strong
+function categoryBars(row) {
+  const ticked = pool.categories.filter((category) => state.categories.includes(category.key));
+  const columns = ticked.map((category) => {
+    const score = row.categoryScores[category.key];
+    const known = score !== null && score !== undefined;
+    return h(
+      'div',
+      { class: `cat ${known ? statLevel(score) : ''}`, title: known ? `${category.label}: ${Math.round(score)} of 100 among the players in the pool` : category.label },
+      h('span', { class: 'cat-value' }, known ? Math.round(score) : '-'),
+      h('div', { class: 'cat-track' }, h('div', { class: 'cat-fill', style: `height: ${Math.max(8, known ? score : 0)}%` })),
+      h('span', { class: 'cat-label' }, category.label),
+    );
+  });
+  return h('div', { class: 'cat-bars', style: `--n: ${ticked.length}` }, ...columns);
+}
+
+// A ring that fills with the chance he is still there; "On the clock" when this is the pick being made
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function ring(share) {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 36 36');
+  svg.setAttribute('class', 'ring');
+  svg.setAttribute('aria-hidden', 'true');
+  const circle = (className, extra) => {
+    const node = document.createElementNS(SVG_NS, 'circle');
+    node.setAttribute('cx', '18');
+    node.setAttribute('cy', '18');
+    node.setAttribute('r', '15');
+    node.setAttribute('class', className);
+    for (const [name, value] of Object.entries(extra)) node.setAttribute(name, value);
+    return node;
+  };
+  svg.append(circle('ring-track', {}), circle('ring-fill', { pathLength: '100', 'stroke-dasharray': `${Math.round(share * 100)} 100`, transform: 'rotate(-90 18 18)' }));
+  return svg;
+}
+
 function meter(availability, isCurrent) {
-  if (isCurrent) return h('div', { class: 'meter' }, h('span', {}, 'On the clock'));
-  const low = availability < 0.6 ? ' low' : '';
-  return h(
-    'div',
-    { class: 'meter', title: 'Chance he is still available at this pick, from ADP' },
-    h('span', {}, `${pct(availability)} likely there`),
-    h('div', { class: 'track' }, h('div', { class: `fill${low}`, style: `width:${Math.round(availability * 100)}%` })),
-  );
+  if (isCurrent) return h('div', { class: 'odds on-clock' }, 'On the clock');
+  const low = availability < 0.5 ? ' low' : ''; // the same rule as the odds column of the table
+  return h('div', { class: `odds${low}`, title: 'Chance he is still available at this pick, from ADP' }, h('span', {}, pct(availability)), ring(availability));
 }
 
 // Shown only when it says something: a cut-short search prices its alternatives approximately, and when every
@@ -906,7 +941,7 @@ function alternativesBlock() {
     ? `If ${nameOf(analysis.recommendation.id)} is gone by pick ${analysis.recommendation.pick}, take instead`
     : 'Or take instead';
   const items = analysis.alternatives.map((alt) =>
-    h('li', {}, h('strong', {}, nameOf(alt.id)), h('span', { class: 'meta' }, detailOf(alt.id)), h('span', { class: 'gap' }, alt.behind >= TIE_POINTS ? `${oneDecimal(alt.behind)} lower` : 'same score')),
+    h('li', {}, h('strong', {}, nameOf(alt.id)), h('span', { class: 'meta' }, detailOf(alt.id)), h('span', { class: alt.behind >= TIE_POINTS ? 'gap' : 'gap same' }, alt.behind >= TIE_POINTS ? `\u2212${oneDecimal(alt.behind)}` : 'Same score')),
   );
   return h(
     'div',
@@ -929,7 +964,7 @@ function renderPlan() {
     return h(
       'div',
       { class: 'step' },
-      h('div', { class: 'pick' }, `Pick ${step.pick}`),
+      h('div', { class: `pick-tile${step.pick === analysis.clock.pick && !hasUnseenPicks() ? ' now' : ''}`, title: `Pick ${step.pick}` }, step.pick),
       h('div', { class: 'who' }, h('strong', {}, nameOf(step.id)), h('div', { class: 'meta' }, detailOf(step.id))),
       h('div', { class: 'score-col' }, h('strong', {}, oneDecimal(row.score)), h('div', { class: 'meta' }, 'score')),
       meter(step.availability, step.pick === analysis.clock.pick && !hasUnseenPicks()),
@@ -1157,13 +1192,13 @@ function renderPool() {
     const isRecommended = analysis.recommendation && analysis.recommendation.id === player.id;
     const cells = [
       h('td', {}, row.rank),
-      h('td', { class: 'left player' }, h('strong', {}, player.name, isRecommended ? h('span', { class: 'pick-tag' }, 'Pick') : null), h('div', { class: 'meta' }, `${player.team} · ${player.positions.join('/')}`), h('div', { class: 'notes' }, [
+      h('td', { class: 'left player' }, h('div', { class: 'player-line' }, h('strong', {}, player.name), isRecommended ? h('span', { class: 'pick-tag' }, 'Pick') : null, h('div', { class: 'meta' }, `${player.team} · ${player.positions.join('/')}`), h('div', { class: 'notes' }, [
         ...(planned && !isRecommended ? [badge(`plan: ${planned}`, 'info', `The current plan takes him at pick ${planned}`)] : []),
         ...(unconfirmed ? [badge('Logged, not confirmed. Click to retry', 'injury', 'The server has not confirmed this pick yet')] : []),
         ...(pending ? [badge('Logging the pick', 'info', 'Waiting for the server to confirm this pick')] : []),
         ...notesFor(row, player),
         ...(hasUnseenPicks() && row.unseenRisk >= UNSEEN_RISK_SHOWN ? [goneButton(player)] : []),
-      ])),
+      ]))),
       h('td', { class: `score score-cell${scoreStyle === 'bar' ? ' bar' : ''}`, style: scoreTint(row), title: scoreTitle(row) }, oneDecimal(row.score), previousScore(row)),
       oddsCell(oddsAtColumn(row)),
       h('td', { title: player.adpEstimated ? 'Yahoo shows no ADP for him; estimated from nearby ranks' : '' }, `${player.adpEstimated ? '~' : ''}${player.adp.toFixed(1)}`),
@@ -1293,7 +1328,7 @@ function renderStanding() {
     const now = league.standing[key];
     return h(
       'div',
-      { class: 'profile-row standing-row', title: `Beats ${Math.round(projected.beaten * 13 * 10) / 10} of the other 13 teams projected${key === 'to' ? '. Fewer turnovers is better' : ''}` },
+      { class: `profile-row standing-row ${standingGroup(projected.beaten).toLowerCase()}`, title: `Beats ${Math.round(projected.beaten * 13 * 10) / 10} of the other 13 teams projected${key === 'to' ? '. Fewer turnovers is better' : ''}` },
       h('span', {}, labels[key]),
       h('div', { class: 'bars' }, h('div', { class: 'bar roster' }, h('span', { style: `width:${Math.round(projected.beaten * 100)}%` }))),
       h('span', { class: 'rank' }, haveNow ? `${ordinal(now.rank)} now, ${ordinal(projected.rank)} proj.` : `${ordinal(projected.rank)} proj.`),
@@ -1301,10 +1336,12 @@ function renderStanding() {
   });
   const groups = { Winning: [], Close: [], Behind: [] };
   for (const key of keys) groups[standingGroup(projectedTable().standing[key].beaten)].push(labels[key]);
-  const summary = Object.entries(groups).filter(([, names]) => names.length).map(([name, names]) => `${name}: ${names.join(', ')}`).join('. ');
+  const tiles = Object.entries(groups).map(([name, names]) =>
+    h('div', { class: `tile ${name.toLowerCase()}`, title: names.length ? `${name}: ${names.join(', ')}` : `No category is ${name.toLowerCase()}` }, h('strong', {}, names.length), h('span', {}, name)),
+  );
   put(
     container,
-    h('p', { class: 'note standing-summary' }, summary ? `${summary}.` : ''),
+    h('div', { class: 'tiles' }, ...tiles),
     ...rows,
     h('p', { class: 'note' }, 'Bar: the share of the other teams you beat. ', helpButton(`The share of the other 13 teams you beat, ${projectedTable().basis}. "Now" counts the first ${league.size} pick${league.size === 1 ? '' : 's'} of each team, against ${plural(Math.max(league.compared - 1, 0), 'other team')}.`, 'About the Standing bars')),
     renderWeightsNote(keys, labels),
@@ -1339,14 +1376,14 @@ function leagueCell(key, team, compared) {
   return h('td', { title: `${ordinal(team.ranks[key])} of ${compared}` }, level ? h('span', { class: `cap ${level}` }, text) : text);
 }
 
-function leagueTable(table, keys, labels) {
+function leagueTable(table, keys, labels, showCount = true) {
   const head = h(
     'tr',
     {},
     h('th', { title: 'Place by team score' }, '#'),
     h('th', { class: 'left' }, 'Team'),
     h('th', { title: 'Expected categories won against a random team: the share of the other teams beaten, added over the ticked categories' }, 'Score'),
-    h('th', { title: 'Players counted' }, 'n'),
+    showCount ? h('th', { title: 'Players counted' }, 'n') : null,
     ...keys.map((key) => h('th', {}, labels[key])),
   );
   const rows = table.teams.map((team) =>
@@ -1356,7 +1393,7 @@ function leagueTable(table, keys, labels) {
       h('td', {}, team.place === null ? '' : team.place),
       h('td', { class: 'left', title: `${team.name}, slot ${team.slot}` }, team.name),
       h('td', { class: 'score' }, team.score === null ? '' : `${oneDecimal(team.score)}/${keys.length}`),
-      h('td', {}, team.players),
+      showCount ? h('td', {}, team.players) : null,
       ...keys.map((key) =>
         team.totals === null
           ? h('td', { class: 'dim' }, '')
@@ -1407,7 +1444,7 @@ function renderLeague() {
     switcher,
     status ? h('p', { class: 'note league-status', role: 'status' }, status) : null,
     range,
-    leagueTable(projected, keys, labels),
+    leagueTable(projected, keys, labels, false),
     h('p', { class: 'note' }, projectedNote.short, ' ', helpButton(projectedNote.long, 'About the projection')),
     myTeam,
     h('h3', {}, 'So far'),
