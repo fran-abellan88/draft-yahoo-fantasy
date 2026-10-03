@@ -140,7 +140,18 @@
 
     <div class="rail">
     <section class="panel team" data-panel="team">
-      <h2>Your roster</h2>
+      <div class="roster-head">
+        <h2 id="roster-title">Your roster</h2>
+        <button id="roster-back" type="button" class="roster-back" hidden>Back to your roster</button>
+      </div>
+      <div class="roster-tools">
+        <select id="roster-team" aria-label="Show the roster of a team"></select>
+        <div id="roster-basis" class="league-views" role="group" aria-label="Which players" hidden>
+          <button type="button" data-basis="sofar">So far</button>
+          <button type="button" data-basis="projected">Projected</button>
+        </div>
+      </div>
+      <p id="roster-note" class="note" hidden></p>
       <ol id="roster" class="roster"></ol>
       <p id="roster-positions" class="note"></p>
     </section>

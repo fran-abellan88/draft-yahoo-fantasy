@@ -85,9 +85,19 @@ const signed = (value) => `${value > 0 ? '+' : ''}${value.toFixed(1)}`;
 const teamName = (slot) => (pool.league.teamNames ? pool.league.teamNames[slot - 1] : `Slot ${slot}`);
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 const nameOf = (id) => playerById.get(id).name;
+// "PG/SG" as one coloured letter group per position and a muted slash; screen readers still read the text
+function positionsNode(positions) {
+  const nodes = [];
+  positions.forEach((position, index) => {
+    if (index > 0) nodes.push(h('span', { class: 'pos-sep' }, '/'));
+    nodes.push(h('span', { class: 'pos', 'data-pos': position }, position));
+  });
+  return nodes;
+}
+// Team and positions, as nodes: put them in an element (never in a template string)
 const detailOf = (id) => {
   const player = playerById.get(id);
-  return `${player.team} · ${player.positions.join('/')}`;
+  return [`${player.team} \u00b7 `, ...positionsNode(player.positions)];
 };
 
 // ---------- persistence ----------
@@ -363,6 +373,7 @@ async function fetchPlannerLeague(requestId, body) {
   plannerPending = false;
   renderLeague();
   renderStanding();
+  if (viewSlot !== null && viewBasis === 'projected') renderRoster();
 }
 
 // What each other team should have picked (the planner's choice and the best ADP that fits) against what was logged. Real
@@ -665,6 +676,8 @@ function render() {
   renderSearchNote();
   renderUnseenNote();
   renderPool();
+  if (analysis.roster.length > lastMineCount) viewSlot = null; // I logged my own pick: back to my roster
+  lastMineCount = analysis.roster.length;
   renderRoster();
   renderStanding();
   renderLeague();
@@ -826,7 +839,7 @@ function renderHero() {
     put(hero,
       h('h2', {}, `Rounds ${pool.league.rounds + 1} to ${pool.league.rosterSize} are not planned. Best available who fits your lineup:`),
       best ? h('p', { class: 'name' }, nameOf(best.id)) : null,
-      best ? h('p', { class: 'facts' }, `${detailOf(best.id)}, score ${oneDecimal(best.score)}`) : null,
+      best ? h('p', { class: 'facts' }, detailOf(best.id), `, score ${oneDecimal(best.score)}`) : null,
       best && clock.isMine ? h('div', { class: 'cta' }, h('button', { type: 'button', class: 'primary', onclick: () => draft(best.id) }, `Draft ${nameOf(best.id)}`)) : null,
     );
     return;
@@ -1213,7 +1226,7 @@ function renderPool() {
     const isRecommended = analysis.recommendation && analysis.recommendation.id === player.id;
     const cells = [
       h('td', {}, row.rank),
-      h('td', { class: 'left player' }, h('div', { class: 'player-line' }, h('strong', {}, player.name), isRecommended ? h('span', { class: 'pick-tag' }, 'Pick') : null, h('div', { class: 'meta' }, `${player.team} · ${player.positions.join('/')}`), h('div', { class: 'notes' }, [
+      h('td', { class: 'left player' }, h('div', { class: 'player-line' }, h('strong', {}, player.name), isRecommended ? h('span', { class: 'pick-tag' }, 'Pick') : null, h('div', { class: 'meta' }, detailOf(player.id)), h('div', { class: 'notes' }, [
         ...(planned && !isRecommended ? [badge(`plan: ${planned}`, 'info', `The current plan takes him at pick ${planned}`)] : []),
         ...(unconfirmed ? [badge('Logged, not confirmed. Click to retry', 'injury', 'The server has not confirmed this pick yet')] : []),
         ...(pending ? [badge('Logging the pick', 'info', 'Waiting for the server to confirm this pick')] : []),
@@ -1290,8 +1303,77 @@ function renderSearchNote() {
   note.hidden = false;
 }
 
+// Which team the roster panel shows: null is mine. Clicking a team name in a league table, or the select, changes it; the
+// panel goes back to mine when I log my own pick. It never changes by itself while other teams pick, so a team can be watched.
+let viewSlot = null;
+let viewBasis = 'sofar'; // for another team: the picks so far, or the projected completion
+let lastMineCount = 0;
+
+function viewTeam(slot, basis) {
+  if (slot === null || slot === pool.league.slot) {
+    viewSlot = null;
+  } else {
+    viewSlot = slot;
+    if (basis) viewBasis = basis;
+  }
+  renderRoster();
+  renderLeague();
+  // In a narrow window the roster is a tab of its own: show it
+  const teamTab = $('tabs').querySelector('[data-tab="team"]');
+  if (getComputedStyle($('tabs')).display !== 'none' && getComputedStyle(teamTab).display !== 'none') {
+    $('app').dataset.tab = 'team';
+    syncTabs();
+  }
+}
+
+function buildRosterTools() {
+  const options = [pool.league.slot, ...Array.from({ length: pool.league.teams }, (_, index) => index + 1).filter((slot) => slot !== pool.league.slot)];
+  put($('roster-team'), ...options.map((slot) => h('option', { value: String(slot) }, slot === pool.league.slot ? `${teamName(slot)} (you)` : `${slot}. ${teamName(slot)}`)));
+  $('roster-team').addEventListener('change', (event) => viewTeam(Number(event.target.value), null));
+  $('roster-back').addEventListener('click', () => viewTeam(null, null));
+  for (const button of $('roster-basis').querySelectorAll('button')) {
+    button.addEventListener('click', () => {
+      viewBasis = button.dataset.basis;
+      renderRoster();
+      renderLeague();
+    });
+  }
+}
+
+// One roster: the ten starting slots, the bench, and what is not known. `entries` and `lineup` are as the server sends them
+// for my team and for the others. A projected player has a dashed tile and says so in its note.
+function rosterRows(entries, lineup, unseen, mine) {
+  const who = (entry) => (entry.kind === 'outside' ? 'Not in the list' : entry.kind === 'gone' ? `${nameOf(entry.id)} (assumed)` : nameOf(entry.id));
+  const detail = (entry) => (entry.kind === 'outside' ? 'Any position, replacement-level value' : detailOf(entry.id));
+  const note = (entry) => [`${entry.projected ? 'Projected · ' : ''}#${entry.pick} · `, detail(entry)].flat();
+  const slotRows = lineup.slots.map((slot) => {
+    const entry = slot.entry === null ? null : entries[slot.entry];
+    return entry
+      ? h('li', { class: `slot filled${entry.projected ? ' projected' : ''}` }, h('span', { class: 'pick' }, slot.slot), h('span', {}, h('strong', {}, who(entry)), h('div', { class: 'note' }, note(entry))))
+      : h('li', { class: 'slot open' }, h('span', { class: 'pick' }, slot.slot), h('span', { class: 'note' }, 'Open'));
+  });
+  const bench = lineup.bench.map((index) =>
+    h('li', { class: `slot bench${entries[index].projected ? ' projected' : ''}` }, h('span', { class: 'pick' }, 'Bench'), h('span', {}, h('strong', {}, who(entries[index])), h('div', { class: 'note' }, note(entries[index])))),
+  );
+  const unknown = (unseen || []).map((pick) => h('li', { class: 'slot unseen' }, h('span', { class: 'pick' }, '?'), h('span', { class: 'note' }, `Not known: pick #${pick}`)));
+  return [...slotRows, ...bench, ...unknown];
+}
+
 function renderRoster() {
+  const slot = viewSlot === null || viewSlot === pool.league.slot ? null : viewSlot;
   const list = $('roster');
+  $('roster-team').value = String(slot === null ? pool.league.slot : slot);
+  $('roster-back').hidden = slot === null;
+  $('roster-basis').hidden = slot === null;
+  list.classList.toggle('other', slot !== null);
+  const fitsText = (name, fits) => (fits.length ? `${name} can still start: ${fits.join(', ')}.` : 'The lineup is full: another player would sit on the bench.');
+
+  if (slot !== null) {
+    renderOtherRoster(slot, list, fitsText);
+    return;
+  }
+  put($('roster-title'), 'Your roster');
+  $('roster-note').hidden = true;
   const entries = analysis.roster;
   if (entries.length === 0) {
     const first = pool.myPicks[0];
@@ -1299,22 +1381,35 @@ function renderRoster() {
     $('roster-positions').textContent = '';
     return;
   }
-  const who = (entry) => (entry.kind === 'outside' ? 'Not in the list' : nameOf(entry.id));
-  const detail = (entry) => (entry.kind === 'outside' ? 'Any position, replacement-level value' : detailOf(entry.id));
-  const slotRows = analysis.lineup.slots.map((slot) => {
-    const entry = slot.entry === null ? null : entries[slot.entry];
-    return entry
-      ? h('li', { class: 'slot filled' }, h('span', { class: 'pick' }, slot.slot), h('span', {}, h('strong', {}, who(entry)), h('div', { class: 'note' }, `#${entry.pick} · ${detail(entry)}`)))
-      : h('li', { class: 'slot open' }, h('span', { class: 'pick' }, slot.slot), h('span', { class: 'note' }, 'Open'));
-  });
-  const bench = analysis.lineup.bench.map((index) =>
-    h('li', { class: 'slot bench' }, h('span', { class: 'pick' }, 'Bench'), h('span', {}, h('strong', {}, who(entries[index])), h('div', { class: 'note' }, `#${entries[index].pick} · ${detail(entries[index])}`))),
-  );
-  put(list, ...slotRows, ...bench);
+  put(list, ...rosterRows(entries, analysis.lineup, [], true));
   const fits = analysis.lineup.canAdd;
   $('roster-positions').textContent = fits.length
     ? `One more player can start at: ${fits.join(', ')}.`
     : 'The lineup is full: another player would sit on the bench.';
+}
+
+function renderOtherRoster(slot, list, fitsText) {
+  const projected = viewBasis === 'projected';
+  const source = projected ? projectedTable() : analysis.league;
+  const team = source.rosters[slot];
+  const name = teamName(slot);
+  put($('roster-title'), `${name} · slot ${slot}`);
+  for (const button of $('roster-basis').querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset.basis === viewBasis));
+  const logged = team.entries.filter((entry) => !entry.projected).length;
+  const added = team.entries.length - logged;
+  const parts = [`${logged} logged`];
+  if (projected) parts.push(`${added} projected`);
+  if (team.unseen.length) parts.push(`${team.unseen.length} not known`);
+  const how = projected ? (source === plannerLeague ? 'with the same planner' : `to round ${pool.league.rounds}, in ADP order`) : '';
+  put($('roster-note'), parts.join(' · ') + (how ? `. Projected ${how}.` : '.'));
+  $('roster-note').hidden = false;
+  if (team.entries.length === 0 && team.unseen.length === 0) {
+    put(list, h('li', { class: 'empty-row' }, `No picks yet. ${name}'s first pick is #${slot}.`));
+    $('roster-positions').textContent = '';
+    return;
+  }
+  put(list, ...rosterRows(team.entries, team, team.unseen, false));
+  $('roster-positions').textContent = fitsText(name, team.canAdd);
 }
 
 const ordinal = (value) => {
@@ -1397,7 +1492,7 @@ function leagueCell(key, team, compared) {
   return h('td', { title: `${ordinal(team.ranks[key])} of ${compared}` }, level ? h('span', { class: `cap ${level}` }, text) : text);
 }
 
-function leagueTable(table, keys, labels, showCount = true) {
+function leagueTable(table, keys, labels, showCount = true, basis = 'sofar') {
   const head = h(
     'tr',
     {},
@@ -1410,9 +1505,15 @@ function leagueTable(table, keys, labels, showCount = true) {
   const rows = table.teams.map((team) =>
     h(
       'tr',
-      { class: team.mine ? 'mine-row' : '' },
+      { class: `${team.mine ? 'mine-row' : ''}${viewSlot === team.slot && viewBasis === basis ? ' selected-row' : ''}` },
       h('td', {}, team.place === null ? '' : team.place),
-      h('td', { class: 'left', title: `${team.name}, slot ${team.slot}` }, team.name),
+      h('td', { class: 'left', title: `${team.name}, slot ${team.slot}` }, h('button', {
+        type: 'button',
+        class: 'team-link',
+        'aria-pressed': String(viewSlot === team.slot && viewBasis === basis),
+        title: team.mine ? 'Show your roster' : `Show the roster of ${team.name}`,
+        onclick: () => viewTeam(team.slot, basis),
+      }, team.name)),
       h('td', { class: 'score' }, team.score === null ? '' : `${oneDecimal(team.score)}/${keys.length}`),
       showCount ? h('td', {}, team.players) : null,
       ...keys.map((key) =>
@@ -1465,11 +1566,11 @@ function renderLeague() {
     switcher,
     status ? h('p', { class: 'note league-status', role: 'status' }, status) : null,
     range,
-    leagueTable(projected, keys, labels, false),
+    leagueTable(projected, keys, labels, false, 'projected'),
     h('p', { class: 'note' }, projectedNote.short, ' ', helpButton(projectedNote.long, 'About the projection')),
     myTeam,
     h('h3', {}, 'So far'),
-    leagueTable(now, keys, labels),
+    leagueTable(now, keys, labels, true, 'sofar'),
     h('p', { class: 'note' }, `The first ${now.size} pick${now.size === 1 ? '' : 's'} of every team. `, helpButton(nowNote + uncounted, 'About the table so far')),
   );
 }
@@ -1613,7 +1714,7 @@ function renderLog() {
       editing = editing && editing.pick === entry.pick ? null : { pick: entry.pick, pending: null, error: null };
       renderLog();
     } }, 'Edit'));
-    const row = h('li', { class: entry.mine ? 'mine' : '' }, h('span', {}, `#${entry.pick}`), h('span', {}, logLabel(entry), entry.id ? h('span', { class: 'team-name' }, playerById.get(entry.id).positions.join('/')) : null, h('span', { class: 'team-name' }, entry.team), predictionMark(entry), h('span', { class: 'row-actions' }, ...buttons)));
+    const row = h('li', { class: entry.mine ? 'mine' : '' }, h('span', {}, `#${entry.pick}`), h('span', {}, logLabel(entry), entry.id ? h('span', { class: 'team-name' }, positionsNode(playerById.get(entry.id).positions)) : null, h('span', { class: 'team-name' }, entry.team), predictionMark(entry), h('span', { class: 'row-actions' }, ...buttons)));
     return editing && editing.pick === entry.pick ? [row, editPanel(entry)] : [row];
   });
   put(list, ...rows);
@@ -1843,6 +1944,7 @@ async function init() {
   }
   buildCategories();
   buildPositionChips();
+  buildRosterTools();
   buildPoolHead();
   syncRuleInputs();
   wireControls();
