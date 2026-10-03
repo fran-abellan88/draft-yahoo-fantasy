@@ -414,8 +414,13 @@ function renderPredictions() {
   const managers = $('managers');
   const current = predictionRows();
   const clock = predictions !== null && analysis.clock.pick === predictions.clock?.pick ? predictions.clock : null;
-  if (state.rehearsal || !clock || analysis.clock.isMine || analysis.clock.draftComplete) {
+  // The line keeps its height while the answer is on its way (and on my own turn), so the page does not jump after every pick
+  if (state.rehearsal) {
     line.hidden = true;
+  } else if (!clock || analysis.clock.isMine || analysis.clock.draftComplete) {
+    line.textContent = '\u00a0';
+    line.classList.add('empty');
+    line.hidden = false;
   } else {
     const planner = clock.planner ? nameOf(clock.planner) : null;
     const crowd = clock.adp ? nameOf(clock.adp) : null;
@@ -424,6 +429,7 @@ function renderPredictions() {
     else if (planner && crowd) text = `${teamName(clock.slot)} should pick ${planner} by the planner, ${crowd} by ADP.`;
     else text = `${teamName(clock.slot)} should pick ${planner || crowd || 'whoever fits'}.`;
     line.textContent = text;
+    line.classList.remove('empty');
     line.hidden = false;
   }
   if (state.rehearsal || !current || current.summary.counted === 0) {
@@ -662,7 +668,10 @@ document.addEventListener('click', (event) => {
   if (button && !same) showHelp(button);
 });
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') hideHelp();
+  if (event.key === 'Escape') {
+    hideHelp();
+    closeCard();
+  }
 });
 window.addEventListener('resize', hideHelp);
 
@@ -671,6 +680,8 @@ function render() {
   hideHelp();
   renderTopBar();
   renderClock();
+  if (analysis.clock.isMine && !lastIsMine) cardId = null; // my turn: the recommendation comes back
+  lastIsMine = analysis.clock.isMine;
   renderHero();
   renderPlan();
   renderSearchNote();
@@ -833,6 +844,11 @@ function renderHero() {
     put(hero, h('h2', {}, 'Draft complete'), h('p', { class: 'name' }, 'Good luck this season.'));
     return;
   }
+  if (cardId !== null && !poolRowById.has(cardId)) cardId = null; // he was drafted
+  if (cardId !== null) {
+    renderPlayerCard(hero);
+    return;
+  }
   if (!recommendation) {
     const best = analysis.bestAvailable ? poolRowById.get(analysis.bestAvailable.id) : null;
     hero.className = 'hero';
@@ -889,6 +905,37 @@ function renderHero() {
           doubt ? h('button', { type: 'button', onclick: () => markPlayerGone(recommendation.id) }, 'He is gone') : null,
         )
       : null,
+  );
+}
+
+function renderPlayerCard(hero) {
+  const row = poolRowById.get(cardId);
+  const player = playerById.get(cardId);
+  const planned = plannedPicks.get(cardId);
+  const odds = oddsAtColumn(row);
+  const pickLabel = columnPick();
+  const facts = [
+    odds !== null && odds !== undefined ? `${pct(odds)} chance he is still there${pickLabel ? ` at pick ${pickLabel}` : ''}.` : '',
+    planned ? `In your plan at pick ${planned}.` : '',
+    analysis.recommendation && analysis.recommendation.id === cardId ? 'The recommended pick.' : '',
+  ].filter(Boolean).join(' ');
+  const last = previousScore(row);
+  hero.className = 'hero viewing';
+  put(hero,
+    h(
+      'div',
+      { class: 'hero-head' },
+      h('div', { class: 'hero-who' }, h('h2', { class: 'hero-pill' }, 'Player card'), h('p', { class: 'name' }, player.name), h('p', { class: 'meta' }, detailOf(cardId))),
+      h('div', { class: 'hero-score', title: 'Score for your ticked categories' }, h('strong', {}, oneDecimal(row.score)), h('span', {}, last ? ['Score ', last] : 'Score')),
+    ),
+    categoryBars(row),
+    facts ? h('p', { class: 'facts' }, facts) : null,
+    h(
+      'div',
+      { class: 'cta' },
+      h('button', { type: 'button', class: 'primary', onclick: () => rowPicked(cardId) }, `${choosing ? 'Choose' : 'Draft'} ${player.name}`),
+      h('button', { type: 'button', onclick: closeCard }, 'Back to the recommendation'),
+    ),
   );
 }
 
@@ -1198,6 +1245,35 @@ let visibleIds = [];
 
 let plannedPicks = new Map();
 
+// The player card: the clicked player's stat bars in the recommendation box, until closed (Back, Esc, the same name again),
+// until he is drafted, or until it is my turn. Drafting is the Draft button beside the name, never a click on the name.
+let cardId = null;
+let lastIsMine = false;
+
+function draftButton(player, recommended) {
+  const verb = choosing ? 'Choose' : 'Draft';
+  return h('button', {
+    type: 'button',
+    class: `draft-btn${recommended ? ' rec' : ''}`,
+    title: choosing ? `Choose ${player.name} for pick ${choosing.pick}` : `Log ${player.name} as the pick on the clock`,
+    disabled: analysis.clock.draftComplete,
+    onclick: () => rowPicked(player.id),
+  }, verb);
+}
+
+function showCard(id) {
+  cardId = cardId === id ? null : id;
+  renderHero();
+  renderPool();
+}
+
+function closeCard() {
+  if (cardId === null) return;
+  cardId = null;
+  renderHero();
+  renderPool();
+}
+
 function renderPool() {
   updateScoreRange();
   plannedPicks = new Map(analysis.plans.length ? analysis.plans[0].steps.map((step) => [step.id, step.pick]) : []);
@@ -1226,7 +1302,7 @@ function renderPool() {
     const isRecommended = analysis.recommendation && analysis.recommendation.id === player.id;
     const cells = [
       h('td', {}, row.rank),
-      h('td', { class: 'left player' }, h('div', { class: 'player-line' }, h('strong', {}, player.name), isRecommended ? h('span', { class: 'pick-tag' }, 'Pick') : null, h('div', { class: 'meta' }, detailOf(player.id)), h('div', { class: 'notes' }, [
+      h('td', { class: 'left player' }, h('div', { class: 'player-line' }, draftButton(player, isRecommended), h('strong', {}, h('button', { type: 'button', class: 'name-link', 'aria-pressed': String(cardId === player.id), title: `Show the player card of ${player.name}`, onclick: () => showCard(player.id) }, player.name)), isRecommended ? h('span', { class: 'pick-tag' }, 'Pick') : null, h('div', { class: 'meta' }, detailOf(player.id)), h('div', { class: 'notes' }, [
         ...(planned && !isRecommended ? [badge(`plan: ${planned}`, 'info', `The current plan takes him at pick ${planned}`)] : []),
         ...(unconfirmed ? [badge('Logged, not confirmed. Click to retry', 'injury', 'The server has not confirmed this pick yet')] : []),
         ...(pending ? [badge('Logging the pick', 'info', 'Waiting for the server to confirm this pick')] : []),
@@ -1244,14 +1320,12 @@ function renderPool() {
       'tr',
       {
         tabindex: '0',
-        class: [unconfirmed || pending ? 'unconfirmed' : '', isRecommended ? 'recommended' : ''].filter(Boolean).join(' '),
+        class: [unconfirmed || pending ? 'unconfirmed' : '', isRecommended ? 'recommended' : '', cardId === player.id ? 'card-row' : ''].filter(Boolean).join(' '),
         'data-id': player.id,
-        title: `Log ${player.name} as the pick on the clock`,
-        onclick: () => rowPicked(player.id),
         onkeydown: (event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
+          if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) {
             event.preventDefault();
-            rowPicked(player.id);
+            showCard(player.id); // the row itself shows the card; drafting is the Draft button's job
           } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
             event.preventDefault();
             const sibling = event.key === 'ArrowDown' ? event.currentTarget.nextElementSibling : event.currentTarget.previousElementSibling;
@@ -1489,7 +1563,7 @@ function cellValue(key, value) {
 function leagueCell(key, team, compared) {
   const level = rankLevel(team.ranks[key], compared);
   const text = cellValue(key, team.totals[key]);
-  return h('td', { title: `${ordinal(team.ranks[key])} of ${compared}` }, level ? h('span', { class: `cap ${level}` }, text) : text);
+  return h('td', { class: 'lcat', title: `${ordinal(team.ranks[key])} of ${compared}` }, level ? h('span', { class: `cap ${level}` }, text) : text);
 }
 
 function leagueTable(table, keys, labels, showCount = true, basis = 'sofar') {
@@ -1500,7 +1574,7 @@ function leagueTable(table, keys, labels, showCount = true, basis = 'sofar') {
     h('th', { class: 'left' }, 'Team'),
     h('th', { title: 'Expected categories won against a random team: the share of the other teams beaten, added over the ticked categories' }, 'Score'),
     showCount ? h('th', { title: 'Players counted' }, 'n') : null,
-    ...keys.map((key) => h('th', {}, labels[key])),
+    ...keys.map((key) => h('th', { class: 'lcat' }, labels[key])),
   );
   const rows = table.teams.map((team) =>
     h(
@@ -1518,7 +1592,7 @@ function leagueTable(table, keys, labels, showCount = true, basis = 'sofar') {
       showCount ? h('td', {}, team.players) : null,
       ...keys.map((key) =>
         team.totals === null
-          ? h('td', { class: 'dim' }, '')
+          ? h('td', { class: 'lcat dim' }, '')
           : leagueCell(key, team, table.compared),
       ),
     ),
@@ -1640,7 +1714,7 @@ function renderChoosing() {
   if (choosing.pending) {
     put(note, choosing.pending.text, ' ', h('button', { type: 'button', onclick: applyChosen }, 'Confirm'), h('button', { type: 'button', onclick: cancelChoosing }, 'Cancel'));
   } else {
-    put(note, `Choosing the player for pick ${choosing.pick}: click a player in the table. `, choosing.error ? h('strong', {}, `${choosing.error} `) : null, h('button', { type: 'button', onclick: cancelChoosing }, 'Cancel'));
+    put(note, `Choosing the player for pick ${choosing.pick}: press Choose beside a player in the table. `, choosing.error ? h('strong', {}, `${choosing.error} `) : null, h('button', { type: 'button', onclick: cancelChoosing }, 'Cancel'));
   }
   note.scrollIntoView({ block: 'nearest' });
 }

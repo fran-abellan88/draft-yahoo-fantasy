@@ -603,3 +603,34 @@ def test_another_teams_roster_never_uses_the_colour_that_means_yours() -> None:
     assert "dashed var(--taken)" in CSS  # a projected player has an outlined tile
     assert ".league-table tr.selected-row td { background: var(--selected); }" in CSS
     assert "selected-row" not in re.search(r"\.mine-row[^\n]*", CSS).group(0)
+
+
+def test_a_click_on_a_players_name_opens_his_card_and_only_the_draft_button_drafts() -> None:
+    row = JS[JS.index("return h(\n      'tr',\n      {\n        tabindex: '0',"): JS.index("cells,\n    );", JS.index("tabindex: '0'"))]
+    assert "onclick" not in row, "the row itself must not draft"
+    assert "showCard(player.id)" in row and "event.target === event.currentTarget" in row  # Enter on the row shows the card
+    assert "class: 'name-link'" in JS and "onclick: () => showCard(player.id)" in JS
+    assert "function draftButton(" in JS and "onclick: () => rowPicked(player.id)" in JS
+    assert "choosing ? 'Choose' : 'Draft'" in JS  # while choosing a player for an earlier pick the button says so
+    assert "press Choose beside a player" in JS
+
+
+def test_the_player_card_closes_when_it_should_and_not_before() -> None:
+    assert "function renderPlayerCard(" in JS and "categoryBars(row)" in JS[JS.index("function renderPlayerCard("):]
+    assert "if (cardId !== null && !poolRowById.has(cardId)) cardId = null;" in JS  # drafted: gone from the pool
+    assert "if (analysis.clock.isMine && !lastIsMine) cardId = null;" in JS  # my turn: the recommendation comes back
+    assert "closeCard();" in JS[JS.index("if (event.key === 'Escape')"):][:80]
+
+
+def test_the_header_keeps_its_height_while_the_prediction_is_on_its_way() -> None:
+    body = JS[JS.index("function renderPredictions()"): JS.index("if (state.rehearsal || !current")]
+    assert "line.classList.add('empty')" in body and "line.classList.remove('empty')" in body
+    assert body.count("line.hidden = true") == 1 and "if (state.rehearsal) {\n    line.hidden = true;" in body  # only the mock hides it
+    assert ".topbar .predict-line.empty { visibility: hidden; }" in CSS and ".topbar .predict-line { min-height: 1.4em; }" in CSS
+
+
+def test_the_league_tables_keep_a_width_for_the_category_columns() -> None:
+    assert ".teams { container-type: inline-size; }" in CSS
+    assert "#league .league-table .lcat { min-width: clamp(0px, calc(12cqw - 33px), 64px); }" in CSS
+    # `cat` is the category bar of the recommendation box (display: grid): a table cell must not share the name
+    assert "class: 'lcat'" in JS and "class: 'cat'," not in JS[JS.index("function leagueCell("): JS.index("function leagueTable(")]
