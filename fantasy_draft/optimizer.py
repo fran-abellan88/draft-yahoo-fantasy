@@ -7,11 +7,12 @@ A plan assigns one player to each of my remaining picks. It is valid when
 * nobody appears twice, and
 * everyone drafted so far, mine included, can start at once (see lineup.py).
 
-Its value is the sum of the players' composite scores. That is additive on purpose: the point of
-planning is the order of the picks, not interactions between players. Taking A at pick 27 and B at
+Its value is the sum of the players' composite scores, plus a small bonus for each extra position a new pick can
+fill (`flexibility`; the service uses FLEXIBILITY_BONUS, direct callers get none unless they ask). That is additive on
+purpose: the point of planning is the order of the picks, not interactions between players. Taking A at pick 27 and B at
 pick 30 beats the reverse when A will not last and B will.
 
-The search is exact (branch and bound over candidate lists sorted by score) and returns the best
+The search is exact (branch and bound over candidate lists sorted by value) and returns the best
 `top_k` distinct teams. Tests compare it with brute force on small pools.
 
 Work is bounded. Branch and bound is exact but its worst case is huge: when the availability rule lets almost
@@ -36,6 +37,12 @@ from fantasy_draft.draft import MY_SLOT, ROSTER_SIZE, DraftState, my_picks
 from fantasy_draft.lineup import ALL_MASK, all_masks_can_start, position_mask
 from fantasy_draft.scoring import Bounds, category_scores, composite_score, replacement_score
 
+# Score points added to a new pick's value for every position he can fill beyond the first. A judgement, not a
+# calibrated number. Neighbouring players differ by a tenth of a point at the median, so the bonus can decide between
+# close players; what keeps it harmless is that over a whole plan it costs under 0.3 roster points (measured on
+# simulated drafts), and the page says so when the bonus decides a pick.
+FLEXIBILITY_BONUS = 0.3
+
 # When nobody clears the availability threshold for a pick, fall back to the likeliest few.
 FALLBACK_CANDIDATES = 5
 
@@ -54,6 +61,7 @@ class Plan:
     player_ids: Tuple[str, ...]
     total_score: float  # sum of composite scores over the whole roster, players already drafted included
     survival: float  # product of each pick's availability probability, a rough chance the plan holds
+    value: float  # what plans are ranked by: total_score plus the flexibility bonus of the new picks
 
 
 @dataclass(frozen=True)
@@ -62,6 +70,11 @@ class _Candidate:
     score: float
     probability: float
     mask: int  # positions he can fill, as a bit mask (see lineup.py)
+    bonus: float = 0.0  # flexibility bonus, in score points
+
+    @property
+    def value(self) -> float:
+        return self.score + self.bonus
 
 
 @dataclass(frozen=True)
@@ -123,6 +136,7 @@ def plan_picks(
     node_budget: Optional[int] = NODE_BUDGET,
     option_count: int = FIRST_PICK_OPTIONS,
     weights: Optional[Mapping[str, float]] = None,
+    flexibility: float = 0.0,
 ) -> Recommendation:
     """Plan the remaining picks within a work budget, and price the best alternatives for the next pick.
 
@@ -133,6 +147,8 @@ def plan_picks(
     recommended player may be taken before it, so the options plan without him at any of my picks (`assumed_gone`):
     what losing him really costs. On the clock he is on the board, so the options leave him in: what choosing
     someone else costs. Without this, "if he is gone" would be priced on plans that take him one pick later.
+
+    `flexibility` is the bonus, in score points, for each position a new pick can fill beyond the first.
     """
     _check_state(players, state, slot, rounds)
     remaining_picks = [pick for pick in my_picks(slot, rounds) if pick >= state.next_pick]
@@ -145,7 +161,7 @@ def plan_picks(
     pool = players[~players["player_id"].isin(unavailable)]
 
     candidates = [
-        _candidates_for_pick(pool, scores, positions, rule, pick, state.picks_made, state.unseen, max_candidates)
+        _candidates_for_pick(pool, scores, positions, rule, pick, state.picks_made, state.unseen, max_candidates, flexibility)
         for pick in remaining_picks
     ]
     # A pick of a player outside the pool still fills a starting slot: any position, replacement-level value
@@ -172,7 +188,7 @@ def plan_picks(
             max_option_nodes = max(max_option_nodes, used)
             if found:
                 options.append(FirstPickOption(first.player_id, found[0]))
-        options.sort(key=lambda option: (option.plan.total_score, option.plan.survival), reverse=True)
+        options.sort(key=lambda option: (option.plan.value, option.plan.survival), reverse=True)
     return Recommendation(plans, options, truncated, nodes, assumed_gone, main_nodes, max_option_nodes)
 
 
@@ -218,17 +234,21 @@ def _candidates_for_pick(
     picks_made: int,
     unseen: Sequence[int],
     max_candidates: int,
+    flexibility: float = 0.0,
 ) -> List[_Candidate]:
-    """The best players who will likely still be there at `pick`, highest score first."""
+    """The best players who will likely still be there at `pick`, highest value (score plus flexibility bonus) first."""
     probabilities = rule.probability(pool["adp_est"].to_numpy(dtype=float), pick, picks_made, unseen)
     chosen = np.flatnonzero(probabilities >= rule.threshold)
     if len(chosen) == 0:
         chosen = np.argsort(-probabilities, kind="stable")[:FALLBACK_CANDIDATES]
     ids = pool["player_id"].to_numpy()[chosen]
     candidates = [
-        _Candidate(pid, float(scores[pid]), float(probabilities[i]), position_mask(positions[pid])) for pid, i in zip(ids, chosen)
+        _Candidate(
+            pid, float(scores[pid]), float(probabilities[i]), position_mask(positions[pid]), flexibility * (len(positions[pid]) - 1)
+        )
+        for pid, i in zip(ids, chosen)
     ]
-    candidates.sort(key=lambda candidate: candidate.score, reverse=True)
+    candidates.sort(key=lambda candidate: candidate.value, reverse=True)
     return candidates[:max_candidates]
 
 
@@ -249,24 +269,24 @@ def _search(
         return [], False, 0  # a pick nobody can fill leaves no plan (possible once a player is assumed gone)
     suffix_best = [0.0] * (n_picks + 1)
     for k in range(n_picks - 1, -1, -1):
-        suffix_best[k] = suffix_best[k + 1] + candidates[k][0].score
+        suffix_best[k] = suffix_best[k + 1] + candidates[k][0].value
 
     found: Dict[FrozenSet[str], Plan] = {}
-    floor = [-np.inf]  # score a new plan must beat once `top_k` plans are known
+    floor = [-np.inf]  # value a new plan must beat once `top_k` plans are known
     chosen: List[_Candidate] = []
     chosen_ids: Set[str] = set()
 
-    def record(total: float, survival: float) -> None:
+    def record(total: float, value: float, survival: float) -> None:
         team = frozenset(chosen_ids)
-        plan = Plan(tuple(picks), tuple(c.player_id for c in chosen), total, survival)
+        plan = Plan(tuple(picks), tuple(c.player_id for c in chosen), total, survival, value)
         existing = found.get(team)
         if existing is not None and existing.survival >= survival:
             return
         found[team] = plan
         if len(found) > top_k:
-            del found[min(found, key=lambda key: found[key].total_score)]
+            del found[min(found, key=lambda key: found[key].value)]
         if len(found) >= top_k:
-            floor[0] = min(p.total_score for p in found.values())
+            floor[0] = min(p.value for p in found.values())
 
     def cannot_improve(optimistic_total: float) -> bool:
         return len(found) >= top_k and optimistic_total <= floor[0]
@@ -274,29 +294,29 @@ def _search(
     nodes = [0]
     out_of_budget = [False]
 
-    def recurse(k: int, total: float, survival: float) -> None:
+    def recurse(k: int, total: float, value: float, survival: float) -> None:
         nodes[0] += 1
         if node_budget is not None and nodes[0] > node_budget:
             out_of_budget[0] = True
             return
         if k == n_picks:
-            record(total, survival)
+            record(total, value, survival)
             return
         for candidate in candidates[k]:
-            if cannot_improve(total + candidate.score + suffix_best[k + 1]):
-                break  # candidates are sorted by score, so none of the rest can do better
+            if cannot_improve(value + candidate.value + suffix_best[k + 1]):
+                break  # candidates are sorted by value, so none of the rest can do better
             if candidate.player_id in chosen_ids:
                 continue
             if not all_masks_can_start(mine_masks + [c.mask for c in chosen] + [candidate.mask]):
                 continue
             chosen.append(candidate)
             chosen_ids.add(candidate.player_id)
-            recurse(k + 1, total + candidate.score, survival * candidate.probability)
+            recurse(k + 1, total + candidate.score, value + candidate.value, survival * candidate.probability)
             chosen_ids.discard(candidate.player_id)
             chosen.pop()
             if out_of_budget[0]:
                 return
 
-    recurse(0, base_score, 1.0)
-    plans = sorted(found.values(), key=lambda plan: (plan.total_score, plan.survival), reverse=True)
+    recurse(0, base_score, base_score, 1.0)
+    plans = sorted(found.values(), key=lambda plan: (plan.value, plan.survival), reverse=True)
     return plans, out_of_budget[0], nodes[0]

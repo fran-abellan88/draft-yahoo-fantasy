@@ -23,12 +23,13 @@ from fantasy_draft.flags import build_flags
 from fantasy_draft.lineup import ALL_MASK, POSITION_BIT, STARTING_SLOTS, assign_slots, position_mask
 from fantasy_draft.league import league_table, rosters_by_slot
 from fantasy_draft.needs import category_weights
-from fantasy_draft.optimizer import FirstPickOption, Plan, Recommendation, plan_picks, team_profile
+from fantasy_draft.optimizer import FLEXIBILITY_BONUS, FirstPickOption, Plan, Recommendation, plan_picks, team_profile
 from fantasy_draft.scoring import METHODS, Bounds, category_scores, composite_score, compute_bounds, last_season_scores
 
 MAX_TOP_K = 50
 DEFAULT_TOP_K = 10
 PLANS_SHOWN = 5
+TIE_SCORE = 0.05  # roster-score gap below which two plans read as the same score (the page uses the same value)
 ALTERNATIVES_SHOWN = 4
 LOOK_FIRST_SHOWN = 3
 LOOK_FIRST_FLOOR = 0.10  # below this chance a player is treated as gone and not suggested
@@ -180,6 +181,7 @@ class DraftService:
                     games_adjusted=games_adjusted,
                     method=method,
                     weights=weights,
+                    flexibility=FLEXIBILITY_BONUS,
                 )
             except ValueError as error:
                 raise RequestError(str(error)) from error
@@ -312,6 +314,7 @@ class DraftService:
                 games_adjusted=games_adjusted,
                 method=method,
                 option_count=0,
+                flexibility=FLEXIBILITY_BONUS,
             )
         except ValueError:
             return None
@@ -555,12 +558,18 @@ class DraftService:
         """
         if best is None:
             return []
-        # Not clamped at 0: an option can only beat the best plan if the search was cut short, and then the page
-        # does not show the line. Float noise around zero is rounded away.
+        # `behind` is the gap in roster score, the number the page shows as "Roster score", and is not clamped at 0:
+        # plans are ranked by roster score plus the position bonus, so an option can be level or ahead on roster score
+        # and still rank lower. `byPositions` marks exactly that, so the page can say the bonus decided it. Float
+        # noise around zero is rounded away.
         shown: List[Dict[str, Any]] = []
         for option in options[:ALTERNATIVES_SHOWN]:
             gap = best.total_score - option.plan.total_score
             item: Dict[str, Any] = {"id": option.player_id, "behind": 0.0 if abs(gap) < 1e-9 else _num(gap, 1)}
+            # Only when the best plan carries the larger bonus: with equal bonuses a tiny roster lead decided it
+            bonus_edge = (best.value - best.total_score) - (option.plan.value - option.plan.total_score)
+            if bonus_edge > 1e-9 and gap < TIE_SCORE:
+                item["byPositions"] = True
             if len(option.plan.player_ids) > 1 and option.plan.player_ids[1] == best.player_ids[0]:
                 adp = float(self._by_id.loc[best.player_ids[0], "adp_est"])
                 odds = rule.probability(np.array([adp]), option.plan.pick_numbers[1], state.picks_made, state.unseen)[0]
