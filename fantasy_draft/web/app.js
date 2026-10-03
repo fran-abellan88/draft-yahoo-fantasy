@@ -859,7 +859,9 @@ function puntCategory(key) {
   if (!box || !box.checked) return;
   box.checked = false;
   settingChanged();
-  if (!$('setting-confirm').hidden && $('settings').hidden) toggleSettings(); // the confirmation lives in the settings panel
+  // The confirmation lives in the settings panel. Opened after this click has finished bubbling, or the click-outside
+  // handler would close it again at once.
+  if (!$('setting-confirm').hidden && $('settings').hidden) setTimeout(() => { if ($('settings').hidden) toggleSettings(); }, 0);
 }
 
 // One line when the recommendation is not the best score in the table, so the page never seems to contradict itself
@@ -1108,6 +1110,7 @@ const POOL_COLUMNS = [
   { key: 'rank', label: '#', left: false, defaultDirection: 1, title: 'Rank by score among the players left' },
   { key: 'name', label: 'Player', left: true, defaultDirection: 1 },
   { key: 'score', label: 'Score', left: false, defaultDirection: -1 },
+  { key: 'altscore', label: 'Capped', left: false, defaultDirection: -1, title: 'The same score with the other method, so both are in view' },
   { key: 'availability', label: 'At your pick', left: false, defaultDirection: -1, title: 'Chance he is still available when you next pick' },
   { key: 'adp', label: 'ADP', left: false, defaultDirection: 1 },
   { key: 'xrank', label: 'XRank', left: false, defaultDirection: 1, title: "Yahoo's own expert ranking" },
@@ -1159,6 +1162,7 @@ function sortValue(row, player, key) {
   if (key === 'rank') return row.rank;
   if (key === 'name') return player.name;
   if (key === 'score') return row.score;
+  if (key === 'altscore') return row.altScore;
   if (key === 'availability') return oddsAtColumn(row);
   if (key === 'adp') return player.adp;
   if (key === 'xrank') return player.xrank;
@@ -1339,6 +1343,8 @@ function renderPool() {
   updateYahooGap();
   plannedPicks = new Map(analysis.plans.length ? analysis.plans[0].steps.filter((step) => !step.filled).map((step) => [step.id, step.pick]) : []);
   const pickLabel = columnPick();
+  const altHead = $('pool-head').querySelector('button[data-key="altscore"]');
+  if (altHead) altHead.textContent = analysis.altMethod === 'capped' ? 'Capped' : 'Uncapped';
   const availabilityHead = $('pool-head').querySelector('button[data-key="availability"]');
   if (availabilityHead) availabilityHead.textContent = pickLabel ? `At pick ${pickLabel}` : 'At your pick';
   const rows = analysis.pool
@@ -1371,6 +1377,7 @@ function renderPool() {
         ...(hasUnseenPicks() && row.unseenRisk >= UNSEEN_RISK_SHOWN ? [goneButton(player)] : []),
       ]))),
       h('td', { class: `score score-cell${scoreStyle === 'bar' ? ' bar' : ''}`, style: scoreTint(row), title: scoreTitle(row) }, oneDecimal(row.score), previousScore(row)),
+      h('td', { class: 'alt-score', title: `Score with the ${analysis.altMethod} method` }, oneDecimal(row.altScore)),
       oddsCell(oddsAtColumn(row)),
       h('td', { title: player.adpEstimated ? 'Yahoo shows no ADP for him; estimated from nearby ranks' : '' }, `${player.adpEstimated ? '~' : ''}${player.adp.toFixed(1)}`),
       h('td', {}, player.xrank),
@@ -1999,6 +2006,13 @@ function wireControls() {
   $('settings-toggle').addEventListener('click', toggleSettings);
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !$('settings').hidden) toggleSettings();
+  });
+  // A click anywhere else closes the settings, like Escape. The path is read when the click starts, so a click on a
+  // control the page then redraws still counts as inside.
+  document.addEventListener('click', (event) => {
+    if ($('settings').hidden) return;
+    const inside = event.composedPath().some((node) => node === $('settings') || node === $('settings-toggle'));
+    if (!inside) toggleSettings();
   });
   $('outside').addEventListener('click', draftOutside);
   $('behind').addEventListener('click', toggleBehind);

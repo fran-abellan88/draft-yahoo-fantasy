@@ -697,3 +697,17 @@ def test_signed_keeps_its_one_decimal_for_the_deltas_and_the_vs_yahoo_column_has
     assert "const signed = (value) => `${value > 0 ? '+' : ''}${value.toFixed(1)}`;" in JS
     assert "const placesLabel = (value) =>" in JS and "placesLabel(yahooGap.get(player.id))" in JS
     assert JS.count("const signed =") == 1 and JS.count("const placesLabel =") == 1
+
+
+def test_a_click_outside_the_settings_closes_them_and_the_punt_opens_them_after_the_click_has_finished() -> None:
+    wire = JS[JS.index("function wireControls"):]
+    click = wire[wire.index("document.addEventListener('click'"): wire.index("$('outside')")]
+    assert "$('settings').hidden" in click and "composedPath()" in click and "$('settings-toggle')" in click and "toggleSettings()" in click
+    punt = JS[JS.index("function puntCategory"): JS.index("function whyNotTheTopScore")]
+    assert "setTimeout(" in punt, "opened at once, the same click would close it again"
+
+
+def test_the_table_shows_the_score_of_the_other_method_in_a_sortable_column_after_score() -> None:
+    columns = JS[JS.index("const POOL_COLUMNS"): JS.index("function buildPoolHead")]
+    assert columns.index("key: 'score'") < columns.index("key: 'altscore'") < columns.index("key: 'availability'")
+    assert "key === 'altscore'" in JS and "analysis.altMethod" in JS and "row.altScore" in JS

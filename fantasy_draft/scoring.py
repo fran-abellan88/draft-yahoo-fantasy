@@ -36,7 +36,9 @@ from fantasy_draft.categories import CATEGORIES
 
 Bounds = Dict[str, Tuple[float, float]]
 
-SEASON_GAMES = 82
+# Games that count as a full season. 70 and not 82: a player who misses 5 or 10 games is, for a weekly league, the same as
+# one who misses none, so everyone projected for 70 or more counts in full and the scale only bites below that.
+FULL_CREDIT_GAMES = 70
 METHODS = ("capped", "uncapped", "zscore")
 Z_SCALE = 10.0  # the z-score composite is the mean z x 10, so it reads on a scale similar to the others
 
@@ -90,10 +92,10 @@ def category_scores(players: pd.DataFrame, keys: Sequence[str], bounds: Bounds, 
 
 
 def games_factor(players: pd.DataFrame) -> pd.Series:
-    """Share of a full season each player is projected to play (capped at 1), from the projected `gp` column."""
+    """Share of a full-credit season (FULL_CREDIT_GAMES) each player is projected to play, capped at 1, from `gp`."""
     if "gp" not in players.columns or players["gp"].isna().any():
         raise ValueError("The games-played adjustment needs a projected gp for every player")
-    return (players["gp"].astype(float) / SEASON_GAMES).clip(0.0, 1.0)
+    return (players["gp"].astype(float) / FULL_CREDIT_GAMES).clip(0.0, 1.0)
 
 
 def composite_score(
@@ -146,7 +148,7 @@ def last_season_scores(
     composite = _composite(last[has_data], keys, bounds, method, weights)
     if games_adjusted:
         anchor = _replacement_composite(players, keys, bounds, method, weights)
-        played = (players.loc[has_data, "gp_ly"].astype(float) / SEASON_GAMES).clip(0.0, 1.0)
+        played = (players.loc[has_data, "gp_ly"].astype(float) / FULL_CREDIT_GAMES).clip(0.0, 1.0)
         composite = anchor + (composite - anchor) * played
     scores.loc[has_data] = composite
     return scores

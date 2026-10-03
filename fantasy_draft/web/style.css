@@ -636,3 +636,5 @@ td.player { width: 99%; max-width: 0; }
 #pool td.vs-yahoo.up { color: var(--mine); font-weight: 600; }
 #pool td.vs-yahoo.down { color: var(--flag); font-weight: 600; }
 .facts.disagree button { margin-left: 4px; }
+
+#pool td.alt-score { color: var(--muted); font-variant-numeric: tabular-nums; }

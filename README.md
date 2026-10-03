@@ -63,7 +63,7 @@ Your picks are kept in the browser, so reloading the page mid-draft loses nothin
   The capped score is the `nba-yahoo-fantasy-daily-dose` formula, where everyone past the 95th percentile in a category
   scores the same. A z-score method also exists in `fantasy_draft/scoring.py`; it ranks almost the same as uncapped.
 - **Count games missed** (on by default): the distance above a replacement-level player is scaled by projected games
-  played out of 82, so a player projected for 59 games counts as 72%. It changes the ranking and the plan, not the
+  played out of 70 (a few missed games are the same as none, so 70 or more counts in full), so a player projected for 59 games counts as 84%. It changes the ranking and the plan, not the
   category bars. Every column of the table sorts, including XRank and projected GP.
 - **Who will still be there?** has two ways to judge availability. *Odds from ADP* treats a player's draft position as
   a bell curve around his ADP that widens for later picks. *ADP window* is a plain cut-off. Both are starting guesses
@@ -105,7 +105,7 @@ last-pick line and the snake strip (hover a slot).
   *Same planner* (the default) takes the logged picks and then, in snake order, lets every team, yours too, take the first
   player of its own best plan, the search the recommendation uses, for all nine categories (only your own team follows your ticked ones, so punting a category never changes what the others are assumed to pick). A poor pick by one manager lowers his projected stats and
   leaves more for the rest, and nobody is first by construction. It shows what well-informed teams would end up with, not
-  who will be available, and a real league is probably easier. It takes about a second from an empty draft (another team plans 8 rounds ahead and then fills in by score; you plan 10), is
+  who will be available, and a real league is probably easier. It takes about a second from an empty draft (every team plans 8 rounds ahead and then fills in by score), is
   asked for apart from the analysis so the recommendation never waits, and shows the ADP projection until it arrives.
   *ADP order* fills the other teams in ADP order with lineup limits; your team is built to these categories and theirs are
   not, so it tends to come first (88% of simulated drafts against ADP rivals, about 30% against rivals that use the
@@ -162,7 +162,7 @@ last-pick line and the snake strip (hover a slot).
   - the **vs Yahoo** column (beside XRank, sortable) is the places the model ranks a player above (+) or below (−)
     his XRank among the players left; gaps of 15 or more are coloured, so sleepers and fades are one click away;
   - **Yahoo disagrees** appears under the recommendation when an available player ranks at least 15 places better by XRank
-    and scores lower: it names the category that costs him most (Giannis against Kawhi: FT% alone costs 16.9 points and
+    and scores lower: it names the category that costs him most (Giannis against Kawhi: FT% alone costs about 20 points and
     his other categories win back most of it) and where he and the pick would rank with that category left out, with a
     **Punt FT%** button that unticks it through the settings flow (after the first pick it asks to apply first);
   - on your turn, when the best plan and another plan are within **1.5** roster points, the one whose first player has the
@@ -223,16 +223,13 @@ have made on the same attempts, per game. That adds up across a roster, which is
 The plan is the best set of players for your remaining picks, one per pick, where each is likely to still be there, nobody
 repeats and everyone can start at once. The search is exact, and is tested against brute force.
 
-The search is exact for the first 10 rounds. Searching all 13 is out of reach (the work multiplies with every round: 11 rounds
-already run past 150,000 steps with no plan), and the last three picks matter little, so rounds 11 to 13 are **filled in by
-score**: each takes the best player likely to last, a player who fills a starting slot still open first. They show dimmed in
-the plan and do not count in the "Roster score", which is for the planned picks. Because the ten planned players must all be
-able to start, the plan fills every starting slot, a PG included. The odds shown for the filled-in picks are low: Yahoo's
-ADP says almost everyone is gone by pick 125, and the pool ends at 245.
-
-Unticking categories (with games counted) makes many players score almost the same, and the comparison with other first
-picks can then need more work than its budget: the page says the comparison is approximate while the plan stays exact. The
-search prunes with two bounds, a pick cannot beat its best remaining candidate and the same star cannot fill two picks.
+The search is exact for the first 8 rounds, whatever the score method and however many categories are ticked (about 0.2
+seconds). Searching more is out of reach: with a category unticked, 10 rounds took up to 100 times longer and 11 ran past
+150,000 steps with no plan. So rounds 9 to 13 are **filled in by score**: each takes the best player likely to last, a player
+who fills a starting slot still open first (a PG or an F that the eight planned players left open). They show dimmed in the
+plan and do not count in the "Roster score", which is for the planned picks. The odds shown for the filled-in picks are
+low: Yahoo's ADP says almost everyone is gone by pick 125, and the pool ends at 245. The search prunes with two bounds, a
+pick cannot beat its best remaining candidate and the same star cannot fill two picks.
 
 ## Data
 

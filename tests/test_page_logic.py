@@ -475,7 +475,8 @@ def test_the_score_bar_tells_the_players_that_matter_apart_at_every_stage_of_the
         assert wide >= narrow, "a better score never has a shorter bar"
         if higher - lower >= 1.0:
             assert wide - narrow >= 0.01, f"{higher} and {lower} must not look the same"
-    assert len({round(width, 2) for _, width in ordered[:60]}) >= 20, "the bars differ"
+    # 20 before the games scale was 70 games (it compresses the top of the table a little); 15 still means no wall of equal bars
+    assert len({round(width, 2) for _, width in ordered[:60]}) >= 15, "the bars differ"
 
 
 @pytest.mark.parametrize(
