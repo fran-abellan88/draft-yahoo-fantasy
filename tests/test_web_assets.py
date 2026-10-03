@@ -480,8 +480,10 @@ def test_the_second_thing_on_the_clock_is_in_the_recommendation_box_and_the_odds
 
 def test_the_score_column_is_wide_enough_for_its_bar_and_the_other_cells_pay_for_it() -> None:
     assert "#pool th:nth-child(3), #pool td.score-cell { min-width: 100px; }" in CSS
-    # From 1720 px the bar gets more room, taken from the elastic Player column
-    assert re.search(r"@media \(min-width: 1720px\) \{ #pool th:nth-child\(3\), #pool td\.score-cell \{ min-width: 130px; \} \}", CSS)
+    # The numbers and the Score bar grow with the table panel (cqw), so a wide table spreads its slack instead of leaving it in Player
+    assert ".tablecol { container-type: inline-size; }" in CSS
+    assert re.search(r"#pool th:nth-child\(3\), #pool td\.score-cell \{ min-width: clamp\(110px, calc\(22cqw - 100px\), 240px\); \}", CSS)
+    assert "#pool td { padding-inline: clamp(4px, calc(2.5cqw - 22px), 18px); }" in CSS
     assert "#pool td { padding: 4px 5px; }" in CSS and "#pool th button { padding: 9px 5px; }" in CSS
     columns = re.findall(r"\{ key: '(\w+)', label", JS[JS.index("const POOL_COLUMNS"): JS.index("function buildPoolHead")])
     assert columns[2] == "score", "the width rule names the third column: keep Score third"

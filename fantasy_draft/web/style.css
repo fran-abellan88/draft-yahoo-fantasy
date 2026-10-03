@@ -347,8 +347,11 @@ body { margin: 0; }
 #pool td { padding: 4px 5px; }
 #pool th button { padding: 9px 5px; }
 #pool th:nth-child(3), #pool td.score-cell { min-width: 100px; }
-/* From 1720 px the Score column is wider, taken from the elastic Player column, so the bar has room to show a difference */
-@media (min-width: 1720px) { #pool th:nth-child(3), #pool td.score-cell { min-width: 130px; } }
+/* The columns grow with the table (the numbers are the old fixed sizes at a 1043 px table): Player takes what is left, so on
+   a wide table the numbers get more room and the Score bar more length instead of leaving the gap in the Player column.
+   cqw is a share of the table panel's width */
+.tablecol { container-type: inline-size; }
+#pool th:nth-child(3), #pool td.score-cell { min-width: clamp(110px, calc(22cqw - 100px), 240px); }
 
 /* 2350 and up: every panel has its own place. The columns share extra width in proportion (the fr numbers are their
    widths at 2436 px), so a wider window enlarges every panel, not only the table */
@@ -542,6 +545,9 @@ td.dim { opacity: 0.45; }
 #pool td.stat { padding: 0 1px; }
 #pool th button { padding: 9px 4px; font-size: 11px; font-weight: 650; letter-spacing: 0.045em; text-transform: uppercase; color: var(--muted); }
 #pool th[aria-sort] button { color: var(--ink); }
+#pool td { padding-inline: clamp(4px, calc(2.5cqw - 22px), 18px); }
+#pool td.stat { padding-inline: clamp(1px, calc(1.6cqw - 15.7px), 10px); }
+#pool th button { padding-inline: clamp(4px, calc(2.5cqw - 22px), 18px); }
 td.player strong { font-weight: 600; }
 td.player .meta { font-size: 13px; font-weight: 450; }
 /* The Player column takes what the numbers leave. In it the meta line gives way first, then the name; a badge never does */
