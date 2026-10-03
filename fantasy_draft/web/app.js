@@ -938,7 +938,7 @@ const gapWords = (behind) => (behind <= -TIE_POINTS ? `${oneDecimal(-behind)} hi
 // Why the recommended player ranks first although the alternative is level or ahead on roster score
 function positionsReason(recommendedId, alternativeId) {
   const extra = playerById.get(recommendedId).positions.filter((position) => !playerById.get(alternativeId).positions.includes(position));
-  return extra.length ? `${nameOf(recommendedId)} also plays ${extra.join('/')}` : 'his plan covers more positions';
+  return extra.length ? `${nameOf(recommendedId)} also plays ${extra.join('/')}` : 'the recommended plan covers more positions';
 }
 
 // When the alternatives are the same team in the other order, say once that the recommended player comes next
