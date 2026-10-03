@@ -678,3 +678,16 @@ def test_the_main_table_lists_the_categories_in_the_order_of_every_other_table()
     block = JS[JS.index("const STAT_COLUMNS = ["): JS.index("];", JS.index("const STAT_COLUMNS = ["))]
     assert re.findall(r"key: '(\w+)'", block) == list(CATEGORIES), "the table, the league tables and the bars share one order"
     assert list(CATEGORIES)[:2] == ["fg_pct", "ft_pct"]  # the percentages come first
+
+
+def test_the_page_shows_why_yahoo_disagrees_and_offers_the_punt_through_the_settings_flow() -> None:
+    assert "function disagreementBlock" in JS and "function marketTieNote" in JS
+    punt = JS[JS.index("function puntCategory"): JS.index("function whyNotTheTopScore")]
+    assert "settingChanged()" in punt and "toggleSettings()" in punt, "after the first pick the confirmation is in the settings panel"
+    assert "puntCategory(category.key)" in JS
+
+
+def test_the_table_has_a_sortable_vs_yahoo_column_beside_xrank() -> None:
+    columns = JS[JS.index("const POOL_COLUMNS"): JS.index("function buildPoolHead")]
+    assert columns.index("key: 'xrank'") < columns.index("key: 'vsyahoo'") < columns.index("key: 'gp'")
+    assert "key === 'vsyahoo'" in JS and "updateYahooGap()" in JS

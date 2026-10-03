@@ -155,6 +155,25 @@ last-pick line and the snake strip (hover a slot).
   chips are the legend. The colours are the `--pos-guard`, `--pos-forward` and `--pos-center` tokens, tested for contrast
   on every surface in both themes. Green is also the colour of "yours" and orange of warnings, so the recommended row is
   marked by its tint and the Pick tag, not by a green name.
+- **Model against Yahoo.** The score weighs all nine categories equally, as a head-to-head week does, and that disagrees
+  with Yahoo's XRank (rank correlation about 0.72 over the top 100; fitting category weights to XRank explains far more,
+  with points counted about twice and turnovers not at all, which is taste, not information). The page does not copy the
+  market, it shows the disagreement:
+  - the **vs Yahoo** column (beside XRank, sortable) is the places the model ranks a player above (+) or below (−)
+    his XRank among the players left; gaps of 15 or more are coloured, so sleepers and fades are one click away;
+  - **Yahoo disagrees** appears under the recommendation when an available player ranks at least 15 places better by XRank
+    and scores lower: it names the category that costs him most (Giannis against Kawhi: FT% alone costs 16.9 points and
+    his other categories win back most of it) and where he and the pick would rank with that category left out, with a
+    **Punt FT%** button that unticks it through the settings flow (after the first pick it asks to apply first);
+  - on your turn, when the best plan and another plan are within **1.5** roster points, the one whose first player has the
+    better ADP (by at least 2 picks) is recommended, and the page says so ("Level with Kawhi Leonard ... Yahoo drafters
+    take Kevin Durant first"). While you are waiting nothing is re-ranked. The 1.5 is a judgement (about half the median gap
+    between a player's projected and last season's score), not validated; in 60 simulated picks of mine
+    it changed the recommendation in about one in eight (7 of 60), mostly in the middle rounds.
+
+  `python tools/snapshot.py` saves a draft-day snapshot (pool, XRank/ADP, scores under your settings, the plan) to
+  `data/2026-27/snapshot_<date>.csv`, so after the season the score, XRank, ADP and the tie band can be compared with real
+  results and the band tuned.
 - **Position flexibility.** The planner ranks plans by their score plus 0.3 points for each position a new pick can
   fill beyond the first (`FLEXIBILITY_BONUS` in `optimizer.py`), so a PG/SG beats a PG of the same score. The 0.3 is a
   judgement, not a calibrated number: it can decide between close players (neighbouring scores differ by 0.1 at the
