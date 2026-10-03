@@ -211,6 +211,10 @@ the plan and do not count in the "Roster score", which is for the planned picks.
 able to start, the plan fills every starting slot, a PG included. The odds shown for the filled-in picks are low: Yahoo's
 ADP says almost everyone is gone by pick 125, and the pool ends at 245.
 
+Unticking categories (with games counted) makes many players score almost the same, and the comparison with other first
+picks can then need more work than its budget: the page says the comparison is approximate while the plan stays exact. The
+search prunes with two bounds, a pick cannot beat its best remaining candidate and the same star cannot fill two picks.
+
 ## Data
 
 | File | Source | Used for |

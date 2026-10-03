@@ -1373,6 +1373,11 @@ function renderUnseenNote() {
 
 function renderSearchNote() {
   const note = $('search-note');
+  if (!analysis.search.truncated && analysis.search.optionsTruncated) {
+    note.textContent = 'The plan is exact, but the comparison with other first picks is approximate: these settings let so many players through that checking every alternative would take too long.';
+    note.hidden = false;
+    return;
+  }
   if (!analysis.search.truncated) {
     note.hidden = true;
     return;

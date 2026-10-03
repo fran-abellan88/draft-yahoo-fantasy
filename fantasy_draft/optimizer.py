@@ -47,11 +47,12 @@ FLEXIBILITY_BONUS = 0.3
 FALLBACK_CANDIDATES = 5
 
 # Search nodes per request. Planning 10 rounds over the 245-player pool, the busiest state of a whole simulated draft needs
-# about 21,000 nodes for the main search with the page's settings (uncapped, games counted) and up to about 290,000 with
-# the capped score, which has many ties (tests/test_service.py checks that half the budget is never needed). Only
-# pathological settings reach the budget; the worst case then takes several seconds.
+# about 20,000 nodes for the main search with the page's settings (uncapped, games counted) and up to about 60,000 with the
+# capped score (tests/test_service.py checks that half the budget is never needed). Unticking a category makes ties
+# likelier and the search harder: up to about 190,000 for the plans, and some first-pick comparisons (games counted) need
+# more than their budget, so those are approximate and say so (`options_truncated`) while the plans stay exact.
 NODE_BUDGET = 700_000
-OPTION_NODE_BUDGET = 700_000  # for each search that fixes one first pick (the busiest used about 306,000, capped)
+OPTION_NODE_BUDGET = 250_000  # for each search that fixes one first pick; only the comparison is approximate if one is cut
 FIRST_PICK_OPTIONS = 6
 
 
@@ -93,11 +94,12 @@ class Recommendation:
 
     plans: List[Plan]
     options: List[FirstPickOption]  # the other first picks, best first; never the recommended player
-    truncated: bool
+    truncated: bool  # the search for the plans themselves was cut short
     nodes: int  # all searches together
     assumed_gone: Optional[str] = None  # the recommended player, when the options plan as if he will be taken first
     main_nodes: int = 0  # the search for the plans alone, to compare with NODE_BUDGET
     max_option_nodes: int = 0  # the busiest single first-pick search, to compare with OPTION_NODE_BUDGET
+    options_truncated: bool = False  # a first-pick comparison was cut short: the plans are exact, those gaps approximate
 
 
 def recommend(
@@ -174,6 +176,7 @@ def plan_picks(
     main_nodes, max_option_nodes = nodes, 0
 
     options: List[FirstPickOption] = []
+    options_truncated = False
     assumed_gone: Optional[str] = None
     if option_count and plans:
         recommended = plans[0].player_ids[0]
@@ -186,12 +189,12 @@ def plan_picks(
         for first in wanted:
             budget = None if node_budget is None else min(node_budget, OPTION_NODE_BUDGET)
             found, cut, used = _search([[first]] + later, remaining_picks, mine_masks, base_score, 1, budget)
-            truncated, nodes = truncated or cut, nodes + used
+            options_truncated, nodes = options_truncated or cut, nodes + used
             max_option_nodes = max(max_option_nodes, used)
             if found:
                 options.append(FirstPickOption(first.player_id, found[0]))
         options.sort(key=lambda option: (option.plan.value, option.plan.survival), reverse=True)
-    return Recommendation(plans, options, truncated, nodes, assumed_gone, main_nodes, max_option_nodes)
+    return Recommendation(plans, options, truncated, nodes, assumed_gone, main_nodes, max_option_nodes, options_truncated)
 
 
 def fill_picks(
@@ -293,6 +296,48 @@ def _candidates_for_pick(
     return candidates[:max_candidates]
 
 
+def _distinct_pools(candidates: List[List[_Candidate]]) -> List[List[Tuple[float, str]]]:
+    """For each k, every player who could fill one of picks k.., with his best value there, highest first."""
+    pools: List[List[Tuple[float, str]]] = []
+    for k in range(len(candidates) + 1):
+        best_value: Dict[str, float] = {}
+        for candidate_list in candidates[k:]:
+            for candidate in candidate_list:
+                if candidate.value > best_value.get(candidate.player_id, -np.inf):
+                    best_value[candidate.player_id] = candidate.value
+        pools.append(sorted(((value, player_id) for player_id, value in best_value.items()), reverse=True))
+    return pools
+
+
+def _best_distinct(pool: List[Tuple[float, str]], needed: int, taken: Set[str]) -> float:
+    """The most `needed` different players from the pool can add, leaving out `taken`; -inf when too few are left.
+
+    Two upper bounds on what the remaining picks can add hold at once: one star at every pick is impossible (this one),
+    and no pick can beat its own best candidate (`_best_each`). The search uses the smaller.
+    """
+    total = 0.0
+    for value, player_id in pool:
+        if needed == 0:
+            break
+        if player_id not in taken:
+            total += value
+            needed -= 1
+    return total if needed == 0 else -np.inf
+
+
+def _best_each(candidates: List[List[_Candidate]], start: int, taken: Set[str]) -> float:
+    """Each pick from `start` on takes its best candidate not already chosen, even if two take the same star; -inf if a pick has none."""
+    total = 0.0
+    for candidate_list in candidates[start:]:
+        for candidate in candidate_list:
+            if candidate.player_id not in taken:
+                total += candidate.value
+                break
+        else:
+            return -np.inf
+    return total
+
+
 def _search(
     candidates: List[List[_Candidate]],
     picks: List[int],
@@ -308,9 +353,7 @@ def _search(
     n_picks = len(candidates)
     if any(not candidate_list for candidate_list in candidates):
         return [], False, 0  # a pick nobody can fill leaves no plan (possible once a player is assumed gone)
-    suffix_best = [0.0] * (n_picks + 1)
-    for k in range(n_picks - 1, -1, -1):
-        suffix_best[k] = suffix_best[k + 1] + candidates[k][0].value
+    suffix_pool = _distinct_pools(candidates)  # the best different players for the picks from k on, whichever pick they fill
 
     found: Dict[FrozenSet[str], Plan] = {}
     floor = [-np.inf]  # value a new plan must beat once `top_k` plans are known
@@ -343,8 +386,11 @@ def _search(
         if k == n_picks:
             record(total, value, survival)
             return
+        rest = min(_best_each(candidates, k + 1, chosen_ids), _best_distinct(suffix_pool[k + 1], n_picks - k - 1, chosen_ids))
+        if rest == -np.inf:
+            return  # not enough different players left to fill the remaining picks
         for candidate in candidates[k]:
-            if cannot_improve(value + candidate.value + suffix_best[k + 1]):
+            if cannot_improve(value + candidate.value + rest):
                 break  # candidates are sorted by value, so none of the rest can do better
             if candidate.player_id in chosen_ids:
                 continue

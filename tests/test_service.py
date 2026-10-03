@@ -796,3 +796,13 @@ def test_filled_in_picks_take_an_open_starting_slot_before_the_bench() -> None:
         assert positions[player_id] != ["C"], "a lineup full of centers needs a guard or a forward, not a ninth center"
     everyone = held + tuple(pid for _, pid in filled)
     assert max_starters([positions[pid] for pid in everyone]) > max_starters([positions[pid] for pid in held])
+
+
+def test_a_cut_short_first_pick_comparison_does_not_make_the_plan_look_approximate(
+    service: DraftService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("fantasy_draft.optimizer.OPTION_NODE_BUDGET", 50)
+    search = _ask(service, [], method="uncapped", gamesAdjusted=True)["search"]
+    assert search["truncated"] is False, "the plans themselves are still exact"
+    assert search["optionsTruncated"] is True
+    assert _ask(service, [], method="uncapped", gamesAdjusted=True)["plans"][0]["steps"][0]["id"] == "nikola-jokic"

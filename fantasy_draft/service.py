@@ -208,6 +208,7 @@ class DraftService:
             "alternativesMode": "gone" if recommendation_result.assumed_gone else "instead",
             "search": {
                 "truncated": recommendation_result.truncated,
+                "optionsTruncated": recommendation_result.options_truncated,
                 "nodes": recommendation_result.nodes,
                 "mainNodes": recommendation_result.main_nodes,
                 "maxOptionNodes": recommendation_result.max_option_nodes,
