@@ -366,7 +366,7 @@ body { margin: 0; }
    a wide table the numbers get more room and the Score bar more length instead of leaving the gap in the Player column.
    cqw is a share of the table panel's width */
 .tablecol { container-type: inline-size; }
-#pool th:nth-child(3), #pool td.score-cell { min-width: clamp(110px, calc(22cqw - 100px), 240px); }
+#pool th:nth-child(3), #pool td.score-cell { min-width: clamp(100px, calc(17.6cqw - 69px), 220px); }
 
 /* 2350 and up: every panel has its own place. The columns share extra width in proportion (the fr numbers are their
    widths at 2436 px), so a wider window enlarges every panel, not only the table */

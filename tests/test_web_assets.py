@@ -482,7 +482,7 @@ def test_the_score_column_is_wide_enough_for_its_bar_and_the_other_cells_pay_for
     assert "#pool th:nth-child(3), #pool td.score-cell { min-width: 100px; }" in CSS
     # The numbers and the Score bar grow with the table panel (cqw), so a wide table spreads its slack instead of leaving it in Player
     assert ".tablecol { container-type: inline-size; }" in CSS
-    assert re.search(r"#pool th:nth-child\(3\), #pool td\.score-cell \{ min-width: clamp\(110px, calc\(22cqw - 100px\), 240px\); \}", CSS)
+    assert re.search(r"#pool th:nth-child\(3\), #pool td\.score-cell \{ min-width: clamp\(100px, calc\(17\.6cqw - 69px\), 220px\); \}", CSS)
     assert "#pool td { padding-inline: clamp(4px, calc(2.5cqw - 22px), 18px); }" in CSS
     assert "#pool td { padding: 4px 5px; }" in CSS and "#pool th button { padding: 9px 5px; }" in CSS
     columns = re.findall(r"\{ key: '(\w+)', label", JS[JS.index("const POOL_COLUMNS"): JS.index("function buildPoolHead")])
