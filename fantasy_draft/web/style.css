@@ -21,34 +21,40 @@
   --danger-soft: #f0d3ce;
   --taken: #737c89; /* bars and borders, never text */
   --hover: #dcd8cf;
+  --selected: #d0ccc2; /* the chosen segment of a segmented control */
+  --cool-strong: rgba(31, 85, 144, 0.22); /* stat capsules: a strong value, a good one */
+  --cool-mid: rgba(31, 85, 144, 0.1);
   --focus: #1d4ed8;
-  --font: ui-sans-serif, "Avenir Next", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
 /* Follow the system unless the theme button chose one (data-theme on <html>). The dark tokens appear twice because CSS
    cannot share them between a media query and an attribute selector; a test keeps the two copies equal. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --paper: #0e1013;
-    --surface: #1e2127;
-    --raised: #282c34;
-    --ink: #e4e3df;
-    --muted: #bac0c9;
-    --line: #3a3f49;
-    --mine: #5fd3a4;
-    --mine-soft: #17382d;
-    --cool: #9cc4ff;
-    --on-mine: #06281d;
-    --score: #c79bff;
-    --tag-planner: #56d4dc;
-    --tag-adp: #f590bd;
-    --flag: #f2b05e;
-    --flag-soft: #3a2a14;
-    --danger: #ffa29b;
-    --danger-soft: #3d1c1a;
-    --taken: #8a919c;
-    --hover: #2c3440;
-    --focus: #8ab4ff;
+    --paper: #000000;
+    --surface: #1c1c1e;
+    --raised: #2c2c2e;
+    --selected: #3a3a3c;
+    --line: rgba(120, 120, 128, 0.28);
+    --ink: #f5f5f7;
+    --muted: #a8a8b0;
+    --mine: #30d158;
+    --mine-soft: rgba(48, 209, 88, 0.16);
+    --cool: #64d2ff;
+    --cool-strong: rgba(100, 210, 255, 0.24);
+    --cool-mid: rgba(100, 210, 255, 0.10);
+    --on-mine: #00210b;
+    --score: #6c6c74;
+    --tag-planner: #bf5af2;
+    --tag-adp: #ff375f;
+    --flag: #ff9f0a;
+    --flag-soft: rgba(255, 159, 10, 0.18);
+    --danger: #ff6b61;
+    --danger-soft: rgba(255, 69, 58, 0.2);
+    --taken: #6c6c74;
+    --hover: #2c2c2e;
+    --focus: #0a84ff;
   }
 }
 
@@ -56,26 +62,29 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --paper: #0e1013;
-  --surface: #1e2127;
-  --raised: #282c34;
-  --ink: #e4e3df;
-  --muted: #bac0c9;
-  --line: #3a3f49;
-  --mine: #5fd3a4;
-  --mine-soft: #17382d;
-  --cool: #9cc4ff;
-  --on-mine: #06281d;
-  --score: #c79bff;
-  --tag-planner: #56d4dc;
-  --tag-adp: #f590bd;
-  --flag: #f2b05e;
-  --flag-soft: #3a2a14;
-  --danger: #ffa29b;
-  --danger-soft: #3d1c1a;
-  --taken: #8a919c;
-  --hover: #2c3440;
-  --focus: #8ab4ff;
+  --paper: #000000;
+  --surface: #1c1c1e;
+  --raised: #2c2c2e;
+  --selected: #3a3a3c;
+  --line: rgba(120, 120, 128, 0.28);
+  --ink: #f5f5f7;
+  --muted: #a8a8b0;
+  --mine: #30d158;
+  --mine-soft: rgba(48, 209, 88, 0.16);
+  --cool: #64d2ff;
+  --cool-strong: rgba(100, 210, 255, 0.24);
+  --cool-mid: rgba(100, 210, 255, 0.10);
+  --on-mine: #00210b;
+  --score: #6c6c74;
+  --tag-planner: #bf5af2;
+  --tag-adp: #ff375f;
+  --flag: #ff9f0a;
+  --flag-soft: rgba(255, 159, 10, 0.18);
+  --danger: #ff6b61;
+  --danger-soft: rgba(255, 69, 58, 0.2);
+  --taken: #6c6c74;
+  --hover: #2c2c2e;
+  --focus: #0a84ff;
 }
 
 * { box-sizing: border-box; }
@@ -87,11 +96,12 @@ body {
   margin: 0;
   background: var(--paper);
   color: var(--ink);
-  font: 15px/1.45 var(--font);
+  font: 15px/1.4 var(--font);
+  letter-spacing: -0.003em;
   font-variant-numeric: tabular-nums;
 }
 
-h2 { margin: 0 0 10px; font-size: 16px; font-weight: 650; letter-spacing: 0.005em; }
+h2 { margin: 0 0 10px; font-size: 19px; font-weight: 700; letter-spacing: -0.018em; }
 p { margin: 0; }
 ol { margin: 0; padding: 0; list-style: none; }
 
@@ -104,7 +114,7 @@ button:focus-visible, input:focus-visible, summary:focus-visible, tr:focus-visib
 button {
   padding: 7px 12px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 999px;
   background: var(--raised);
   cursor: pointer;
 }
@@ -126,24 +136,17 @@ tr.unconfirmed { opacity: 0.6; }
 .note { color: var(--muted); font-size: 13px; margin-top: 8px; max-width: 62ch; }
 
 /* On the clock */
-.clock-line { font-size: 17px; font-weight: 600; line-height: 1.3; }
+.clock-line { line-height: 1.25; }
+.clock-pick { display: block; font-size: 22px; font-weight: 750; letter-spacing: -0.02em; }
+.clock-sub { display: block; font-size: 13.5px; color: var(--muted); }
 
-.snake { display: grid; grid-template-columns: repeat(14, 24px); gap: 3px; }
-.snake .cell {
-  aspect-ratio: 1 / 1.2;
-  display: grid;
-  place-items: center;
-  font-size: 13px;
-  border-radius: 3px;
-  background: var(--raised);
-  border: 1px solid var(--line);
-  color: var(--muted);
-}
-.snake .cell.done { background: var(--line); color: var(--ink); border-color: var(--line); }
-.snake .cell.me { border-color: var(--mine); color: var(--mine); font-weight: 700; }
-.snake .cell.done.me { background: var(--mine-soft); }
-.snake .cell.now { background: var(--ink); color: var(--paper); border-color: var(--ink); font-weight: 700; }
-.snake .cell.now.me { background: var(--mine); color: var(--on-mine); border-color: var(--mine); }
+.snake { display: grid; grid-template-columns: repeat(14, 25px); gap: 4px; }
+.snake .cell { display: grid; place-items: center; width: 25px; height: 25px; border: 1.5px solid transparent; border-radius: 50%; font-size: 11.5px; color: var(--muted); }
+.snake .cell.done { background: var(--raised); }
+.snake .cell.me { background: var(--mine); color: var(--on-mine); font-weight: 700; box-shadow: 0 0 0 3px var(--mine-soft); }
+.snake .cell.done.me { background: var(--mine-soft); color: var(--mine); box-shadow: none; }
+.snake .cell.now { border-color: var(--ink); color: var(--ink); font-weight: 700; }
+.snake .cell.now.me { color: var(--on-mine); }
 
 /* Controls */
 .categories { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; }
@@ -158,23 +161,42 @@ tr.unconfirmed { opacity: 0.6; }
 .rule-body { display: grid; gap: 10px; margin-top: 12px; }
 .fields { display: grid; gap: 10px; }
 .fields label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
-.fields input { width: 90px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--raised); }
+.fields input { width: 90px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--raised); }
 
 /* Recommendation */
-.hero { background: var(--surface); border: 1px solid var(--line); border-left: 6px solid var(--taken); border-radius: 8px; padding: 20px 22px; }
-.hero.yours { border-left-color: var(--mine); }
+.hero { background: var(--surface); border-radius: 20px; padding: 16px 18px; }
 .hero h2 { font-size: 15px; color: var(--muted); font-weight: 600; margin-bottom: 4px; }
-.hero .name { font-size: 36px; line-height: 1.1; font-weight: 750; letter-spacing: -0.01em; }
-.hero.yours .name { color: var(--mine); }
+.hero h2.hero-pill { display: inline-block; margin: 0 0 8px; padding: 4px 12px; border-radius: 999px; background: var(--raised); color: var(--muted); font-size: 13px; font-weight: 650; letter-spacing: 0; }
+.hero.yours h2.hero-pill { background: var(--mine-soft); color: var(--mine); }
+.hero-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.hero-who { min-width: 0; }
+.hero .name { font-size: 40px; line-height: 0.98; font-weight: 800; letter-spacing: -0.035em; }
+.hero .meta { margin-top: 6px; color: var(--muted); font-size: 15px; }
+.hero-score { text-align: right; flex: none; }
+.hero-score strong { display: block; font-size: 40px; line-height: 1; font-weight: 300; letter-spacing: -0.04em; }
+.hero-score span { color: var(--muted); font-size: 13px; }
 .hero .facts { margin-top: 6px; color: var(--muted); }
-.hero .then { margin-top: 14px; max-width: 70ch; }
-.hero .cta { margin-top: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.hero .cta { margin-top: 10px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.hero .cta .primary { flex: 1 1 100%; padding: 12px; border-radius: 14px; font-size: 16px; }
+
+/* Nine category bars: one column per ticked category, as tall as the player ranks in it */
+.cat-bars { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: 5px; margin-top: 10px; text-align: center; }
+.cat { display: grid; gap: 4px; }
+.cat-value { font-size: 12px; font-weight: 600; color: var(--muted); }
+.cat.strong .cat-value { color: var(--cool); font-weight: 750; }
+.cat-track { display: flex; align-items: flex-end; height: 44px; border-radius: 7px; background: var(--raised); overflow: hidden; }
+.cat-fill { width: 100%; background: var(--taken); }
+.cat.strong .cat-fill { background: var(--cool); }
+.cat.mid .cat-fill { background: color-mix(in srgb, var(--cool) 55%, var(--taken)); }
+.cat-label { font-size: 10px; font-weight: 650; color: var(--muted); }
+
 
 /* Plan */
-.plan { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
-.step { display: grid; grid-template-columns: 52px minmax(0, 1fr) 48px 110px; gap: 12px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--line); }
-.step:first-child { border-top: 0; }
-.step .pick { font-weight: 700; }
+.plan { background: var(--raised); border-radius: 14px; overflow: hidden; }
+.step { position: relative; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto 74px; gap: 12px; align-items: center; padding: 5px 12px; }
+.pick-tile { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; background: var(--selected); font-weight: 700; font-size: 14px; }
+.pick-tile.now { background: var(--mine); color: var(--on-mine); }
+.step:not(:last-of-type)::before { content: ""; position: absolute; left: 28px; top: calc(50% + 17px); height: calc(100% - 34px); width: 2px; background: var(--line); }
 .step .who { min-width: 0; }
 .step .who strong { font-weight: 650; }
 .step .meta { color: var(--muted); font-size: 13px; }
@@ -184,34 +206,40 @@ details.others summary { cursor: pointer; color: var(--muted); }
 .other-plan { margin-top: 8px; padding: 8px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
 .behind-form { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; margin-top: 10px; }
 .behind-form label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
-.behind-form input { width: 90px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--raised); }
+.behind-form input { width: 90px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--raised); }
 button.gone { padding: 1px 8px; font-size: 12px; margin-left: 6px; }
 .search-note { margin: 0 0 10px; padding: 8px 12px; background: var(--flag-soft); color: var(--flag); border-radius: 6px; font-size: 13px; max-width: 80ch; }
 /* Shown when a reply takes longer than a moment, so a slow answer is not mistaken for a frozen page */
 #app.busy .hero, #app.busy #plan { opacity: 0.5; transition: opacity 0.15s; }
-.hero-alts { margin-top: 12px; }
+.hero-alts { margin-top: 10px; padding: 4px 12px; border-radius: 14px; background: var(--raised); }
 .hero-alts h3 { margin: 0 0 4px; font-size: 14px; font-weight: 600; color: var(--muted); }
 .hero-alts ul { margin: 0; padding: 0; list-style: none; }
 .hero-alts li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; padding: 3px 0; border-top: 1px solid var(--line); }
+.hero-alts li strong { font-weight: 600; }
+.hero-alts .gap { color: var(--muted); }
+.hero-alts .gap.same { color: var(--mine); }
 .hero-alts li:first-child { border-top: 0; }
 .hero-alts .meta { color: var(--muted); font-size: 13px; align-self: center; }
 .hero-alts .gap { font-variant-numeric: tabular-nums; align-self: center; }
 .subhead { margin: 14px 0 6px; font-size: 14px; font-weight: 650; }
 td.wont-last { color: var(--flag); font-weight: 650; }
 
-.meter { display: grid; gap: 3px; font-size: 13px; color: var(--muted); }
-.meter .track { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
-.meter .fill { height: 100%; background: var(--cool); }
-.meter .fill.low { background: var(--taken); }
+.odds { display: flex; align-items: center; justify-content: flex-end; gap: 6px; font-size: 13px; color: var(--muted); }
+.odds .ring { width: 24px; height: 24px; }
+.ring-track { fill: none; stroke: var(--line); stroke-width: 4.2; }
+.ring-fill { fill: none; stroke: var(--cool); stroke-width: 4.2; stroke-linecap: round; }
+.odds.low { color: var(--flag); font-weight: 650; }
+.odds.low .ring-fill { stroke: var(--flag); }
+.odds.on-clock { color: var(--mine); font-weight: 650; font-size: 12px; white-space: nowrap; }
 
 /* Pool */
 .filters { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; align-items: center; }
-.filters input[type="search"] { flex: 1 1 220px; max-width: 320px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--raised); }
+.filters input[type="search"] { flex: 1 1 220px; max-width: 320px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--raised); }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .chips button { padding: 5px 11px; border-radius: 999px; }
 .chips button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 
-.table-wrap { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow: auto; flex: 1 1 0; min-height: 0; }
+.table-wrap { background: var(--surface); border-radius: 20px; overflow: auto; flex: 1 1 0; min-height: 0; }
 table { border-collapse: collapse; width: 100%; font-size: 14px; }
 th, td { padding: 4px 7px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
 th { position: sticky; top: 0; background: var(--raised); z-index: 1; font-weight: 600; color: var(--muted); font-size: 13px; padding: 0; }
@@ -223,10 +251,9 @@ th[aria-sort="ascending"] button::after { content: " \25B2"; font-size: 10px; }
 th[aria-sort="descending"] button::after { content: " \25BC"; font-size: 10px; }
 tbody tr { cursor: pointer; }
 tbody tr:hover { background: var(--hover); }
-td.player { min-width: 260px; white-space: nowrap; }
+td.player { white-space: nowrap; }
 td.player strong { font-weight: 650; }
-td.player .meta { display: inline; margin-left: 8px; color: var(--muted); font-size: 13px; }
-td.player .notes { display: inline; margin-left: 4px; }
+td.player .meta { color: var(--muted); font-size: 13px; }
 .score { font-weight: 700; }
 
 .badge { display: inline-block; margin: 1px 4px 1px 0; padding: 1px 7px; border-radius: 999px; font-size: 12px; background: var(--flag-soft); color: var(--flag); }
@@ -237,7 +264,7 @@ td.player .notes { display: inline; margin-left: 4px; }
 .roster li { display: grid; grid-template-columns: 44px 1fr; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
 .roster .pick { color: var(--mine); font-weight: 700; }
 .roster li.empty-row, .log li.empty-row { display: block; color: var(--muted); font-size: 14px; border-bottom: 0; }
-.profile-row { display: grid; grid-template-columns: 44px 1fr 34px; gap: 8px; align-items: center; margin-bottom: 8px; font-size: 13px; }
+.profile-row { display: grid; grid-template-columns: 44px 1fr 34px; gap: 8px; align-items: center; margin-bottom: 6px; font-size: 13px; }
 .profile-row .bars { display: grid; gap: 3px; }
 .profile-row .bar { height: 7px; background: var(--line); border-radius: 4px; overflow: hidden; }
 .profile-row .bar > span { display: block; height: 100%; }
@@ -245,8 +272,12 @@ td.player .notes { display: inline; margin-left: 4px; }
 .profile-row .bar.plan > span { background: var(--taken); }
 .profile-legend { display: flex; gap: 14px; font-size: 13px; color: var(--muted); margin-bottom: 10px; }
 .profile-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; }
-.log li { display: grid; grid-template-columns: 38px 1fr; gap: 8px; padding: 4px 0; font-size: 14px; color: var(--ink); }
-.team-name { margin: 0 6px; color: var(--muted); font-weight: 400; font-size: 13px; }
+.log li { display: grid; grid-template-columns: 38px 1fr; gap: 8px; padding: 6px 0; font-size: 14px; color: var(--ink); border-bottom: 1px solid var(--line); }
+.log li:last-child { border-bottom: 0; }
+.log li > span:first-child { color: var(--muted); font-size: 13px; font-weight: 550; }
+.log li > span:nth-child(2) { font-weight: 550; }
+.team-name { margin: 0 0 0 6px; color: var(--muted); font-weight: 400; font-size: 13px; }
+.team-name::before { content: "\00b7  "; }
 .log li.mine { color: var(--mine); font-weight: 650; }
 .log li.edit-panel { display: block; padding: 8px; margin: 2px 0 6px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); }
 .edit-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 6px; }
@@ -268,8 +299,8 @@ body { margin: 0; }
   position: relative;
   height: 100vh;
   display: grid;
-  gap: 10px 14px;
-  padding: 10px 14px;
+  gap: 14px;
+  padding: 16px;
   grid-template-rows: auto auto auto minmax(0, auto) auto minmax(0, 1fr);
   grid-template-columns: minmax(0, 1fr);
 }
@@ -278,15 +309,13 @@ body { margin: 0; }
 .topbar .clock .note { display: none; }
 .topbar-actions { display: flex; gap: 8px; margin-left: auto; }
 .topbar .behind-form { flex-basis: 100%; margin: 0; }
-.topbar .clock-line { font-size: 16px; }
 .banner { margin: 0; border: 1px solid var(--danger); border-radius: 6px; }
-.settings { position: absolute; top: 56px; right: 14px; z-index: 15; width: min(1100px, calc(100vw - 28px)); max-height: calc(100vh - 80px); overflow: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25); }
+.settings { position: absolute; top: 56px; right: 14px; z-index: 15; width: min(1100px, calc(100vw - 28px)); max-height: calc(100vh - 80px); overflow: auto; background: var(--surface); border-radius: 20px; padding: 16px 18px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25); }
 .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
 
 .panel { min-width: 0; min-height: 0; overflow: auto; }
 /* Every panel is a card: roster, log, Standing and the 14 teams used to sit straight on the page background */
-.team, .panel.log, .seam-standing, .teams { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
-.teams { padding: 8px; } /* the league tables need the width: 523 px of 540 at 12 px */
+.team, .panel.log, .seam-plan, .seam-standing, .teams { background: var(--surface); border-radius: 20px; padding: 16px 18px; }
 .seam-rec { grid-area: rec; overflow: visible; }
 .seam-plan { grid-area: plan; max-height: 45vh; } /* the plan scrolls inside itself so the panel below it keeps room */
 .seam-standing { grid-area: standing; }
@@ -401,17 +430,27 @@ body { margin: 0; }
   .app:not([data-tab="log"]) .panel.log { display: none; }
   .seam-plan { max-height: none; }
   .hero .name { font-size: 22px; }
-  .step { grid-template-columns: 44px 1fr; }
-  .step .meter, .step .score-col { grid-column: 2; }
+  .step { grid-template-columns: 34px 1fr; }
+  .step .odds, .step .score-col { grid-column: 2; }
 }
 
 /* Standing and the 14 teams */
 .standing-row { grid-template-columns: 44px 1fr 120px; }
 .standing-row .rank { text-align: right; color: var(--muted); font-size: 12px; }
-.standing-summary { margin: 0 0 10px; color: var(--ink); }
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+.tile { display: grid; gap: 1px; padding: 6px 10px; border-radius: 14px; background: var(--raised); }
+.tile strong { font-size: 26px; line-height: 1.1; font-weight: 750; }
+.tile span { font-size: 12px; color: var(--muted); }
+.tile .tile-names { min-height: 14px; font-size: 11px; line-height: 1.25; color: var(--ink); }
+.tile.winning strong { color: var(--mine); }
+.tile.behind strong { color: var(--flag); }
+.standing-row .bar { height: 7px; }
+.standing-row.winning .bar.roster > span { background: var(--mine); }
+.standing-row.close .bar.roster > span { background: var(--muted); }
+.standing-row.behind .bar.roster > span { background: var(--flag); }
 .league-views { display: flex; gap: 6px; margin-bottom: 8px; }
 .league-views button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
-.league-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--raised); }
+.league-wrap { overflow: auto; border-radius: 14px; background: var(--raised); }
 .league-table { font-size: 12px; }
 .league-table th { position: static; padding: 6px 3px; }
 .league-table td { padding: 5px 3px; }
@@ -430,11 +469,11 @@ td.dim { opacity: 0.45; }
 .trend { margin-left: 2px; font-weight: 700; }
 .trend.up { color: var(--cool); }
 .trend.down { color: var(--danger); }
-.roster .slot { display: grid; grid-template-columns: 52px 1fr; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line); }
+.roster .slot { display: grid; grid-template-columns: 40px 1fr; gap: 12px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); }
 .roster .slot.open { color: var(--muted); }
-.roster .slot .pick { color: var(--muted); font-weight: 650; font-size: 13px; }
-.roster .slot.filled .pick { color: var(--mine); }
-.roster .slot.bench .pick { color: var(--muted); }
+.roster .slot .pick { display: grid; place-items: center; width: 40px; height: 28px; border-radius: 9px; border: 1.5px solid var(--taken); color: var(--muted); font-weight: 650; font-size: 12px; }
+.roster .slot.filled .pick { background: var(--mine); border-color: var(--mine); color: var(--on-mine); }
+.roster .slot.bench .pick { background: var(--raised); border-color: var(--raised); }
 
 /* Settings changed after the first pick wait here */
 .setting-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--flag); border-radius: 8px; background: var(--flag-soft); color: var(--flag); font-weight: 600; }
@@ -451,14 +490,12 @@ td.dim { opacity: 0.45; }
 .league-table td.score { font-weight: 650; white-space: nowrap; }
 
 /* The two drafts: the current one is filled, and a mock draft also tints the top bar so it is never mistaken for the real one */
-.modes { display: flex; gap: 0; white-space: nowrap; }
-.modes a { padding: 5px 12px; border: 1px solid var(--line); color: var(--ink); text-decoration: none; font-size: 13px; background: var(--surface); }
-.modes a:first-child { border-radius: 6px 0 0 6px; }
-.modes a:last-child { border-radius: 0 6px 6px 0; border-left: 0; }
-.modes a:hover { border-color: var(--muted); }
-.modes a[aria-current="page"] { background: var(--ink); color: var(--paper); border-color: var(--ink); font-weight: 650; }
+.modes { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--raised); white-space: nowrap; }
+.modes a { padding: 5px 14px; border-radius: 8px; color: var(--muted); text-decoration: none; font-size: 13px; font-weight: 600; }
+.modes a:hover { color: var(--ink); }
+.modes a[aria-current="page"] { background: var(--selected); color: var(--ink); font-weight: 650; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4); }
 .app[data-mode="mock"] .topbar { border-bottom: 2px solid var(--flag); }
-.app[data-mode="mock"] .modes a[aria-current="page"] { background: var(--flag); border-color: var(--flag); color: var(--paper); }
+.app[data-mode="mock"] .modes a[aria-current="page"] { color: var(--flag); }
 .league-views + .range, .range { margin: 0 0 8px; font-weight: 600; }
 
 /* What the team on the clock should pick, and how each logged pick compared */
@@ -489,3 +526,44 @@ td.dim { opacity: 0.45; }
 .help-pop { position: fixed; z-index: 20; max-width: min(380px, calc(100vw - 16px)); padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--raised); color: var(--ink); font-size: 13px; line-height: 1.45; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3); }
 .help-pop[hidden] { display: none; }
 .choice-row { display: flex; align-items: center; gap: 4px; }
+
+/* Midnight, step 2: the two kinds of table. Only strong values are marked, with a capsule instead of a fill on every cell */
+.cap { display: inline-block; padding: 2px 4px; border-radius: 7px; }
+.cap.strong { background: var(--cool-strong); font-weight: 700; }
+.cap.mid { background: var(--cool-mid); font-weight: 600; }
+.cap.weak { color: var(--muted); font-weight: 450; }
+
+#pool { font-size: 15px; font-weight: 500; }
+#pool tbody tr { height: 34px; }
+#pool td { height: 34px; padding: 0 4px; }
+#pool td.stat { padding: 0 1px; }
+#pool th button { padding: 9px 4px; font-size: 11px; font-weight: 650; letter-spacing: 0.045em; text-transform: uppercase; color: var(--muted); }
+#pool th[aria-sort] button { color: var(--ink); }
+td.player strong { font-weight: 600; }
+td.player .meta { font-size: 13px; font-weight: 450; }
+/* The Player column takes what the numbers leave. In it the meta line gives way first, then the name; a badge never does */
+td.player { width: 99%; max-width: 0; }
+.player-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.player-line strong { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.player-line .meta { flex: 0 1000 auto; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.player-line .notes { flex: none; display: flex; align-items: center; margin: 0; }
+.player-line .pick-tag { flex: none; margin: 0; }
+.prev { font-size: 12.5px; }
+.pick-tag { margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: var(--mine); color: var(--on-mine); font-size: 11px; font-weight: 700; vertical-align: middle; }
+#pool tr.recommended td, #pool tr.recommended:hover td { background: var(--mine-soft); }
+#pool tr.recommended td:nth-child(1), #pool tr.recommended td:nth-child(2) { background: linear-gradient(var(--mine-soft), var(--mine-soft)), var(--surface); }
+#pool tr.recommended td.player strong { color: var(--mine); }
+#pool td.score-cell { position: relative; }
+#pool td.score-cell.bar::after { content: ""; position: absolute; left: 6px; bottom: 4px; height: 3px; width: calc((100% - 12px) * var(--bar)); border-radius: 2px; background: var(--taken); }
+#pool tr.recommended td.score-cell.bar::after { background: var(--mine); }
+
+.league-table { font-size: 14.5px; font-weight: 500; font-stretch: 80%; }
+.league-table th { padding: 6px 3px; font-size: 10.5px; font-weight: 650; font-stretch: 86%; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.league-table td { height: 30px; padding: 0 3px; }
+.league-table td.left { width: 99%; max-width: 0; font-stretch: 76%; } /* the team name is the elastic column; its title shows the whole name */
+.league-table .cap { padding: 2px 0; border-radius: 5px; }
+.league-table tr.mine-row td { background: var(--mine-soft); box-shadow: none; font-weight: 700; }
+.league-table tr.mine-row td:first-child { border-radius: 10px 0 0 10px; }
+.league-table tr.mine-row td:last-child { border-radius: 0 10px 10px 0; }
+/* The league tables need the card's width: 519 px at 14.5 px */
+.teams { padding: 16px 8px; }

@@ -16,8 +16,25 @@ JS = (WEB / "app.js").read_text()
 WCAG_TEXT = 4.5
 
 
+TOKEN = r"--([\w-]+):\s*(#[0-9a-fA-F]{6}|rgba\([^)]*\))\s*;"
+
+
 def _tokens(block: str) -> Dict[str, str]:
-    return dict(re.findall(r"--([\w-]+):\s*(#[0-9a-fA-F]{6})\s*;", block))
+    """The tokens of one block as written: a hex colour, or an rgba() that sits on top of whatever is behind it."""
+    return dict(re.findall(TOKEN, block))
+
+
+def _flatten(tokens: Dict[str, str]) -> Dict[str, str]:
+    """Turn every rgba() token into the hex colour it shows over the card, so contrast can be measured."""
+    flat: Dict[str, str] = {}
+    for name, value in tokens.items():
+        if value.startswith("rgba"):
+            red, green, blue, alpha = (float(part) for part in re.findall(r"[\d.]+", value))
+            base = tokens["surface"]
+            channels = [round(alpha * c + (1 - alpha) * int(base[i : i + 2], 16)) for c, i in zip((red, green, blue), (1, 3, 5))]
+            value = "#" + "".join(f"{c:02x}" for c in channels)
+        flat[name] = value
+    return flat
 
 
 def _themes() -> Dict[str, Dict[str, str]]:
@@ -27,7 +44,7 @@ def _themes() -> Dict[str, Dict[str, str]]:
     assert light_block and dark_block and media_block, "the colour tokens moved; update this test"
     light = _tokens(light_block.group(1))
     assert _tokens(media_block.group(1)) == _tokens(dark_block.group(1)), "the two copies of the dark tokens must stay equal"
-    return {"light": light, "dark": {**light, **_tokens(dark_block.group(1))}}
+    return {"light": _flatten(light), "dark": _flatten({**light, **_tokens(dark_block.group(1))})}
 
 
 def _luminance(colour: str) -> float:
@@ -264,10 +281,11 @@ def test_the_need_weights_are_a_setting_that_is_saved_requested_and_shown() -> N
 
 
 def test_the_table_marks_the_plan_tints_the_stats_and_the_hero_explains_itself() -> None:
-    assert "★" in JS and "plan: ${planned}" in JS
+    assert "pick-tag" in JS and "plan: ${planned}" in JS
     assert "statCell(column, player, row)" in JS and "row.categoryScores[column.key]" in JS and "td.dim" in CSS
+    assert "statLevel(" in JS and "background: var(--cool-strong)" in CSS, "a capsule only on strong stats, no fill on every cell"
     assert "UNSEEN_RISK_SHOWN" in JS and "row.unseenRisk >= UNSEEN_RISK_SHOWN" in JS, "Gone only where the unseen picks matter"
-    assert "whyNotTheTopScore(recommendation, plan)" in JS and "Current plan:" in JS and "Today's plan" not in JS
+    assert "whyNotTheTopScore(recommendation, plan)" in JS and "You pick at ${recommendation.pick}" in JS and "Today's plan" not in JS
     assert "Odds the whole plan holds" not in JS and "Other strong plans" not in JS
     assert "analysis.bestAvailable" in JS and "are not planned" in JS
     assert "oddsAtColumn(row)" in JS and "analysis.laterPick" in JS
@@ -305,7 +323,7 @@ def test_text_stays_readable_on_the_strongest_tint_of_a_table_cell(theme: str) -
 def test_green_means_only_mine_and_the_odds_and_stats_use_the_second_hue() -> None:
     tints = [line for line in JS.splitlines() if "color-mix" in line]
     assert tints and all(("var(--cool)" in line or "var(--score)" in line) and "var(--mine)" not in line for line in tints)
-    assert ".meter .fill { height: 100%; background: var(--cool); }" in CSS
+    assert ".ring-fill { fill: none; stroke: var(--cool);" in CSS
     assert "accent-color: var(--cool)" in CSS
 
 
@@ -388,7 +406,7 @@ def test_the_columns_grow_together_the_table_starts_on_adp_and_the_score_has_its
     columns = re.findall(r"grid-template-columns:([^;]*);", CSS)
     assert columns and not any(re.search(r"(?<![\w(,] )\b(?:380|400|420|540)px\s*(?:minmax|;|$)", value) for value in columns)
     assert "sort: { key: 'adp', direction: 1 }" in JS
-    score_tint = JS[JS.index("const scoreFill"): JS.index("// A stat tinted")]
+    score_tint = JS[JS.index("const scoreFill"): JS.index("// A stat marked by")]
     assert "scoreTint(row)" in JS and "var(--score)" in score_tint and "var(--cool)" not in score_tint
     for kind in ("planner", "adp", "both"):
         assert f".predict-mark.{kind}" in CSS
@@ -434,7 +452,7 @@ def test_the_score_column_defaults_to_a_bar_of_the_gap_to_the_best_player_left_a
     assert html.count('name="scorestyle"') == 3 and 'value="bar" checked' in html
     assert "let scoreStyle = 'bar';" in JS and "SCORE_STYLES = ['bar', 'rank', 'range']" in JS
     tint = JS[JS.index("function scoreTint(row)"): JS.index("function scoreTitle")]
-    assert "linear-gradient(to right" in tint and "scoreBarShare(score, scoreAnchors)" in tint and "SCORE_BAR_SPAN" not in JS
+    assert "--bar:" in tint and "::after" in CSS and "scoreBarShare(score, scoreAnchors)" in tint and "SCORE_BAR_SPAN" not in JS
     assert "row.rank <= limit" in tint, "colour by rank uses the rank among the players left, not the score"
     assert "localStorage.setItem(SCORE_STYLE_KEY" in JS and "scorestyle" in JS[JS.index("function wireControls()"):], "a browser preference"
     assert "behind the best score left" in JS
@@ -457,3 +475,52 @@ def test_the_score_column_is_wide_enough_for_its_bar_and_the_other_cells_pay_for
     assert "#pool td { padding: 4px 5px; }" in CSS and "#pool th button { padding: 9px 5px; }" in CSS
     columns = re.findall(r"\{ key: '(\w+)', label", JS[JS.index("const POOL_COLUMNS"): JS.index("function buildPoolHead")])
     assert columns[2] == "score", "the width rule names the third column: keep Score third"
+
+
+def test_the_font_stack_starts_with_a_family_chrome_knows() -> None:
+    # ui-sans-serif is ignored by Chrome, which then fell through to Avenir Next
+    stack = re.search(r"--font:\s*([^;]+);", CSS)
+    assert stack and stack.group(1).startswith("system-ui"), "the font stack must start with system-ui"
+
+
+def test_taken_is_never_used_as_a_text_colour() -> None:
+    assert not re.search(r"(?<![\w-])color:\s*var\(--taken\)", CSS), "--taken is for bars and outlines, its contrast is too low for text"
+
+
+def test_midnight_has_the_roles_the_later_steps_need() -> None:
+    dark = _themes()["dark"]
+    for name in ("selected", "cool-strong", "cool-mid"):
+        assert name in dark, f"--{name} is missing from the dark tokens"
+    assert dark["paper"] == "#000000" and dark["surface"] == "#1c1c1e"
+    assert _contrast(dark["ink"], dark["surface"]) >= 15
+    assert _contrast(dark["muted"], dark["surface"]) >= 7
+
+
+def test_a_badge_never_disappears_from_the_player_table() -> None:
+    # The name and the meta line give way (with an ellipsis) before a badge does, and the Player column takes what the numbers leave
+    assert "td.player { width: 99%; max-width: 0; }" in CSS
+    assert re.search(r"\.player-line \.notes \{[^}]*flex: none", CSS)
+    assert re.search(r"\.player-line \.meta \{[^}]*text-overflow: ellipsis", CSS)
+
+
+def test_the_team_name_is_the_elastic_column_of_the_league_tables_and_projected_has_no_count() -> None:
+    assert re.search(r"\.league-table td\.left \{[^}]*width: 99%; max-width: 0", CSS)
+    assert "leagueTable(projected, keys, labels, false)" in JS, "every projected team has the same number of players"
+
+
+def test_the_top_bar_roster_and_log_use_the_midnight_shapes() -> None:
+    assert "class: 'clock-pick'" in JS and ".clock-pick { display: block; font-size: 22px" in CSS
+    assert re.search(r"\.snake \.cell \{[^}]*width: 25px[^}]*border-radius: 50%", CSS), "the snake is a row of 25 px circles"
+    switch = re.search(r"\.modes a\[aria-current=\"page\"\] \{[^}]*background: var\(--selected\)", CSS)
+    assert switch, "the draft switch is a segmented control"
+    assert re.search(r"\.roster \.slot \.pick \{[^}]*width: 40px; height: 28px; border-radius: 9px", CSS), "slot chips"
+    assert ".team-name::before" in CSS, "the log joins its details with a middle dot"
+
+
+def test_the_category_bars_show_the_stat_and_standing_names_its_categories() -> None:
+    bars = JS[JS.index("function categoryBars(row)"): JS.index("// A ring that fills")]
+    assert "player.stats[category.key]" in bars, "the stat on top of each bar"
+    assert "among the players in the pool" in bars, "the 0 to 100 score is in the title"
+    assert "class: 'tile-names'" in JS, "the categories are named in the tile, not only in its title"
+    meta_rule = re.search(r"\.player-line \.meta \{[^}]*flex: 0 1000 auto", CSS)
+    assert meta_rule, "the meta line gives way completely before the name"

@@ -350,6 +350,15 @@ function scoreTrend(delta, threshold = SCORE_TREND_POINTS) {
   return 'same';
 }
 
+// How a stat is marked, from its 0-100 score in the category: only strong values get a capsule, weak ones are muted
+function statLevel(score) {
+  if (score === null || score === undefined || Number.isNaN(score)) return '';
+  if (score >= 80) return 'strong';
+  if (score >= 60) return 'mid';
+  if (score < 25) return 'weak';
+  return '';
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { clampRuleValue, sanitizeRule, normalizePicks, pickSavedState, planBehind, markGone, sanitizeHistory, undoLast, unmarkGone, swapPicks, forgetPick, placeGone, choosePlayer, describePick, swapText, forgetText, placeText, chooseText, undoLabel, chooseSource, discardsUnconfirmed, settingChanges, scoreBarAnchors, scoreBarShare, scoreTrend, PICK_KINDS };
+  module.exports = { clampRuleValue, sanitizeRule, normalizePicks, pickSavedState, planBehind, markGone, sanitizeHistory, undoLast, unmarkGone, swapPicks, forgetPick, placeGone, choosePlayer, describePick, swapText, forgetText, placeText, chooseText, undoLabel, chooseSource, discardsUnconfirmed, settingChanges, scoreBarAnchors, scoreBarShare, scoreTrend, statLevel, PICK_KINDS };
 }

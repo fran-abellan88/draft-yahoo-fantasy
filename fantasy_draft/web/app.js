@@ -87,7 +87,7 @@ const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 const nameOf = (id) => playerById.get(id).name;
 const detailOf = (id) => {
   const player = playerById.get(id);
-  return `${player.team}, ${player.positions.join('/')}`;
+  return `${player.team} · ${player.positions.join('/')}`;
 };
 
 // ---------- persistence ----------
@@ -676,13 +676,15 @@ function render() {
 function renderClock() {
   const clock = analysis.clock;
   const line = $('clock-line');
+  // "Pick 27" large, the round and who is choosing under it
+  const clockText = (pick, text) => put(line, h('strong', { class: 'clock-pick' }, pick), h('span', { class: 'clock-sub' }, text));
   if (clock.draftComplete) {
-    line.textContent = 'The draft is complete.';
+    clockText('Draft complete', 'Good luck this season.');
   } else if (clock.isMine) {
-    line.textContent = `Pick ${clock.pick} (round ${clock.round}): ${teamName(pool.league.slot)}, you're up.`;
+    clockText(`Pick ${clock.pick}`, `Round ${clock.round} · ${teamName(pool.league.slot)}, you're on the clock`);
   } else {
-    const wait = clock.picksUntilMine === null ? '' : ` You pick at ${clock.nextMyPick}, after ${plural(clock.picksUntilMine, 'more pick')}.`;
-    line.textContent = `Pick ${clock.pick} (round ${clock.round}): ${clock.teamOnClock} is choosing.${wait}`;
+    const wait = clock.picksUntilMine === null ? '' : ` · You pick at ${clock.nextMyPick}, after ${plural(clock.picksUntilMine, 'more pick')}`;
+    clockText(`Pick ${clock.pick}`, `Round ${clock.round} · ${clock.teamOnClock} is choosing${wait}`);
   }
 
   const slots = Array.from({ length: pool.league.teams }, (_, index) => index + 1);
@@ -830,27 +832,30 @@ function renderHero() {
 
   const row = poolRowById.get(recommendation.id);
   const plan = analysis.plans[0];
-  const laterSteps = plan.steps.slice(1, 4).map((step) => `${nameOf(step.id)} at ${step.pick}`);
   const mine = clock.isMine;
   hero.className = `hero${mine ? ' yours' : ''}`;
 
-  const heading = mine
-    ? `Pick ${recommendation.pick} is yours. Take`
-    : `You pick at ${recommendation.pick}, after ${plural(clock.picksUntilMine, 'more pick')}. Current plan:`;
+  const pill = mine ? `Your pick · ${recommendation.pick}` : `You pick at ${recommendation.pick}`;
   // On my turn the player is on the board unless picks were missed: then the doubt is shown and the user checks Yahoo
   const doubt = mine && hasUnseenPicks() && row.availability !== null;
   const odds = doubt
     ? (state.rule.type === 'window' ? "Picks were missed. Check he is still on Yahoo's board." : `${pct(row.availability)} chance he is still on the board. Check Yahoo.`)
     : !mine && row.availability !== null ? `${pct(row.availability)} chance he is still there.` : '';
+  const timing = mine ? '' : `After ${plural(clock.picksUntilMine, 'more pick')}.`;
   const lookFirst = doubt ? analysis.lookFirst : [];
   const reason = whyNotTheTopScore(recommendation, plan);
-  put(hero, 
-    h('h2', {}, heading),
-    h('p', { class: 'name' }, nameOf(recommendation.id)),
-    h('p', { class: 'facts' }, `${detailOf(recommendation.id)}, score ${oneDecimal(row.score)}${odds ? `. ${odds}` : ''}`),
+  const facts = [timing, odds].filter(Boolean).join(' ');
+  put(hero,
+    h(
+      'div',
+      { class: 'hero-head' },
+      h('div', { class: 'hero-who' }, h('h2', { class: 'hero-pill' }, pill), h('p', { class: 'name' }, nameOf(recommendation.id)), h('p', { class: 'meta' }, detailOf(recommendation.id))),
+      h('div', { class: 'hero-score', title: 'Score for your ticked categories' }, h('strong', {}, oneDecimal(row.score)), h('span', {}, 'Score')),
+    ),
+    categoryBars(row),
+    facts ? h('p', { class: 'facts' }, facts) : null,
     reason ? h('p', { class: 'facts' }, reason) : null,
     analysis.search.truncated ? h('p', { class: 'facts' }, 'Approximate: the search was cut short. See the note under Plan.') : null,
-    laterSteps.length ? h('p', { class: 'then' }, `Then ${laterSteps.join(', ')}.`) : null,
     alternativesBlock(),
     lookFirst.length
       ? h('p', { class: 'facts' }, 'If still on the board, look first at: ', ...lookFirst.flatMap((entry) => [
@@ -872,15 +877,48 @@ function renderHero() {
   );
 }
 
+// One column per ticked category: how the player ranks in it among everyone in the pool (0 to 100), tall and cyan when strong
+function categoryBars(row) {
+  const player = playerById.get(row.id);
+  const ticked = pool.categories.filter((category) => state.categories.includes(category.key));
+  const columns = ticked.map((category) => {
+    const score = row.categoryScores[category.key];
+    const known = score !== null && score !== undefined;
+    return h(
+      'div',
+      { class: `cat ${known ? statLevel(score) : ''}`, title: known ? `${category.label}: ${Math.round(score)} of 100 among the players in the pool (the bar)` : category.label },
+      h('span', { class: 'cat-value' }, category.key === 'fg_pct' || category.key === 'ft_pct' ? formatRate(player.stats[category.key]) : oneDecimal(player.stats[category.key])),
+      h('div', { class: 'cat-track' }, h('div', { class: 'cat-fill', style: `height: ${Math.max(8, known ? score : 0)}%` })),
+      h('span', { class: 'cat-label' }, category.label),
+    );
+  });
+  return h('div', { class: 'cat-bars', style: `--n: ${ticked.length}` }, ...columns);
+}
+
+// A ring that fills with the chance he is still there; "On the clock" when this is the pick being made
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function ring(share) {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 36 36');
+  svg.setAttribute('class', 'ring');
+  svg.setAttribute('aria-hidden', 'true');
+  const circle = (className, extra) => {
+    const node = document.createElementNS(SVG_NS, 'circle');
+    node.setAttribute('cx', '18');
+    node.setAttribute('cy', '18');
+    node.setAttribute('r', '15');
+    node.setAttribute('class', className);
+    for (const [name, value] of Object.entries(extra)) node.setAttribute(name, value);
+    return node;
+  };
+  svg.append(circle('ring-track', {}), circle('ring-fill', { pathLength: '100', 'stroke-dasharray': `${Math.round(share * 100)} 100`, transform: 'rotate(-90 18 18)' }));
+  return svg;
+}
+
 function meter(availability, isCurrent) {
-  if (isCurrent) return h('div', { class: 'meter' }, h('span', {}, 'On the clock'));
-  const low = availability < 0.6 ? ' low' : '';
-  return h(
-    'div',
-    { class: 'meter', title: 'Chance he is still available at this pick, from ADP' },
-    h('span', {}, `${pct(availability)} likely there`),
-    h('div', { class: 'track' }, h('div', { class: `fill${low}`, style: `width:${Math.round(availability * 100)}%` })),
-  );
+  if (isCurrent) return h('div', { class: 'odds on-clock' }, 'On the clock');
+  const low = availability < 0.5 ? ' low' : ''; // the same rule as the odds column of the table
+  return h('div', { class: `odds${low}`, title: 'Chance he is still available at this pick, from ADP' }, h('span', {}, pct(availability)), ring(availability));
 }
 
 // Shown only when it says something: a cut-short search prices its alternatives approximately, and when every
@@ -906,7 +944,7 @@ function alternativesBlock() {
     ? `If ${nameOf(analysis.recommendation.id)} is gone by pick ${analysis.recommendation.pick}, take instead`
     : 'Or take instead';
   const items = analysis.alternatives.map((alt) =>
-    h('li', {}, h('strong', {}, nameOf(alt.id)), h('span', { class: 'meta' }, detailOf(alt.id)), h('span', { class: 'gap' }, alt.behind >= TIE_POINTS ? `${oneDecimal(alt.behind)} lower` : 'same score')),
+    h('li', {}, h('strong', {}, nameOf(alt.id)), h('span', { class: 'meta' }, detailOf(alt.id)), h('span', { class: alt.behind >= TIE_POINTS ? 'gap' : 'gap same' }, alt.behind >= TIE_POINTS ? `\u2212${oneDecimal(alt.behind)}` : 'Same score')),
   );
   return h(
     'div',
@@ -929,13 +967,13 @@ function renderPlan() {
     return h(
       'div',
       { class: 'step' },
-      h('div', { class: 'pick' }, `Pick ${step.pick}`),
+      h('div', { class: `pick-tile${step.pick === analysis.clock.pick && !hasUnseenPicks() ? ' now' : ''}`, title: `Pick ${step.pick}` }, step.pick),
       h('div', { class: 'who' }, h('strong', {}, nameOf(step.id)), h('div', { class: 'meta' }, detailOf(step.id))),
       h('div', { class: 'score-col' }, h('strong', {}, oneDecimal(row.score)), h('div', { class: 'meta' }, 'score')),
       meter(step.availability, step.pick === analysis.clock.pick && !hasUnseenPicks()),
     );
   });
-  const foot = h('div', { class: 'plan-foot' }, `Roster score ${oneDecimal(best.totalScore)}. The plan is recomputed after each pick.`);
+  const foot = h('div', { class: 'plan-foot' }, `Roster score ${oneDecimal(best.totalScore)}. `, helpButton('The plan is recomputed after each pick.', 'About the plan'));
   put(container, h('div', { class: 'plan' }, rows, foot));
 }
 
@@ -999,8 +1037,8 @@ function notesFor(row, player) {
   const notes = [];
   if (player.status) notes.push(badge(player.status, 'injury', STATUS_TITLES[player.status] || 'Injury report'));
   const flags = row.flags;
-  if (flags.noLastSeason) notes.push(badge('No 2025-26 stats', 'info', 'No stats last season: injured, a rookie, or missing in Yahoo. The score rests on the projection alone.'));
-  if (flags.smallSample) notes.push(badge(`${player.lastSeason.gp} GP in 2025-26`, 'info', 'Too few games last season for the average to mean much.'));
+  if (flags.noLastSeason) notes.push(badge('No 25-26 stats', 'info', 'No stats last season: injured, a rookie, or missing in Yahoo. The score rests on the projection alone.'));
+  if (flags.smallSample) notes.push(badge(`${player.lastSeason.gp} GP in 25-26`, 'info', `Only ${player.lastSeason.gp} games in 2025-26, too few for the average to mean much.`));
   if (flags.lowGames) notes.push(badge(`Proj ${player.gp} GP`, '', 'Projected to miss a lot of games. Scores are per game, so availability is not in the number.'));
   return notes;
 }
@@ -1042,8 +1080,7 @@ function scoreTint(row) {
   const score = row.score;
   if (score === null || score === undefined) return '';
   if (scoreStyle === 'bar') {
-    const width = Math.round(100 * scoreBarShare(score, scoreAnchors));
-    return `background: linear-gradient(to right, ${scoreFill(SCORE_TINT_MAX)} ${width}%, transparent ${width}%)`;
+    return `--bar: ${scoreBarShare(score, scoreAnchors).toFixed(3)}`; // drawn by .score-cell.bar::after
   }
   if (scoreStyle === 'rank') {
     const tier = SCORE_RANK_TIERS.find(([limit]) => row.rank <= limit);
@@ -1083,12 +1120,13 @@ function applyScoreStyle(choice) {
   if (input) input.checked = true;
 }
 
-// A stat tinted by how good it is in its category (0 to 100 on the capped scale); unticked categories are dimmed
+// A stat marked by how good it is in its category (0 to 100 on the capped scale): a capsule for strong values, muted for weak
+// ones, nothing for the rest; unticked categories are dimmed
 function statCell(column, player, row) {
-  const score = row.categoryScores[column.key];
   const ticked = state.categories.includes(column.key);
-  const style = ticked && score !== null && score !== undefined ? `background: color-mix(in srgb, var(--cool) ${Math.round(Math.max(0, Math.min(100, score)) * 0.22)}%, transparent)` : '';
-  return h('td', { class: ticked ? '' : 'dim', style }, column.kind === 'rate' ? formatRate(player.stats[column.key]) : oneDecimal(player.stats[column.key]));
+  const level = ticked ? statLevel(row.categoryScores[column.key]) : '';
+  const text = column.kind === 'rate' ? formatRate(player.stats[column.key]) : oneDecimal(player.stats[column.key]);
+  return h('td', { class: ticked ? 'stat' : 'stat dim' }, level ? h('span', { class: `cap ${level}` }, text) : text);
 }
 
 // Only offered while picks are unseen; it must not also log the row, so its clicks and keys stop here
@@ -1157,14 +1195,14 @@ function renderPool() {
     const isRecommended = analysis.recommendation && analysis.recommendation.id === player.id;
     const cells = [
       h('td', {}, row.rank),
-      h('td', { class: 'left player' }, h('strong', {}, isRecommended ? `★ ${player.name}` : player.name), h('div', { class: 'meta' }, `${player.team}, ${player.positions.join('/')}`), h('div', { class: 'notes' }, [
+      h('td', { class: 'left player' }, h('div', { class: 'player-line' }, h('strong', {}, player.name), isRecommended ? h('span', { class: 'pick-tag' }, 'Pick') : null, h('div', { class: 'meta' }, `${player.team} · ${player.positions.join('/')}`), h('div', { class: 'notes' }, [
         ...(planned && !isRecommended ? [badge(`plan: ${planned}`, 'info', `The current plan takes him at pick ${planned}`)] : []),
         ...(unconfirmed ? [badge('Logged, not confirmed. Click to retry', 'injury', 'The server has not confirmed this pick yet')] : []),
         ...(pending ? [badge('Logging the pick', 'info', 'Waiting for the server to confirm this pick')] : []),
         ...notesFor(row, player),
         ...(hasUnseenPicks() && row.unseenRisk >= UNSEEN_RISK_SHOWN ? [goneButton(player)] : []),
-      ])),
-      h('td', { class: 'score score-cell', style: scoreTint(row), title: scoreTitle(row) }, oneDecimal(row.score), previousScore(row)),
+      ]))),
+      h('td', { class: `score score-cell${scoreStyle === 'bar' ? ' bar' : ''}`, style: scoreTint(row), title: scoreTitle(row) }, oneDecimal(row.score), previousScore(row)),
       oddsCell(oddsAtColumn(row)),
       h('td', { title: player.adpEstimated ? 'Yahoo shows no ADP for him; estimated from nearby ranks' : '' }, `${player.adpEstimated ? '~' : ''}${player.adp.toFixed(1)}`),
       h('td', {}, player.xrank),
@@ -1175,7 +1213,7 @@ function renderPool() {
       'tr',
       {
         tabindex: '0',
-        class: unconfirmed || pending ? 'unconfirmed' : '',
+        class: [unconfirmed || pending ? 'unconfirmed' : '', isRecommended ? 'recommended' : ''].filter(Boolean).join(' '),
         'data-id': player.id,
         title: `Log ${player.name} as the pick on the clock`,
         onclick: () => rowPicked(player.id),
@@ -1248,11 +1286,11 @@ function renderRoster() {
   const slotRows = analysis.lineup.slots.map((slot) => {
     const entry = slot.entry === null ? null : entries[slot.entry];
     return entry
-      ? h('li', { class: 'slot filled' }, h('span', { class: 'pick' }, slot.slot), h('span', {}, h('strong', {}, who(entry)), h('div', { class: 'note' }, `#${entry.pick}, ${detail(entry)}`)))
-      : h('li', { class: 'slot open' }, h('span', { class: 'pick' }, slot.slot), h('span', { class: 'note' }, 'open'));
+      ? h('li', { class: 'slot filled' }, h('span', { class: 'pick' }, slot.slot), h('span', {}, h('strong', {}, who(entry)), h('div', { class: 'note' }, `#${entry.pick} · ${detail(entry)}`)))
+      : h('li', { class: 'slot open' }, h('span', { class: 'pick' }, slot.slot), h('span', { class: 'note' }, 'Open'));
   });
   const bench = analysis.lineup.bench.map((index) =>
-    h('li', { class: 'slot bench' }, h('span', { class: 'pick' }, 'Bench'), h('span', {}, h('strong', {}, who(entries[index])), h('div', { class: 'note' }, `#${entries[index].pick}, ${detail(entries[index])}`))),
+    h('li', { class: 'slot bench' }, h('span', { class: 'pick' }, 'Bench'), h('span', {}, h('strong', {}, who(entries[index])), h('div', { class: 'note' }, `#${entries[index].pick} · ${detail(entries[index])}`))),
   );
   put(list, ...slotRows, ...bench);
   const fits = analysis.lineup.canAdd;
@@ -1293,7 +1331,7 @@ function renderStanding() {
     const now = league.standing[key];
     return h(
       'div',
-      { class: 'profile-row standing-row', title: `Beats ${Math.round(projected.beaten * 13 * 10) / 10} of the other 13 teams projected${key === 'to' ? '. Fewer turnovers is better' : ''}` },
+      { class: `profile-row standing-row ${standingGroup(projected.beaten).toLowerCase()}`, title: `Beats ${Math.round(projected.beaten * 13 * 10) / 10} of the other 13 teams projected${key === 'to' ? '. Fewer turnovers is better' : ''}` },
       h('span', {}, labels[key]),
       h('div', { class: 'bars' }, h('div', { class: 'bar roster' }, h('span', { style: `width:${Math.round(projected.beaten * 100)}%` }))),
       h('span', { class: 'rank' }, haveNow ? `${ordinal(now.rank)} now, ${ordinal(projected.rank)} proj.` : `${ordinal(projected.rank)} proj.`),
@@ -1301,10 +1339,12 @@ function renderStanding() {
   });
   const groups = { Winning: [], Close: [], Behind: [] };
   for (const key of keys) groups[standingGroup(projectedTable().standing[key].beaten)].push(labels[key]);
-  const summary = Object.entries(groups).filter(([, names]) => names.length).map(([name, names]) => `${name}: ${names.join(', ')}`).join('. ');
+  const tiles = Object.entries(groups).map(([name, names]) =>
+    h('div', { class: `tile ${name.toLowerCase()}`, title: names.length ? `${name}: ${names.join(', ')}` : `No category is ${name.toLowerCase()}` }, h('strong', {}, names.length), h('span', {}, name), h('span', { class: 'tile-names' }, names.join(' · '))),
+  );
   put(
     container,
-    h('p', { class: 'note standing-summary' }, summary ? `${summary}.` : ''),
+    h('div', { class: 'tiles' }, ...tiles),
     ...rows,
     h('p', { class: 'note' }, 'Bar: the share of the other teams you beat. ', helpButton(`The share of the other 13 teams you beat, ${projectedTable().basis}. "Now" counts the first ${league.size} pick${league.size === 1 ? '' : 's'} of each team, against ${plural(Math.max(league.compared - 1, 0), 'other team')}.`, 'About the Standing bars')),
     renderWeightsNote(keys, labels),
@@ -1324,23 +1364,29 @@ function projectedTable() {
   return planner ? plannerLeague : analysis.league.projected;
 }
 
-function tintFor(rank, teams) {
-  const good = teams > 1 ? (teams - rank) / (teams - 1) : 0.5; // 1 for the best, 0 for the worst
-  return `background: color-mix(in srgb, var(--cool) ${Math.round(good * 30)}%, transparent)`;
+// The rank as a 0-100 score (100 for the best team, 0 for the worst), marked like a stat in the player table
+function rankLevel(rank, teams) {
+  return statLevel(teams > 1 ? (100 * (teams - rank)) / (teams - 1) : 50);
 }
 
 function cellValue(key, value) {
   return key === 'fg_pct' || key === 'ft_pct' ? formatRate(value) : oneDecimal(value);
 }
 
-function leagueTable(table, keys, labels) {
+function leagueCell(key, team, compared) {
+  const level = rankLevel(team.ranks[key], compared);
+  const text = cellValue(key, team.totals[key]);
+  return h('td', { title: `${ordinal(team.ranks[key])} of ${compared}` }, level ? h('span', { class: `cap ${level}` }, text) : text);
+}
+
+function leagueTable(table, keys, labels, showCount = true) {
   const head = h(
     'tr',
     {},
     h('th', { title: 'Place by team score' }, '#'),
     h('th', { class: 'left' }, 'Team'),
     h('th', { title: 'Expected categories won against a random team: the share of the other teams beaten, added over the ticked categories' }, 'Score'),
-    h('th', { title: 'Players counted' }, 'n'),
+    showCount ? h('th', { title: 'Players counted' }, 'n') : null,
     ...keys.map((key) => h('th', {}, labels[key])),
   );
   const rows = table.teams.map((team) =>
@@ -1350,11 +1396,11 @@ function leagueTable(table, keys, labels) {
       h('td', {}, team.place === null ? '' : team.place),
       h('td', { class: 'left', title: `${team.name}, slot ${team.slot}` }, team.name),
       h('td', { class: 'score' }, team.score === null ? '' : `${oneDecimal(team.score)}/${keys.length}`),
-      h('td', {}, team.players),
+      showCount ? h('td', {}, team.players) : null,
       ...keys.map((key) =>
         team.totals === null
           ? h('td', { class: 'dim' }, '')
-          : h('td', { style: tintFor(team.ranks[key], table.compared), title: `${ordinal(team.ranks[key])} of ${table.compared}` }, cellValue(key, team.totals[key])),
+          : leagueCell(key, team, table.compared),
       ),
     ),
   );
@@ -1401,7 +1447,7 @@ function renderLeague() {
     switcher,
     status ? h('p', { class: 'note league-status', role: 'status' }, status) : null,
     range,
-    leagueTable(projected, keys, labels),
+    leagueTable(projected, keys, labels, false),
     h('p', { class: 'note' }, projectedNote.short, ' ', helpButton(projectedNote.long, 'About the projection')),
     myTeam,
     h('h3', {}, 'So far'),
