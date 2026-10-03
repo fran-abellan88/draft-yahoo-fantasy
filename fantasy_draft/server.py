@@ -27,6 +27,7 @@ and its own saved draft file, where the other 13 teams pick automatically. The r
 import hashlib
 import json
 import socketserver
+import sys
 from functools import partial
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -180,6 +181,12 @@ class LocalServer(ThreadingHTTPServer):
         host, port = self.server_address[:2]
         self.server_name = str(host)
         self.server_port = port
+
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        """Stay quiet when the page hung up before the answer was sent (a reload or a cancelled request); report the rest."""
+        if isinstance(sys.exc_info()[1], (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)):
+            return
+        super().handle_error(request, client_address)
 
 
 def make_server(

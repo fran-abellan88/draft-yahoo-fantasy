@@ -5,6 +5,7 @@ import json
 import threading
 import urllib.error
 import urllib.request
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any, Dict, Iterator, Optional, Tuple
 
@@ -12,7 +13,7 @@ import pytest
 
 from fantasy_draft.data import load_players
 from fantasy_draft.saved_draft import SavedDraft
-from fantasy_draft.server import HOST, make_server
+from fantasy_draft.server import HOST, LocalServer, make_server
 from fantasy_draft.service import DraftService
 
 ALL = ["fg_pct", "ft_pct", "3ptm", "pts", "reb", "ast", "st", "blk", "to"]
@@ -335,3 +336,20 @@ def test_the_prediction_route_answers_in_the_real_draft_and_is_refused_in_the_mo
     assert status == 200 and answer["clock"]["pick"] == 1 and answer["picks"] == []
     status, answer = _post(url + "/mock/api/predict", body)
     assert status == 400 and "real draft" in answer["error"]
+
+
+def test_a_page_that_hangs_up_before_the_answer_is_not_reported_as_an_error(capsys: pytest.CaptureFixture[str]) -> None:
+    server = LocalServer(("127.0.0.1", 0), BaseHTTPRequestHandler)
+    try:
+        try:
+            raise BrokenPipeError()
+        except BrokenPipeError:
+            server.handle_error(None, ("127.0.0.1", 1))
+        assert capsys.readouterr().err == ""
+        try:
+            raise ValueError("a real bug")
+        except ValueError:
+            server.handle_error(None, ("127.0.0.1", 1))
+        assert "a real bug" in capsys.readouterr().err
+    finally:
+        server.server_close()
