@@ -145,11 +145,13 @@ last-pick line and the snake strip (hover a slot).
   the team you chose while other picks come in, and goes back to yours when you log your own pick or press **Back to your
   roster**. In a narrow window the click switches to the My team tab. The server sends every team's roster and lineup
   with the league tables (`rosters`), built by the same matching as your own lineup.
-- **Position colours.** The letters beside every name ("CHI · PG/SG") are coloured by position: PG rose, SG blue, SF yellow,
-  PF violet, C mint, with a muted slash between them. Names stay plain so they read well and the recommended row keeps its
-  green; the letters carry the identity and the colour is only a glance cue, because no five hues are distinct for every
-  kind of colour blindness. The position filter chips are the legend. Colours are the `--pos-*` tokens, tested for contrast
-  on every surface in both themes.
+- **Position colours.** As on Yahoo's draft board there are three: guards (PG, SG) blue, forwards (SF, PF) green and
+  centers orange. A player's name takes the colour of his first listed position (a PF/C is green), and each position letter
+  beside a name takes the colour of its own group, with a muted slash between them. It applies to the names in the table,
+  the recommendation box and player card, the alternatives, the plan, the rosters and the log, and the position filter
+  chips are the legend. The colours are the `--pos-guard`, `--pos-forward` and `--pos-center` tokens, tested for contrast
+  on every surface in both themes. Green is also the colour of "yours" and orange of warnings, so the recommended row is
+  marked by its tint and the Pick tag, not by a green name.
 - **Position flexibility.** The planner ranks plans by their score plus 0.3 points for each position a new pick can
   fill beyond the first (`FLEXIBILITY_BONUS` in `optimizer.py`), so a PG/SG beats a PG of the same score. The 0.3 is a
   judgement, not a calibrated number: it can decide between close players (neighbouring scores differ by 0.1 at the

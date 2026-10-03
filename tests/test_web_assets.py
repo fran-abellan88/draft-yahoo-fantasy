@@ -482,7 +482,7 @@ def test_the_score_column_is_wide_enough_for_its_bar_and_the_other_cells_pay_for
     assert "#pool th:nth-child(3), #pool td.score-cell { min-width: 100px; }" in CSS
     # The numbers and the Score bar grow with the table panel (cqw), so a wide table spreads its slack instead of leaving it in Player
     assert ".tablecol { container-type: inline-size; }" in CSS
-    assert re.search(r"#pool th:nth-child\(3\), #pool td\.score-cell \{ min-width: clamp\(100px, calc\(17\.6cqw - 69px\), 220px\); \}", CSS)
+    assert re.search(r"#pool th:nth-child\(3\), #pool td\.score-cell \{ min-width: clamp\(100px, calc\(15\.2cqw - 54px\), 200px\); \}", CSS)
     assert "#pool td { padding-inline: clamp(4px, calc(2.5cqw - 22px), 18px); }" in CSS
     assert "#pool td { padding: 4px 5px; }" in CSS and "#pool th button { padding: 9px 5px; }" in CSS
     columns = re.findall(r"\{ key: '(\w+)', label", JS[JS.index("const POOL_COLUMNS"): JS.index("function buildPoolHead")])
@@ -545,38 +545,45 @@ def test_the_mock_draft_is_marked_beside_the_pick_number() -> None:
     assert re.search(r"\.tile \.tile-names \{[^}]*font-size: 12px", CSS), "no important text under 12 px"
 
 
-POSITIONS = ["pg", "sg", "sf", "pf", "c"]
-POSITION_BACKGROUNDS = ["surface", "raised", "hover", "mine-soft"]  # cards, inputs, the hovered row, the recommended row
+POSITION_GROUPS = ["guard", "forward", "center"]  # Yahoo's three colours: PG/SG, SF/PF, C
+POSITION_BACKGROUNDS = ["surface", "raised", "hover", "mine-soft", "selected"]  # cards, inputs, hovered, recommended and viewed rows
 ROLE_TOKENS = ["mine", "cool", "flag", "danger", "tag-adp", "tag-planner", "focus", "score", "ink", "muted"]
 
 
 @pytest.mark.parametrize("theme", ["light", "dark"])
-@pytest.mark.parametrize("position", POSITIONS)
+@pytest.mark.parametrize("group", POSITION_GROUPS)
 @pytest.mark.parametrize("background", POSITION_BACKGROUNDS)
-def test_position_letters_are_readable_on_every_surface_they_sit_on(theme: str, position: str, background: str) -> None:
+def test_position_colours_are_readable_on_every_surface_a_name_sits_on(theme: str, group: str, background: str) -> None:
     tokens = _themes()[theme]
-    ratio = _contrast(tokens[f"pos-{position}"], tokens[background])
-    assert ratio >= WCAG_TEXT, f"pos-{position} on {background} is {ratio:.2f}:1 in {theme} mode"
+    ratio = _contrast(tokens[f"pos-{group}"], tokens[background])
+    assert ratio >= WCAG_TEXT, f"pos-{group} on {background} is {ratio:.2f}:1 in {theme} mode"
 
 
 @pytest.mark.parametrize("theme", ["light", "dark"])
-def test_a_position_colour_never_repeats_another_position_or_a_role(theme: str) -> None:
+def test_a_position_colour_never_repeats_another_group_or_a_role(theme: str) -> None:
     tokens = _themes()[theme]
-    positions = [tokens[f"pos-{position}"] for position in POSITIONS]
-    assert len(set(positions)) == len(positions), "two positions share a colour"
+    groups = [tokens[f"pos-{group}"] for group in POSITION_GROUPS]
+    assert len(set(groups)) == len(groups), "two groups share a colour"
     roles = {tokens[role] for role in ROLE_TOKENS}
-    assert not set(positions) & roles, "a position colour equals a role colour (mine, cool, flag, danger, tags...)"
+    assert not set(groups) & roles, "a position colour equals a role colour (mine, cool, flag, danger, tags...)"
 
 
-def test_every_place_that_shows_positions_uses_the_coloured_letters() -> None:
-    assert "function positionsNode(" in JS and "'data-pos': position" in JS
+def test_every_place_that_shows_positions_or_a_name_uses_the_group_colours() -> None:
+    assert "function positionsNode(" in JS and "'data-grp': POSITION_GROUP[position]" in JS
+    assert "const POSITION_GROUP = { PG: 'guard', SG: 'guard', SF: 'forward', PF: 'forward', C: 'center' };" in JS
     detail = JS[JS.index("const detailOf"): JS.index("};", JS.index("const detailOf"))]
     assert "positionsNode(player.positions)" in detail
     assert ".positions.join('/')" not in JS, "positions are shown as plain text somewhere"
-    for position in ("PG", "SG", "SF", "PF", "C"):
-        assert f'.pos[data-pos="{position}"] {{ color: var(--pos-{position.lower()}); }}' in CSS
-        chip = f'.chips button[data-position="{position}"]:not([aria-pressed="true"]) {{ color: var(--pos-{position.lower()}); }}'
-        assert chip in CSS
+    for group in POSITION_GROUPS:
+        assert f'[data-grp="{group}"] {{ color: var(--pos-{group}); }}' in CSS
+    assert 'chips button[data-position="PG"]:not([aria-pressed="true"]), .chips button[data-position="SG"]' in CSS
+    # A name takes the colour of his first listed position, in the table and in every card, row and list
+    assert "const groupOf = (id) => POSITION_GROUP[playerById.get(id).positions[0]];" in JS
+    assert "'data-grp': groupOf(player.id)" in JS  # the name in the main table
+    places = ("h('p', { class: 'name' }, nameNode(recommendation.id))", "h('strong', {}, nameNode(alt.id))")
+    for place in places + ("h('strong', {}, nameNode(step.id))", "nameNode(cardId)"):
+        assert place in JS, place
+    assert "tr.recommended td.player strong { color: var(--mine); }" not in CSS  # the row tint marks it; the name keeps its position colour
 
 
 def test_the_roster_panel_can_show_any_team() -> None:
