@@ -662,3 +662,21 @@ td.player { width: 99%; max-width: 0; }
 .rule-pick { display: inline-flex; align-items: center; gap: 2px; padding: 2px 4px 2px 8px; border-radius: 999px; background: var(--cool-mid); font-weight: 600; }
 .rule-pick button { border: 0; background: transparent; padding: 0 4px; color: var(--muted); }
 .rule-error { margin: 0; color: var(--danger); font-weight: 600; }
+
+/* A phone: the page scrolls like any page (the window-sized grid above squeezed the recommendation and drew the tab
+   strip over it). One column, the tab strip stays at the top while the panel under it scrolls past, and a wide table
+   scrolls sideways inside its own box */
+@media (max-width: 760px) {
+  html, body { height: auto; overflow: auto; }
+  .app { height: auto; min-height: 100vh; padding: 10px; gap: 10px; grid-template-rows: repeat(5, auto); }
+  .panel, .seam-rec, .tablecol { overflow: visible; }
+  .seam-plan { max-height: none; }
+  .tabs { position: sticky; top: 0; z-index: 5; flex-wrap: nowrap; overflow-x: auto; padding: 6px 0; background: var(--paper); }
+  .tabs button { flex: none; padding: 10px 14px; }
+  .table-wrap { flex: none; max-height: 75vh; }
+  #pool th:nth-child(2), #pool td.player { min-width: 200px; }  /* the names do not collapse; the table scrolls sideways instead */
+  .topbar { gap: 10px; }
+  .topbar-actions { margin-left: 0; flex-wrap: wrap; }
+  .topbar-actions button { white-space: nowrap; }
+  .settings { position: fixed; top: 8px; right: 8px; left: 8px; width: auto; max-height: calc(100vh - 16px); }
+}
