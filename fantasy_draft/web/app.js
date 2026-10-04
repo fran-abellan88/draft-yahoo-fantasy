@@ -1624,7 +1624,7 @@ function buildRosterTools() {
   }
 }
 
-// One roster: the ten starting slots, the bench, and what is not known. `entries` and `lineup` are as the server sends them
+// One roster: the ten starting slots, the three bench places, and what is not known. `entries` and `lineup` are as the server sends them
 // for my team and for the others. A projected player has a dashed tile and says so in its note.
 function rosterRows(entries, lineup, unseen, mine) {
   const who = (entry) => (entry.kind === 'outside' ? 'Not in the list' : entry.kind === 'gone' ? [nameNode(entry.id), ' (assumed)'] : nameNode(entry.id));
@@ -1637,10 +1637,14 @@ function rosterRows(entries, lineup, unseen, mine) {
       : h('li', { class: 'slot open' }, h('span', { class: 'pick' }, slot.slot), h('span', { class: 'note' }, 'Open'));
   });
   const bench = lineup.bench.map((index) =>
-    h('li', { class: `slot bench${entries[index].projected ? ' projected' : ''}` }, h('span', { class: 'pick' }, 'Bench'), h('span', {}, h('strong', {}, who(entries[index])), h('div', { class: 'note' }, note(entries[index])))),
+    h('li', { class: `slot bench${entries[index].projected ? ' projected' : ''}` }, h('span', { class: 'pick' }, 'BN'), h('span', {}, h('strong', {}, who(entries[index])), h('div', { class: 'note' }, note(entries[index])))),
+  );
+  // The roster is 13: the three places after the ten starters stay on show, open until filled
+  const openBench = Array.from({ length: Math.max(0, pool.league.rosterSize - lineup.slots.length - bench.length) }, () =>
+    h('li', { class: 'slot open bench' }, h('span', { class: 'pick' }, 'BN'), h('span', { class: 'note' }, 'Open')),
   );
   const unknown = (unseen || []).map((pick) => h('li', { class: 'slot unseen' }, h('span', { class: 'pick' }, '?'), h('span', { class: 'note' }, `Not known: pick #${pick}`)));
-  return [...slotRows, ...bench, ...unknown];
+  return [...slotRows, ...bench, ...openBench, ...unknown];
 }
 
 function renderRoster() {
