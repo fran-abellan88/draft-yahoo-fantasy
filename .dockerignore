@@ -1,0 +1,11 @@
+.git
+.env
+.venv
+tests
+legacy
+snapshots
+saved_draft*.json
+saved_mock_draft*.json
+DASHBOARD_*.md
+**/__pycache__
+data/cache

@@ -353,3 +353,32 @@ def test_a_page_that_hangs_up_before_the_answer_is_not_reported_as_an_error(caps
         assert "a real bug" in capsys.readouterr().err
     finally:
         server.server_close()
+
+
+def test_an_allowed_name_is_accepted_and_every_other_name_is_still_refused() -> None:
+    server = make_server(DraftService(load_players()), port=0, allow_names=("192.168.1.131", "FranServer"))
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        assert _raw(port, "GET", "/api/draft", {"Host": f"192.168.1.131:{port}"})[0] == 200
+        assert _raw(port, "GET", "/api/draft", {"Host": f"franserver:{port}", "Origin": f"http://franserver:{port}"})[0] == 200
+        assert _raw(port, "GET", "/api/draft", {"Host": f"localhost:{port}"})[0] == 200
+        assert _raw(port, "GET", "/api/draft", {"Host": f"192.168.1.132:{port}"})[0] == 403
+        assert _raw(port, "GET", "/api/draft", {"Host": f"192.168.1.131:{port}", "Origin": "http://evil.example"})[0] == 403
+        assert _raw(port, "GET", "/api/draft", {"Host": "192.168.1.131"})[0] == 403  # the port must match too
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_without_allowed_names_only_this_computer_is_named() -> None:
+    server = make_server(DraftService(load_players()), port=0)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        assert _raw(port, "GET", "/api/draft", {"Host": f"192.168.1.131:{port}"})[0] == 403
+    finally:
+        server.shutdown()
+        server.server_close()

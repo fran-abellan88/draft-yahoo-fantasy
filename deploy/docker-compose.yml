@@ -1,0 +1,19 @@
+# The dashboard on the home server, for use from a phone or any device on the home network:
+#   docker compose up -d --build        (run in the folder the project was copied to, see README "Home server")
+# There is no login. The page answers only to the names listed in ALLOWED_NAMES, and the port is for the home network only.
+services:
+  draft:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: draft-assistant
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./state:/state
+    # Every name devices will type in the address bar (the server's address and its host name)
+    command: >
+      python run_dashboard.py --host 0.0.0.0 --port 8001 --no-browser
+      --draft-file /state/saved_draft.json --mock-file /state/saved_mock_draft.json
+      --allow-name 192.168.1.131 --allow-name franserver --allow-name franserver.local

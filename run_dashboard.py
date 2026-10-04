@@ -32,12 +32,18 @@ PORT_ATTEMPTS = 20
 
 
 def bind(
-    service: DraftService, first_port: int, saved: SavedDraft, mock: Tuple[DraftService, SavedDraft], dev: Optional[DevMode] = None
+    service: DraftService,
+    first_port: int,
+    saved: SavedDraft,
+    mock: Tuple[DraftService, SavedDraft],
+    dev: Optional[DevMode] = None,
+    host: str = HOST,
+    allow_names: Tuple[str, ...] = (),
 ) -> ThreadingHTTPServer:
     """Bind to the first free port at or after `first_port`."""
     for port in range(first_port, first_port + PORT_ATTEMPTS):
         try:
-            return make_server(service, port, saved, mock, dev)
+            return make_server(service, port, saved, mock, dev, host, allow_names)
         except OSError:
             print(f"Port {port} is busy, trying the next one")
     raise SystemExit(f"No free port between {first_port} and {first_port + PORT_ATTEMPTS - 1}")
@@ -47,6 +53,19 @@ def main() -> None:
     """Load the data, start the server and wait until Ctrl+C."""
     parser = argparse.ArgumentParser(description="Draft assistant dashboard")
     parser.add_argument("--port", type=int, default=8001, help="first port to try (default: %(default)s)")
+    parser.add_argument(
+        "--host",
+        default=HOST,
+        help="the address to listen on (default: %(default)s, this computer only). 0.0.0.0 listens on every network of the computer",
+    )
+    parser.add_argument(
+        "--allow-name",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="a name or address other devices will use to reach the dashboard, e.g. 192.168.1.131; repeat for several. "
+        "There is no login: use this only on a network you trust",
+    )
     parser.add_argument("--no-browser", action="store_true", help="do not open the browser")
     parser.add_argument(
         "--draft-file",
@@ -81,8 +100,12 @@ def main() -> None:
     saved = SavedDraft(args.draft_file)
     mock_saved = SavedDraft(args.mock_file)
     dev = DevMode() if args.dev else None
-    server = bind(service, args.port, saved, (mock_service, mock_saved), dev)
-    url = f"http://{HOST}:{server.server_address[1]}/"
+    server = bind(service, args.port, saved, (mock_service, mock_saved), dev, args.host, tuple(args.allow_name))
+    shown_host = HOST if args.host in (HOST, "0.0.0.0") else args.host  # the page on this computer is always at 127.0.0.1
+    url = f"http://{shown_host}:{server.server_address[1]}/"
+    if args.host != HOST:
+        reachable = ", ".join(args.allow_name) or "localhost only (no --allow-name given)"
+        print(f"Listening on {args.host}, reachable as: {reachable}. There is no login.")
     print(f"Draft assistant running at {url}  (Ctrl+C to stop)")
     print(f"Real draft:  {url}  you log every pick. Saved in {saved.path}")
     print(f"Mock draft:  {url}mock  the other teams pick automatically. Saved in {mock_saved.path}")

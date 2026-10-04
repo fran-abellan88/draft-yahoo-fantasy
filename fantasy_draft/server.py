@@ -5,6 +5,11 @@ Standard library only. It binds to 127.0.0.1, serves four static files and JSON 
 analyses without state: the page sends the whole draft with every request. The only thing kept is the saved draft
 (see saved_draft.py).
 
+By default it binds to 127.0.0.1 and answers only to the names 127.0.0.1 and localhost. To reach it from another device on a
+trusted network (a phone on the home wifi), run_dashboard.py can bind another address (`--host`) and add the names that
+device will type (`--allow-name`); the checks below then accept exactly those names and no others. There is no login: whoever can reach
+the address can use the dashboard, so only do that on a network you trust.
+
 Binding to 127.0.0.1 keeps other computers out, but not other web pages in the user's own browser. A page
 on any site can make the browser send a request here, and DNS rebinding can even make it read the reply. So
 every request (checked once, in `parse_request`) must name this server in its `Host` header, a browser-supplied `Origin` must be this server
@@ -58,10 +63,19 @@ STATIC_FILES: Dict[str, Tuple[str, str]] = {
 class DashboardHandler(BaseHTTPRequestHandler):
     """Routes requests to the static files and the draft service."""
 
-    def __init__(self, real: Draft, mock: Optional[Draft], *args: Any, dev: Optional[DevMode] = None, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        real: Draft,
+        mock: Optional[Draft],
+        *args: Any,
+        dev: Optional[DevMode] = None,
+        names: Tuple[str, ...] = LOCAL_NAMES,
+        **kwargs: Any,
+    ) -> None:
         self.real = real
         self.mock = mock
         self.dev = dev
+        self.names = names  # the host names a request may use
         super().__init__(*args, **kwargs)
 
     def parse_request(self) -> bool:
@@ -146,7 +160,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def _is_local_request(self) -> bool:
         """Answer 403 and return False unless the request names this server as its host and, if sent, its origin."""
         port = self.server.server_address[1]
-        hosts = {f"{name}:{port}" for name in LOCAL_NAMES}
+        hosts = {f"{name.lower()}:{port}" for name in self.names}
         origin = self.headers.get("Origin")
         if self.headers.get("Host", "").lower() in hosts and (origin is None or origin.lower() in {f"http://{h}" for h in hosts}):
             return True
@@ -195,9 +209,13 @@ def make_server(
     saved: Optional[SavedDraft] = None,
     mock: Optional[Draft] = None,
     dev: Optional[DevMode] = None,
+    host: str = HOST,
+    allow_names: Tuple[str, ...] = (),
 ) -> ThreadingHTTPServer:
-    """Create (but do not start) a server on 127.0.0.1; port 0 picks a free one. `mock` adds the /mock/ draft.
+    """Create (but do not start) a server on `host` (127.0.0.1 unless told otherwise); port 0 picks a free one.
 
-    `dev` turns on development mode: the page gets a small script that reloads it when the files change.
+    `mock` adds the /mock/ draft. `dev` turns on development mode: the page gets a small script that reloads it when the
+    files change. `allow_names` are host names, besides 127.0.0.1 and localhost, that requests may use (see the top of this file).
     """
-    return LocalServer((HOST, port), partial(DashboardHandler, (service, saved or SavedDraft()), mock, dev=dev))
+    names = LOCAL_NAMES + tuple(allow_names)
+    return LocalServer((host, port), partial(DashboardHandler, (service, saved or SavedDraft()), mock, dev=dev, names=names))

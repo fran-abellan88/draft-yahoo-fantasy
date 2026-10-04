@@ -220,6 +220,21 @@ dashboard starts on 8002 instead of 8001. Two things to know:
   the file as it is; nothing is saved until you press **Reset**. A file that is not valid at all is renamed to
   `saved_draft.unreadable.json` on the next save.
 
+## Home server (use it from a phone)
+
+The dashboard can run on the home server so any device on the home network can open `http://192.168.1.131:8001/`.
+There is no login: it answers only to the names in `deploy/docker-compose.yml` (`--allow-name`), and the port must not be
+forwarded on the router. The server keeps its own saved draft in `~/dashboards/draft-yahoo-fantasy/deploy/state/`, so use
+that address on every device (the copy on a laptop is a different draft). To install or update, from this folder:
+
+```
+rsync -a --delete --exclude-from=.dockerignore --exclude deploy/state ./ fran@192.168.1.131:dashboards/draft-yahoo-fantasy/
+ssh fran@192.168.1.131 'cd ~/dashboards/draft-yahoo-fantasy/deploy && docker compose up -d --build'
+```
+
+`run_dashboard.py --host 0.0.0.0 --allow-name <address>` does the same without Docker. Without `--allow-name` the server still
+refuses any request that does not name `127.0.0.1` or `localhost`.
+
 ## How a score is built
 
 For each category, a player's per-game projection is placed between the 5th and 95th percentile of the first 150 players (the scale is fixed on them, so the 95 deeper players are scored on it and nobody's score moves when the pool grows)
