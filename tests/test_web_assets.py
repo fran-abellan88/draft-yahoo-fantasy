@@ -262,8 +262,9 @@ def test_standing_sits_in_the_rail_between_my_team_and_the_log() -> None:
     rail = html[html.index('<div class="rail">'):]
     assert rail.index('data-panel="team"') < rail.index('data-panel="standing"') < rail.index('data-panel="log"')
     wide = _block("(min-width: 2350px)")
-    assert '"standing' not in wide and ".rail .seam-standing" in wide and "grid-row: 5 / 7" not in wide
+    assert '"standing' not in wide.replace('data-rail="standing"', "") and ".rail .seam-standing" in wide and "grid-row: 5 / 7" not in wide
     assert "min-height: 180px" in wide, "the log keeps room for the latest picks"
+    assert 'data-rail="standing"' in wide and 'data-rail="log"' in wide, "Standing and the log take turns in the rail"
 
 
 def test_the_plan_has_no_height_cap_from_1720_px_up() -> None:

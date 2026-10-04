@@ -11,6 +11,7 @@ const API = MOCK ? '/mock/api' : '/api';
 const STORAGE_KEY = 'draft-assistant-v2';
 const ASIDE_KEY = 'draft-assistant-unconfirmed'; // a browser copy the file replaced, kept so nothing is lost
 const THEME_KEY = 'draft-assistant-theme'; // 'light', 'dark' or absent (follow the system): a per-browser convenience
+const RAIL_KEY = 'draft-assistant-rail'; // Standing or Draft log in the right-hand column of a wide window
 const TAB_KEY = 'draft-assistant-tab'; // the tab last open, a per-browser convenience
 const SYNC_KEY = 'draft-assistant-sync'; // which file version the browser copy is based on, and whether the server has it
 let draftId = ''; // set from /api/draft before anything is read or written
@@ -785,7 +786,35 @@ function syncTabs() {
   for (const button of $('tabs').querySelectorAll('button')) button.setAttribute('aria-selected', String(button.dataset.tab === $('app').dataset.tab));
 }
 
+// Standing and the draft log share one place in the wide layout's rail: one tab each (the narrower layouts use the tab strip)
+function syncRailTabs() {
+  for (const button of $('railtabs').querySelectorAll('button')) button.setAttribute('aria-selected', String(button.dataset.rail === $('app').dataset.rail));
+}
+
+function wireRailTabs() {
+  let remembered = null;
+  try {
+    remembered = localStorage.getItem(RAIL_KEY);
+  } catch (error) {
+    // follow the default
+  }
+  $('app').dataset.rail = remembered === 'log' ? 'log' : 'standing';
+  for (const button of $('railtabs').querySelectorAll('button')) {
+    button.addEventListener('click', () => {
+      $('app').dataset.rail = button.dataset.rail;
+      try {
+        localStorage.setItem(RAIL_KEY, button.dataset.rail);
+      } catch (error) {
+        // the choice lasts until the page is reloaded
+      }
+      syncRailTabs();
+    });
+  }
+  syncRailTabs();
+}
+
 function wireTabs() {
+  wireRailTabs();
   for (const button of $('tabs').querySelectorAll('button')) {
     button.addEventListener('click', () => {
       $('app').dataset.tab = button.dataset.tab;

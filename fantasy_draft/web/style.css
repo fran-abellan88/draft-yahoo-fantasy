@@ -335,6 +335,7 @@ body { margin: 0; }
 .team { grid-area: team; }
 .panel.log { grid-area: log; }
 .teams { grid-area: teams; }
+.railtabs { display: none; }
 .tabs { grid-area: tabs; display: none; gap: 4px; flex-wrap: wrap; }
 .tabs button { display: none; border-radius: 6px 6px 0 0; }
 .tabs button[aria-selected="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
@@ -381,8 +382,11 @@ body { margin: 0; }
   .seam-plan { max-height: none; }
   .rail { grid-area: rail; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
   .rail .team { flex: none; max-height: 60%; }
-  .rail .seam-standing { flex: 0 1 auto; min-height: 0; }
-  .rail .panel.log { flex: 1 1 0; min-height: 180px; }
+  /* Standing and the log take turns in the rest of the rail, one tab each */
+  .railtabs { display: flex; gap: 4px; }
+  .railtabs button[aria-selected="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .rail .seam-standing, .rail .panel.log { flex: 1 1 0; min-height: 180px; }
+  .app[data-rail="standing"] .rail .panel.log, .app[data-rail="log"] .rail .seam-standing { display: none; }
 }
 
 
