@@ -35,6 +35,7 @@ import pandas as pd
 from fantasy_draft.availability import AvailabilityRule
 from fantasy_draft.draft import MY_SLOT, ROSTER_SIZE, DraftState, my_picks
 from fantasy_draft.lineup import ALL_MASK, STARTING_SLOTS, all_masks_can_start, max_starters_of_masks, position_mask
+from fantasy_draft.rules import PickRule, restrict
 from fantasy_draft.scoring import Bounds, category_scores, composite_score, replacement_score
 
 # Score points added to a new pick's value for every position he can fill beyond the first. A judgement, not a
@@ -100,6 +101,7 @@ class Recommendation:
     main_nodes: int = 0  # the search for the plans alone, to compare with NODE_BUDGET
     max_option_nodes: int = 0  # the busiest single first-pick search, to compare with OPTION_NODE_BUDGET
     options_truncated: bool = False  # a first-pick comparison was cut short: the plans are exact, those gaps approximate
+    unmet_picks: FrozenSet[int] = frozenset()  # picks where my rules left nobody to choose and were ignored
 
 
 def recommend(
@@ -141,6 +143,7 @@ def plan_picks(
     option_count: int = FIRST_PICK_OPTIONS,
     weights: Optional[Mapping[str, float]] = None,
     flexibility: float = 0.0,
+    rules: Sequence[PickRule] = (),
 ) -> Recommendation:
     """Plan the remaining picks within a work budget, and price the best alternatives for the next pick.
 
@@ -152,7 +155,8 @@ def plan_picks(
     what losing him really costs. On the clock he is on the board, so the options leave him in: what choosing
     someone else costs. Without this, "if he is gone" would be priced on plans that take him one pick later.
 
-    `flexibility` is the bonus, in score points, for each position a new pick can fill beyond the first.
+    `flexibility` is the bonus, in score points, for each position a new pick can fill beyond the first. `rules` are my own
+    restrictions on who I may pick where (see rules.py); the other teams are planned without them.
     """
     _check_state(players, state, slot, rounds)
     remaining_picks = [pick for pick in my_picks(slot, rounds) if pick >= state.next_pick]
@@ -164,8 +168,9 @@ def plan_picks(
     unavailable = set(state.taken) | set(state.mine)
     pool = players[~players["player_id"].isin(unavailable)]
 
+    unmet: Set[int] = set()
     candidates = [
-        _candidates_for_pick(pool, scores, positions, rule, pick, state.picks_made, state.unseen, max_candidates, flexibility)
+        _candidates_for_pick(pool, scores, positions, rule, pick, state.picks_made, state.unseen, max_candidates, flexibility, rules, unmet)
         for pick in remaining_picks
     ]
     # A pick of a player outside the pool still fills a starting slot: any position, replacement-level value
@@ -194,7 +199,9 @@ def plan_picks(
             if found:
                 options.append(FirstPickOption(first.player_id, found[0]))
         options.sort(key=lambda option: (option.plan.value, option.plan.survival), reverse=True)
-    return Recommendation(plans, options, truncated, nodes, assumed_gone, main_nodes, max_option_nodes, options_truncated)
+    return Recommendation(
+        plans, options, truncated, nodes, assumed_gone, main_nodes, max_option_nodes, options_truncated, frozenset(unmet)
+    )
 
 
 def fill_picks(
@@ -210,6 +217,7 @@ def fill_picks(
     weights: Optional[Mapping[str, float]] = None,
     flexibility: float = 0.0,
     max_candidates: int = 25,
+    rules: Sequence[PickRule] = (),
 ) -> List[Tuple[int, str]]:
     """Fill `picks` one at a time, each with the best-value player likely to be there: (pick number, player id).
 
@@ -223,7 +231,9 @@ def fill_picks(
     pool = players[~players["player_id"].isin(set(state.taken) | set(state.mine) | set(held))]
     filled: List[Tuple[int, str]] = []
     for pick in picks:
-        candidates = _candidates_for_pick(pool, scores, positions, rule, pick, state.picks_made, state.unseen, max_candidates, flexibility)
+        candidates = _candidates_for_pick(
+            pool, scores, positions, rule, pick, state.picks_made, state.unseen, max_candidates, flexibility, rules
+        )
         if not candidates:
             break
         choice = candidates[0]
@@ -279,8 +289,18 @@ def _candidates_for_pick(
     unseen: Sequence[int],
     max_candidates: int,
     flexibility: float = 0.0,
+    rules: Sequence[PickRule] = (),
+    unmet: Optional[Set[int]] = None,
 ) -> List[_Candidate]:
-    """The best players who will likely still be there at `pick`, highest value (score plus flexibility bonus) first."""
+    """The best players who will likely still be there at `pick`, highest value (score plus flexibility bonus) first.
+
+    My rules narrow the pool first. When they would leave nobody they are ignored for this pick and it is added to `unmet`.
+    """
+    allowed = restrict(rules, pick, pool["player_id"])
+    if allowed:
+        pool = pool[pool["player_id"].isin(allowed)]
+    elif allowed is not None and unmet is not None:
+        unmet.add(pick)
     probabilities = rule.probability(pool["adp_est"].to_numpy(dtype=float), pick, picks_made, unseen)
     chosen = np.flatnonzero(probabilities >= rule.threshold)
     if len(chosen) == 0:

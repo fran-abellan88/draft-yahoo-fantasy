@@ -860,7 +860,9 @@ def _disagreement(service: DraftService, pick_id: str) -> Any:
     answer = _ask(service, [], method="uncapped", gamesAdjusted=True)
     scores = composite_score(service.players, ALL, service.method_bounds["uncapped"], True, "uncapped")
     best = Plan((2,), (pick_id,), 0.0, 1.0, 0.0)
-    return service._disagreement(best, 2, answer["pool"], set(), scores, ALL, "uncapped", True, None, {"isMine": True}, parse_rule(None))
+    return service._disagreement(
+        best, 2, answer["pool"], set(), scores, ALL, "uncapped", True, None, {"isMine": True}, parse_rule(None), set()
+    )
 
 
 def test_yahoo_disagrees_says_why_giannis_scores_lower_than_kawhi_and_what_punting_would_do(service: DraftService) -> None:

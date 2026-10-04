@@ -24,6 +24,45 @@ function sanitizeRule(rule, limits) {
   return clean;
 }
 
+// ---------- my rules ----------
+// A rule is {id, kind: 'only' | 'avoid', players: [ids], from, to, enabled}; from and to count my own picks (1 is my
+// first) and a null `to` means through my last pick. The server checks them again, so this only keeps a damaged saved
+// list from being sent: anything it cannot make sense of is dropped.
+const RULE_KINDS = ['only', 'avoid'];
+const MAX_RULES = 30;
+const MAX_RULE_PLAYERS = 20;
+
+function sanitizeRules(raw, knownIds, pickCount) {
+  if (!Array.isArray(raw)) return [];
+  const whole = (value) => Number.isInteger(value) && value >= 1 && value <= pickCount;
+  const clean = [];
+  for (const entry of raw.slice(0, MAX_RULES)) {
+    if (!entry || typeof entry !== 'object' || !RULE_KINDS.includes(entry.kind)) continue;
+    const players = Array.isArray(entry.players) ? [...new Set(entry.players.filter((id) => knownIds.has(id)))].slice(0, MAX_RULE_PLAYERS) : [];
+    const to = entry.to === null || entry.to === undefined ? null : entry.to;
+    if (players.length === 0 || !whole(entry.from) || (to !== null && (!whole(to) || to < entry.from))) continue;
+    clean.push({ id: String(entry.id || `r${clean.length + 1}`), kind: entry.kind, players, from: entry.from, to, enabled: entry.enabled !== false });
+  }
+  return clean;
+}
+
+// "my pick 2", "my picks 1 to 3", "my pick 4 on"
+function rulePicksText(rule) {
+  if (rule.to === rule.from) return `my pick ${rule.from}`;
+  if (rule.to === null) return `my pick ${rule.from} on`;
+  return `my picks ${rule.from} to ${rule.to}`;
+}
+
+function joinNames(names) {
+  if (names.length <= 1) return names.join('');
+  return `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}`;
+}
+
+function ruleText(rule, nameOf) {
+  const names = joinNames(rule.players.map(nameOf));
+  return rule.kind === 'only' ? `At ${rulePicksText(rule)}: only ${names}` : `Not ${names} at ${rulePicksText(rule)}`;
+}
+
 // ---------- the saved draft ----------
 // The pick log is a list of objects, {kind: 'player', id}. The first version of the page saved a bare list of player
 // ids under another storage key. Both are read here, so a draft saved by an older page is not lost.
@@ -360,5 +399,5 @@ function statLevel(score) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { clampRuleValue, sanitizeRule, normalizePicks, pickSavedState, planBehind, markGone, sanitizeHistory, undoLast, unmarkGone, swapPicks, forgetPick, placeGone, choosePlayer, describePick, swapText, forgetText, placeText, chooseText, undoLabel, chooseSource, discardsUnconfirmed, settingChanges, scoreBarAnchors, scoreBarShare, scoreTrend, statLevel, PICK_KINDS };
+  module.exports = { sanitizeRules, ruleText, clampRuleValue, sanitizeRule, normalizePicks, pickSavedState, planBehind, markGone, sanitizeHistory, undoLast, unmarkGone, swapPicks, forgetPick, placeGone, choosePlayer, describePick, swapText, forgetText, placeText, chooseText, undoLabel, chooseSource, discardsUnconfirmed, settingChanges, scoreBarAnchors, scoreBarShare, scoreTrend, statLevel, PICK_KINDS };
 }

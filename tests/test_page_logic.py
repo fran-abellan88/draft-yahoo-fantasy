@@ -493,3 +493,37 @@ def test_score_trend_ignores_small_gaps_and_missing_last_season(delta: Any, expe
 )
 def test_only_strong_stats_get_a_capsule_and_weak_ones_are_muted(score: Any, expected: str) -> None:
     assert _run(f"L.statLevel({json.dumps(score)})") == expected
+
+
+RULE_IDS = ["a", "b", "c"]
+
+
+def test_saved_rules_are_cleaned_before_they_are_sent() -> None:
+    raw = [
+        {"id": "ok", "kind": "avoid", "players": ["a", "ghost", "a"], "from": 1, "to": 3},
+        {"id": "open", "kind": "only", "players": ["b"], "from": 2, "to": None, "enabled": False},
+        {"kind": "never", "players": ["a"], "from": 1},
+        {"id": "empty", "kind": "avoid", "players": ["ghost"], "from": 1},
+        {"id": "late", "kind": "avoid", "players": ["a"], "from": 14},
+        {"id": "backwards", "kind": "avoid", "players": ["a"], "from": 3, "to": 2},
+        "text",
+    ]
+    clean = _run(f"L.sanitizeRules({json.dumps(raw)}, new Set({json.dumps(RULE_IDS)}), 13)")
+    assert clean == [
+        {"id": "ok", "kind": "avoid", "players": ["a"], "from": 1, "to": 3, "enabled": True},
+        {"id": "open", "kind": "only", "players": ["b"], "from": 2, "to": None, "enabled": False},
+    ]
+    assert _run(f"L.sanitizeRules('nope', new Set({json.dumps(RULE_IDS)}), 13)") == []
+
+
+@pytest.mark.parametrize(
+    "rule,text",
+    [
+        ({"kind": "only", "players": ["a", "b"], "from": 1, "to": 1}, "At my pick 1: only Alpha or Beta"),
+        ({"kind": "avoid", "players": ["c"], "from": 1, "to": 3}, "Not Gamma at my picks 1 to 3"),
+        ({"kind": "avoid", "players": ["a", "b", "c"], "from": 4, "to": None}, "Not Alpha, Beta or Gamma at my pick 4 on"),
+    ],
+)
+def test_a_rule_reads_as_a_sentence(rule: Dict[str, Any], text: str) -> None:
+    names = {"a": "Alpha", "b": "Beta", "c": "Gamma"}
+    assert _run(f"L.ruleText({json.dumps(rule)}, (id) => ({json.dumps(names)})[id])") == text

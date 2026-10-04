@@ -174,6 +174,15 @@ last-pick line and the snake strip (hover a slot).
   `python tools/snapshot.py` saves a draft-day snapshot (pool, XRank/ADP, scores under your settings, the plan) to
   `data/2026-27/snapshot_<date>.csv`, so after the season the score, XRank, ADP and the tie band can be compared with real
   results and the band tuned.
+- **My rules** (top of the Plan panel) restrict your own plan: **Never pick** keeps players out of the picks you give, and
+  **Choose only from** limits a pick to the players you list ("my pick 1: only Jokic or Wembanyama", "not Kawhi Leonard at
+  my picks 1 to 3"). Picks count your own picks (1 is overall pick 2 in slot 2), and a blank end means to the end. Each rule
+  is a switch (click to turn it off) with a cross to remove it, and rules are saved with the draft and kept by Reset. They
+  filter the planner's candidates, so they shape the recommendation, the plan, the alternatives and the late-round fill,
+  and never the other teams, who are planned as if the rules did not exist. A rule nobody can satisfy (every player it
+  allows is gone) is dropped for that pick and marked "could not be met". The page says what the rules cost: the roster
+  score of the best plan without them, and who it would start with. Players a "Never pick" rule keeps out of your next
+  pick carry a "rule" tag in the table. Code: `rules.py`.
 - **Position flexibility.** The planner ranks plans by their score plus 0.3 points for each position a new pick can
   fill beyond the first (`FLEXIBILITY_BONUS` in `optimizer.py`), so a PG/SG beats a PG of the same score. The 0.3 is a
   judgement, not a calibrated number: it can decide between close players (neighbouring scores differ by 0.1 at the
@@ -267,7 +276,7 @@ python -m flake8
 ## Layout
 
 ```
-fantasy_draft/   scoring, flags, lineup rules, availability, optimizer, data loading, Yahoo parser, server
+fantasy_draft/   scoring, flags, lineup rules, my pick rules, availability, optimizer, data loading, Yahoo parser, server
   web/           the page (plain HTML, CSS and JavaScript)
 tests/           pytest suite, with a golden fixture copied from nba-yahoo-fantasy-daily-dose
 legacy/2025/     last year's scripts and notebook, kept for reference only

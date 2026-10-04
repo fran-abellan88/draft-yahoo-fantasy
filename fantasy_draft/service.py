@@ -25,6 +25,7 @@ from fantasy_draft.lineup import ALL_MASK, POSITION_BIT, STARTING_SLOTS, assign_
 from fantasy_draft.league import league_table, rosters_by_slot
 from fantasy_draft.needs import category_weights
 from fantasy_draft.optimizer import FLEXIBILITY_BONUS, FirstPickOption, Plan, Recommendation, fill_picks, plan_picks, team_profile
+from fantasy_draft.rules import PickRule, parse_rules, rule_states, restrict
 from fantasy_draft.scoring import (
     METHODS,
     FULL_CREDIT_GAMES,
@@ -166,6 +167,7 @@ class DraftService:
     def analyze(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """Everything the page shows for one draft state and one choice of categories and availability rule."""
         keys, picks, rule, method, games_adjusted = self._parse_settings(request)
+        rules = self._parse_rules(request)
         top_k = int(_bounded(request, "topK", DEFAULT_TOP_K, 1, MAX_TOP_K))
 
         mine_numbers = set(my_picks(self.slot, ROSTER_SIZE, self.teams))
@@ -204,6 +206,7 @@ class DraftService:
                     method=method,
                     weights=weights,
                     flexibility=FLEXIBILITY_BONUS,
+                    rules=rules,
                 )
             except ValueError as error:
                 raise RequestError(str(error)) from error
@@ -214,6 +217,11 @@ class DraftService:
         next_mine_probability = rule.probability(adp, next_mine, state.picks_made, state.unseen) if next_mine is not None else None
 
         pool = self._pool_rows(scores, last_season, category, flags, drafted, next_mine_probability)
+        blocked = self._blocked_for(rules, next_mine, pool)
+        # Only a player a rule names is marked in the table; under "choose only from" everyone else is blocked, which says nothing
+        named = set().union(*(rule_.players for rule_ in rules if rule_.kind == "avoid" and next_mine in rule_.picks))
+        for row in pool:
+            row["blocked"] = row["id"] in blocked and row["id"] in named
         alt_method = ALTERNATIVE_METHOD[method]
         alt_scores = composite_score(self.players, keys, self.method_bounds[alt_method], games_adjusted, alt_method, weights)
         alt_by_id = dict(zip(self.players["player_id"], alt_scores))
@@ -231,11 +239,11 @@ class DraftService:
                 plans = [chosen] + [plan for plan in plans if plan.player_ids != chosen.player_ids]
                 best = chosen
         disagreement = (
-            self._disagreement(best, next_mine, pool, drafted, scores, keys, method, games_adjusted, weights, clock, rule)
+            self._disagreement(best, next_mine, pool, drafted, scores, keys, method, games_adjusted, weights, clock, rule, blocked)
             if best is not None and next_mine is not None
             else None
         )
-        fills = {id(plan): self._fill_plan(plan, state, keys, rule, method, games_adjusted, weights) for plan in plans[:PLANS_SHOWN]}
+        fills = {id(plan): self._fill_plan(plan, state, keys, rule, method, games_adjusted, weights, rules) for plan in plans[:PLANS_SHOWN]}
         return {
             "clock": clock,
             "pool": pool,
@@ -251,11 +259,13 @@ class DraftService:
                 "maxOptionNodes": recommendation_result.max_option_nodes,
             },
             "recommendation": self._recommendation(best, next_mine, market),
+            "rules": self._rules_payload(rules, drafted, len(picks) + 1, recommendation_result.unmet_picks),
+            "rulesImpact": self._rules_impact(best, rules, state, keys, rule, method, games_adjusted, weights, top_k),
             "disagreement": disagreement,
             "laterPick": later_pick,
             "lineup": self._lineup(picks, mine_numbers),
             "bestAvailable": self._best_available(pool, picks, mine_numbers),
-            "lookFirst": self._look_first(pool, best, rule, clock, state),
+            "lookFirst": self._look_first(pool, best, rule, clock, state, blocked),
             "roster": [{"id": pick.player_id, "kind": pick.kind, "pick": number} for number, pick in numbered if number in mine_numbers],
             "log": [
                 {
@@ -294,6 +304,49 @@ class DraftService:
             raise RequestError("gamesAdjusted must be true or false")
         return keys, picks, rule, method, games_adjusted
 
+    def _parse_rules(self, request: Dict[str, Any]) -> List[PickRule]:
+        """My enabled rules from the request (see rules.py); the page's mistakes come back as a RequestError."""
+        try:
+            return parse_rules(request.get("rules"), set(self.players["player_id"]), my_picks(self.slot, ROSTER_SIZE, self.teams))
+        except ValueError as error:
+            raise RequestError(str(error)) from error
+
+    def _blocked_for(self, rules: List[PickRule], pick: Optional[int], pool: List[Dict[str, Any]]) -> set:
+        """The players my rules keep out of my pick `pick`; none when there is no such pick or the rules would leave nobody."""
+        if pick is None or not rules:
+            return set()
+        ids = [row["id"] for row in pool]
+        allowed = restrict(rules, pick, ids)
+        return set(ids) - allowed if allowed else set()
+
+    def _rules_payload(self, rules: List[PickRule], drafted: set, next_pick: int, unmet: Any) -> List[Dict[str, str]]:
+        return [{"id": rule_id, "state": state} for rule_id, state in rule_states(rules, drafted, next_pick, set(unmet)).items()]
+
+    def _rules_impact(
+        self,
+        best: Optional[Plan],
+        rules: List[PickRule],
+        state: DraftState,
+        keys: List[str],
+        rule: AvailabilityRule,
+        method: str,
+        games_adjusted: bool,
+        weights: Optional[Dict[str, float]],
+        top_k: int,
+    ) -> Optional[Dict[str, Any]]:
+        """What my rules cost: the roster score of the best plan without them against the plan shown, and who it would start with."""
+        if best is None or not rules:
+            return None
+        free = plan_picks(
+            self.players, state, keys, self.method_bounds[method], rule, self.slot, self.rounds, 1,
+            games_adjusted=games_adjusted, method=method, weights=weights, flexibility=FLEXIBILITY_BONUS, option_count=0,
+        ).plans
+        if not free:
+            return None
+        cost = max(0.0, free[0].total_score - best.total_score)
+        changed = free[0].player_ids[0] != best.player_ids[0]
+        return {"cost": _num(cost, 1), "without": free[0].player_ids[0] if changed else None}
+
     def _state_for(self, slot: int, picks: List[Pick]) -> DraftState:
         """The draft as team `slot` sees it: its own players, everyone else's picks, and the picks nobody reported."""
         numbers = set(my_picks(slot, ROSTER_SIZE, self.teams))
@@ -317,12 +370,13 @@ class DraftService:
         Slow at the start of the draft (about 0.1 s per pick still to make), so the page asks for it apart from `analyze`.
         """
         keys, picks, rule, method, games_adjusted = self._parse_settings(request)
+        rules = self._parse_rules(request)
         rosters = rosters_by_slot(picks, self.teams)
         simulated = list(picks)
         fallbacks = 0
         for number in range(len(picks) + 1, ROSTER_SIZE * self.teams + 1):
             slot = slot_of_pick(number, self.teams)
-            chosen = self._planner_choice(slot, simulated, keys, rule, method, games_adjusted)
+            chosen = self._planner_choice(slot, simulated, keys, rule, method, games_adjusted, rules)
             if chosen is None:
                 chosen = next_for_clock(self.players, simulated, self.teams)
                 fallbacks += 1
@@ -343,21 +397,29 @@ class DraftService:
         return table
 
     def _planner_choice(
-        self, slot: int, picks: List[Pick], keys: List[str], rule: AvailabilityRule, method: str, games_adjusted: bool
+        self,
+        slot: int,
+        picks: List[Pick],
+        keys: List[str],
+        rule: AvailabilityRule,
+        method: str,
+        games_adjusted: bool,
+        rules: Optional[List[PickRule]] = None,
     ) -> Optional[str]:
         """The first player of team `slot`'s best plan after `picks`: what the recommendation would say for that team.
 
         None when the search finds no plan (nobody fits). Only my team plans for the ticked categories (`keys`, my
         strategy); every other team plans for all of them. A team plans `rounds` rounds ahead (RIVAL_ROUNDS for the
-        others); past that the pick is filled in by score, as in my own plan.
+        others); past that the pick is filled in by score, as in my own plan. My `rules` apply to my team only.
         """
         team_keys = keys if slot == self.slot else self.keys
+        team_rules = rules if slot == self.slot and rules else ()
         horizon = self.rounds if slot == self.slot else RIVAL_ROUNDS
         number = len(picks) + 1
         if not any(pick >= number for pick in my_picks(slot, horizon, self.teams)):
             filled = fill_picks(
                 self.players, self._state_for(slot, picks), team_keys, self.method_bounds[method], rule, [number],
-                games_adjusted=games_adjusted, method=method, flexibility=FLEXIBILITY_BONUS,
+                games_adjusted=games_adjusted, method=method, flexibility=FLEXIBILITY_BONUS, rules=team_rules,
             )
             return filled[0][1] if filled else None
         try:
@@ -374,6 +436,7 @@ class DraftService:
                 method=method,
                 option_count=0,
                 flexibility=FLEXIBILITY_BONUS,
+                rules=team_rules,
             )
         except ValueError:
             return None
@@ -610,6 +673,7 @@ class DraftService:
         method: str,
         games_adjusted: bool,
         weights: Optional[Dict[str, float]],
+        rules: List[PickRule],
     ) -> List[Tuple[int, str]]:
         """The picks after the plan's horizon, up to a full roster, filled in by score (see `fill_picks`)."""
         last = plan.pick_numbers[-1] if plan.pick_numbers else 0
@@ -618,7 +682,7 @@ class DraftService:
             return []
         return fill_picks(
             self.players, state, keys, self.method_bounds[method], rule, numbers, plan.player_ids, games_adjusted, method, weights,
-            FLEXIBILITY_BONUS,
+            FLEXIBILITY_BONUS, rules=rules,
         )
 
     def _plan_payload(self, plan: Plan, rule: AvailabilityRule, state: DraftState, filled: List[Tuple[int, str]]) -> Dict[str, Any]:
@@ -754,7 +818,13 @@ class DraftService:
         return None
 
     def _look_first(
-        self, pool: List[Dict[str, Any]], best: Optional[Plan], rule: AvailabilityRule, clock: Dict[str, Any], state: DraftState
+        self,
+        pool: List[Dict[str, Any]],
+        best: Optional[Plan],
+        rule: AvailabilityRule,
+        clock: Dict[str, Any],
+        state: DraftState,
+        blocked: set,
     ) -> List[Dict[str, Any]]:
         """On my turn with unseen picks: better-scoring players left out for their odds, who may still be on the board.
 
@@ -772,6 +842,7 @@ class DraftService:
             row
             for row in pool
             if row["score"] > recommended["score"]
+            and row["id"] not in blocked
             and row["availability"] is not None
             and LOOK_FIRST_FLOOR <= row["availability"] < rule.threshold
         ]
@@ -844,6 +915,7 @@ class DraftService:
         weights: Optional[Dict[str, float]],
         clock: Dict[str, Any],
         rule: AvailabilityRule,
+        blocked: set,
     ) -> Optional[Dict[str, Any]]:
         """When Yahoo ranks an available player far above the recommended one, why the model does not, and what punting would do.
 
@@ -862,7 +934,7 @@ class DraftService:
             if yahoo_rank[player_id] > yahoo_rank[pick_id] - YAHOO_GAP:
                 break
             row = by_id.get(player_id)
-            if row is None:
+            if row is None or player_id in blocked:
                 continue
             offered = clock["isMine"] or (row["availability"] is not None and row["availability"] >= rule.threshold)
             if offered and pick_score - float(row["score"]) >= DISAGREE_MIN_POINTS:

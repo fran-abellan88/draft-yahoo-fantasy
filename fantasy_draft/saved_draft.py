@@ -27,7 +27,7 @@ DEFAULT_PATH = Path(__file__).resolve().parent.parent / "saved_draft.json"
 DEFAULT_MOCK_PATH = Path(__file__).resolve().parent.parent / "saved_mock_draft.json"
 MAX_BYTES = 200_000
 MAX_PICKS = 200
-KNOWN_KEYS = ("version", "picks", "history", "categories", "gamesAdjusted", "method", "rule", "rehearsal", "seed", "needs")
+KNOWN_KEYS = ("version", "picks", "history", "categories", "gamesAdjusted", "method", "rule", "rehearsal", "seed", "needs", "rules")
 
 
 class SavedDraftError(ValueError):

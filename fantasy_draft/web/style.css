@@ -638,3 +638,23 @@ td.player { width: 99%; max-width: 0; }
 .facts.disagree button { margin-left: 4px; }
 
 #pool td.alt-score { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* My rules: chips at the top of the plan panel. A chip is a switch (click to turn the rule off), with a cross to remove it */
+.rules { margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.rules-head { display: flex; align-items: center; gap: 8px; }
+.rules-head h2 { margin: 0; font-size: 15px; color: var(--muted); font-weight: 600; }
+.rules-head button:not(.help) { margin-left: auto; }
+.rule-list { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.rule { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 10px; background: var(--raised); overflow: hidden; }
+.rule-toggle { flex: 1; text-align: left; border: 0; border-radius: 0; background: transparent; padding: 6px 10px; font-weight: 600; }
+.rule-toggle[aria-pressed="true"] { box-shadow: inset 3px 0 0 var(--cool); }
+.rule.off .rule-toggle, .rule.spent .rule-toggle { color: var(--muted); font-weight: 500; }
+.rule.off .rule-toggle { text-decoration: line-through; }
+.rule-remove { border: 0; border-left: 1px solid var(--line); border-radius: 0; background: transparent; padding: 0 10px; color: var(--muted); }
+.rule-form { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.rule-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.rule-form input[type="text"], .rule-form input[type="number"], .rule-form select { padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--raised); color: var(--ink); }
+.rule-form input[type="number"] { width: 64px; }
+.rule-pick { display: inline-flex; align-items: center; gap: 2px; padding: 2px 4px 2px 8px; border-radius: 999px; background: var(--cool-mid); font-weight: 600; }
+.rule-pick button { border: 0; background: transparent; padding: 0 4px; color: var(--muted); }
+.rule-error { margin: 0; color: var(--danger); font-weight: 600; }

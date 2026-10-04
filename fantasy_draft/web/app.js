@@ -43,6 +43,7 @@ const state = {
   gamesAdjusted: true,
   method: 'uncapped',
   rule: { ...DEFAULT_RULE },
+  rules: [], // my own restrictions on who I pick where (see logic.js); they survive Reset, which only clears picks
   search: '',
   position: 'ALL',
   sort: { key: 'adp', direction: 1 }, // ADP order; the # column is the rank by score
@@ -133,7 +134,7 @@ function readStored(key) {
 }
 
 function currentSavedState() {
-  return { version: 2, picks: state.picks, history: state.history, seed: state.seed, needs: state.needs, categories: state.categories, gamesAdjusted: state.gamesAdjusted, method: state.method, rule: state.rule };
+  return { version: 2, picks: state.picks, history: state.history, seed: state.seed, needs: state.needs, categories: state.categories, gamesAdjusted: state.gamesAdjusted, method: state.method, rule: state.rule, rules: state.rules };
 }
 
 function saveState() {
@@ -233,6 +234,7 @@ function restoreState(fromServer) {
   }
   if (typeof saved.gamesAdjusted === 'boolean') state.gamesAdjusted = saved.gamesAdjusted;
   if (saved.method === 'capped' || saved.method === 'uncapped') state.method = saved.method;
+  state.rules = sanitizeRules(saved.rules, new Set(playerById.keys()), pool.myPicks.length);
   // A saved value outside the allowed range would be refused by the server on every request, so it is put back in range
   if (saved.rule && typeof saved.rule === 'object') state.rule = sanitizeRule({ ...DEFAULT_RULE, ...saved.rule }, pool.ruleLimits);
 }
@@ -309,7 +311,7 @@ async function refresh() {
   choosing = null;
   const requestId = ++latestRequest;
   setBusy(true);
-  const body = JSON.stringify({ categories: state.categories, picks: state.picks, rule: ruleForRequest(), gamesAdjusted: state.gamesAdjusted, method: state.method, needs: state.needs });
+  const body = JSON.stringify({ categories: state.categories, picks: state.picks, rule: ruleForRequest(), gamesAdjusted: state.gamesAdjusted, method: state.method, needs: state.needs, rules: state.rules });
   let response = null;
   for (let attempt = 0; attempt <= NETWORK_RETRIES && response === null; attempt += 1) {
     if (attempt > 0) {
@@ -690,6 +692,7 @@ function render() {
   if (analysis.clock.isMine && !lastIsMine) cardId = null; // my turn: the recommendation comes back
   lastIsMine = analysis.clock.isMine;
   renderHero();
+  renderRules();
   renderPlan();
   renderSearchNote();
   renderUnseenNote();
@@ -953,6 +956,138 @@ function renderHero() {
           doubt ? h('button', { type: 'button', onclick: () => markPlayerGone(recommendation.id) }, 'He is gone') : null,
         )
       : null,
+  );
+}
+
+// ---------- my rules ----------
+// Restrictions on my own plan (see logic.js and rules.py): "only these players at my pick 2", "never him at picks 1 to 3".
+// They change the plan, so they are saved with the draft and sent with every request. The form keeps what is typed in
+// `ruleDraft`, so an answer arriving from the server (which redraws this block) does not wipe it.
+let ruleDraft = null;
+const RULE_STATE_NOTES = { moot: 'done', unmet: 'could not be met' };
+
+function rulesChanged() {
+  saveState();
+  renderRules();
+  scheduleRefresh();
+}
+
+function ruleChip(rule, stateOf) {
+  const note = RULE_STATE_NOTES[stateOf.get(rule.id)];
+  const text = ruleText(rule, nameOf);
+  const overall = rule.to === null || rule.to === rule.from ? `overall pick ${pool.myPicks[rule.from - 1]}` : `overall picks ${pool.myPicks[rule.from - 1]} to ${pool.myPicks[rule.to - 1]}`;
+  return h(
+    'li',
+    { class: `rule${rule.enabled ? '' : ' off'}${note ? ' spent' : ''}`, 'data-kind': rule.kind },
+    h('button', {
+      type: 'button',
+      class: 'rule-toggle',
+      'aria-pressed': String(rule.enabled),
+      title: `${rule.enabled ? 'Click to switch this rule off' : 'Click to switch this rule on'} (${overall})`,
+      onclick: () => {
+        rule.enabled = !rule.enabled;
+        rulesChanged();
+      },
+    }, text, !rule.enabled ? ' (off)' : note ? ` (${note})` : ''),
+    h('button', {
+      type: 'button',
+      class: 'rule-remove',
+      'aria-label': `Remove the rule: ${text}`,
+      title: 'Remove this rule',
+      onclick: () => {
+        state.rules = state.rules.filter((other) => other.id !== rule.id);
+        rulesChanged();
+      },
+    }, '\u00d7'),
+  );
+}
+
+function impactLine() {
+  const impact = analysis.rulesImpact;
+  if (!impact || !state.rules.some((rule) => rule.enabled)) return null;
+  if (impact.cost === 0 && !impact.without) return 'Your rules do not change the plan.';
+  const first = impact.without ? ` Without them the plan would start with ${nameOf(impact.without)}.` : '';
+  return `Your rules cost ${oneDecimal(impact.cost)} points of roster score.${first}`;
+}
+
+function ruleForm() {
+  const draft = ruleDraft;
+  const count = pool.myPicks.length;
+  const names = new Map(pool.players.map((player) => [player.name.toLowerCase(), player.id]));
+  const error = h('p', { class: 'rule-error', role: 'alert', hidden: true });
+  const chosen = h('span', { class: 'rule-players' });
+  const drawChosen = () => put(chosen, draft.players.map((id) => h('span', { class: 'rule-pick' }, nameOf(id), h('button', {
+    type: 'button',
+    'aria-label': `Remove ${nameOf(id)} from the rule`,
+    onclick: () => {
+      draft.players = draft.players.filter((other) => other !== id);
+      drawChosen();
+    },
+  }, '\u00d7'))));
+  drawChosen();
+  const player = h('input', { type: 'text', list: 'rule-names', placeholder: 'Add a player', 'aria-label': 'Add a player to the rule', autocomplete: 'off' });
+  const addPlayer = () => {
+    const id = names.get(player.value.trim().toLowerCase());
+    if (id && !draft.players.includes(id)) {
+      draft.players.push(id);
+      drawChosen();
+      player.value = '';
+    }
+  };
+  player.addEventListener('change', addPlayer);
+  player.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      addPlayer();
+    }
+  });
+  const kind = h('select', { 'aria-label': 'Kind of rule', onchange: (event) => { draft.kind = event.target.value; } },
+    h('option', { value: 'avoid', selected: draft.kind === 'avoid' }, 'Never pick'),
+    h('option', { value: 'only', selected: draft.kind === 'only' }, 'Choose only from'));
+  const from = h('input', { type: 'number', min: 1, max: count, step: 1, value: draft.from, 'aria-label': 'First of my picks', onchange: (event) => { draft.from = event.target.value; } });
+  const to = h('input', { type: 'number', min: 1, max: count, step: 1, value: draft.to, placeholder: 'last', 'aria-label': 'Last of my picks, blank for all the way', onchange: (event) => { draft.to = event.target.value; } });
+  const save = () => {
+    addPlayer();
+    const first = Number(from.value);
+    const last = to.value.trim() === '' ? null : Number(to.value);
+    const whole = (value) => Number.isInteger(value) && value >= 1 && value <= count;
+    let problem = '';
+    if (draft.players.length === 0) problem = 'Add at least one player.';
+    else if (!whole(first) || (last !== null && (!whole(last) || last < first))) problem = `Pick numbers run from 1 to ${count}, and the last cannot be before the first.`;
+    if (problem) {
+      error.textContent = problem;
+      error.hidden = false;
+      return;
+    }
+    state.rules = [...state.rules, { id: `r${Date.now().toString(36)}`, kind: draft.kind, players: draft.players, from: first, to: last, enabled: true }];
+    ruleDraft = null;
+    rulesChanged();
+  };
+  return h(
+    'form',
+    { class: 'rule-form', onsubmit: (event) => { event.preventDefault(); save(); } },
+    h('div', { class: 'rule-row' }, kind, player, chosen),
+    h('div', { class: 'rule-row' }, 'at my pick', from, 'to', to, h('span', { class: 'note' }, `(mine are overall ${pool.myPicks.slice(0, 5).join(', ')}...; blank means to the end)`)),
+    error,
+    h('div', { class: 'rule-row' }, h('button', { type: 'submit', class: 'primary' }, 'Save rule'), h('button', { type: 'button', onclick: () => { ruleDraft = null; renderRules(); } }, 'Cancel')),
+  );
+}
+
+function renderRules() {
+  const stateOf = new Map((analysis.rules || []).map((entry) => [entry.id, entry.state]));
+  if (!$('rule-names')) {
+    document.body.append(h('datalist', { id: 'rule-names' }, pool.players.map((player) => h('option', { value: player.name }))));
+  }
+  const impact = impactLine();
+  put($('rules'),
+    h('div', { class: 'rules-head' },
+      h('h2', {}, 'My rules'),
+      ruleDraft ? null : h('button', { type: 'button', onclick: () => { ruleDraft = { kind: 'avoid', players: [], from: 1, to: '' }; renderRules(); } }, 'Add a rule'),
+      helpButton('Rules shape only your own plan: the other teams are planned without them. "Never pick" keeps a player out of the picks you give; "Choose only from" limits that pick to the players you list. Picks count your own picks, and a rule that cannot be met (everyone it allows is gone) is dropped for that pick.', 'About my rules'),
+    ),
+    state.rules.length ? h('ul', { class: 'rule-list' }, state.rules.map((rule) => ruleChip(rule, stateOf))) : (ruleDraft ? null : h('p', { class: 'note' }, 'None. A rule can fix who you take at a pick, or keep a player out of your first picks.')),
+    impact ? h('p', { class: 'facts' }, impact) : null,
+    ruleDraft ? ruleForm() : null,
   );
 }
 
@@ -1370,6 +1505,7 @@ function renderPool() {
     const cells = [
       h('td', {}, row.rank),
       h('td', { class: 'left player' }, h('div', { class: 'player-line' }, draftButton(player, isRecommended), h('strong', {}, h('button', { type: 'button', class: 'name-link', 'data-grp': groupOf(player.id), 'aria-pressed': String(cardId === player.id), title: `Show the player card of ${player.name}`, onclick: () => showCard(player.id) }, player.name)), isRecommended ? h('span', { class: 'pick-tag' }, 'Pick') : null, h('div', { class: 'meta' }, detailOf(player.id)), h('div', { class: 'notes' }, [
+        ...(row.blocked ? [badge('rule', 'info', 'One of your rules keeps him out of your next pick')] : []),
         ...(planned && !isRecommended ? [badge(`plan: ${planned}`, 'info', `The current plan takes him at pick ${planned}`)] : []),
         ...(unconfirmed ? [badge('Logged, not confirmed. Click to retry', 'injury', 'The server has not confirmed this pick yet')] : []),
         ...(pending ? [badge('Logging the pick', 'info', 'Waiting for the server to confirm this pick')] : []),
