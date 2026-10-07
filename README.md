@@ -195,7 +195,7 @@ last-pick line and the snake strip (hover a slot).
   while "Count games missed" is ticked) and/or **points added to his score**, with a note and where the idea came from.
   They change every score, the plan and the recommendation, are saved with the draft, and never touch the other teams, who
   are planned as if the adjustments did not exist. `data/2026-27/player_notes.csv` is a reading list of what commentators
-  said about single players, each with the video and the time (about 120 notes from seven videos so far). It changes nothing by itself:
+  said about single players, each with the video and the time (about 150 notes from eleven videos so far). It changes nothing by itself:
   a note shows on the player's card, a "note" tag in the table, and a button that starts an adjustment from the note's
   suggestion (only a few notes carry one); nothing applies until you save it. Add rows to the file as you watch more.
   Code: `adjustments.py`, `notes.py`.
