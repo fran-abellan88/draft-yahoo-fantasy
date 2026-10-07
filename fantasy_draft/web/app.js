@@ -45,6 +45,7 @@ const state = {
   gamesAdjusted: true,
   method: 'uncapped',
   rule: { ...DEFAULT_RULE },
+  adjustments: [], // my own games and score offsets for single players (see logic.js); saved with the draft like the rules
   rules: [], // my own restrictions on who I pick where (see logic.js); they survive Reset, which only clears picks
   search: '',
   position: 'ALL',
@@ -136,7 +137,7 @@ function readStored(key) {
 }
 
 function currentSavedState() {
-  return { version: 2, picks: state.picks, history: state.history, seed: state.seed, needs: state.needs, categories: state.categories, gamesAdjusted: state.gamesAdjusted, method: state.method, rule: state.rule, rules: state.rules };
+  return { version: 2, picks: state.picks, history: state.history, seed: state.seed, needs: state.needs, categories: state.categories, gamesAdjusted: state.gamesAdjusted, method: state.method, rule: state.rule, rules: state.rules, adjustments: state.adjustments };
 }
 
 function saveState() {
@@ -237,6 +238,7 @@ function restoreState(fromServer) {
   if (typeof saved.gamesAdjusted === 'boolean') state.gamesAdjusted = saved.gamesAdjusted;
   if (saved.method === 'capped' || saved.method === 'uncapped') state.method = saved.method;
   state.rules = sanitizeRules(saved.rules, new Set(playerById.keys()), pool.myPicks.length);
+  state.adjustments = sanitizeAdjustments(saved.adjustments, new Set(playerById.keys()));
   // A saved value outside the allowed range would be refused by the server on every request, so it is put back in range.
   // A rule saved before there was a basis was centred on ADP: its spreads do not fit the default basis, so they are dropped.
   if (saved.rule && typeof saved.rule === 'object') {
@@ -318,7 +320,7 @@ async function refresh() {
   choosing = null;
   const requestId = ++latestRequest;
   setBusy(true);
-  const body = JSON.stringify({ categories: state.categories, picks: state.picks, rule: ruleForRequest(), gamesAdjusted: state.gamesAdjusted, method: state.method, needs: state.needs, rules: state.rules });
+  const body = JSON.stringify({ categories: state.categories, picks: state.picks, rule: ruleForRequest(), gamesAdjusted: state.gamesAdjusted, method: state.method, needs: state.needs, rules: state.rules, adjustments: state.adjustments });
   let response = null;
   for (let attempt = 0; attempt <= NETWORK_RETRIES && response === null; attempt += 1) {
     if (attempt > 0) {
@@ -700,6 +702,7 @@ function render() {
   lastIsMine = analysis.clock.isMine;
   renderHero();
   renderRules();
+  renderAdjustments();
   renderPlan();
   renderSearchNote();
   renderUnseenNote();
@@ -1126,6 +1129,135 @@ function renderRules() {
   );
 }
 
+// ---------- my adjustments ----------
+// My own beliefs about single players: the games to expect from him (it counts while "Count games missed" is on) and
+// points to add to his score, for what the projection cannot know (out for the start of the season, a smaller role).
+// Notes from commentators (data/2026-27/player_notes.csv) show on his card with a button that starts an adjustment from
+// their suggestion; nothing is applied until I save it. The form keeps what is typed in `adjustDraft`.
+let adjustDraft = null;
+const notesByPlayer = new Map();
+
+function adjustmentsChanged() {
+  saveState();
+  renderAdjustments();
+  scheduleRefresh();
+}
+
+function openAdjust(playerId, suggestion = {}) {
+  const existing = state.adjustments.find((adjustment) => adjustment.player === playerId);
+  adjustDraft = existing
+    ? { ...existing, games: existing.games === null ? '' : existing.games }
+    : { id: '', player: playerId, games: suggestion.games ?? '', offset: suggestion.offset ?? 0, note: suggestion.note ?? '', source: suggestion.source ?? '', enabled: true };
+  renderAdjustments();
+  $('adjustments').scrollIntoView({ block: 'nearest' });
+}
+
+function adjustmentChip(adjustment) {
+  const gone = !poolRowById.has(adjustment.player);
+  const text = adjustmentText(adjustment, nameOf);
+  const status = !adjustment.enabled ? ' (off)' : gone ? ' (done)' : '';
+  return h(
+    'li',
+    { class: `rule${adjustment.enabled ? '' : ' off'}${gone ? ' spent' : ''}`, 'data-kind': 'adjust' },
+    h('div', { class: 'rule-body' },
+      h('button', {
+        type: 'button',
+        class: 'rule-toggle',
+        'aria-pressed': String(adjustment.enabled),
+        title: adjustment.enabled ? 'Click to switch this adjustment off' : 'Click to switch this adjustment on',
+        onclick: () => {
+          adjustment.enabled = !adjustment.enabled;
+          adjustmentsChanged();
+        },
+      }, text, status),
+      adjustment.note || adjustment.source ? h('p', { class: 'rule-note' }, adjustment.note, adjustment.source ? h('span', { class: 'source' }, ` (${adjustment.source})`) : null) : null,
+    ),
+    h('button', { type: 'button', class: 'rule-edit', title: 'Change this adjustment', onclick: () => openAdjust(adjustment.player) }, 'Edit'),
+    h('button', {
+      type: 'button',
+      class: 'rule-remove',
+      'aria-label': `Remove the adjustment: ${text}`,
+      title: 'Remove this adjustment',
+      onclick: () => {
+        state.adjustments = state.adjustments.filter((other) => other.id !== adjustment.id);
+        adjustmentsChanged();
+      },
+    }, '×'),
+  );
+}
+
+function adjustmentForm() {
+  const draft = adjustDraft;
+  const names = new Map(pool.players.map((player) => [player.name.toLowerCase(), player.id]));
+  const error = h('p', { class: 'rule-error', role: 'alert', hidden: true });
+  const player = h('input', { type: 'text', list: 'rule-names', value: draft.player ? nameOf(draft.player) : '', placeholder: 'Player', 'aria-label': 'Player to adjust', autocomplete: 'off' });
+  const games = h('input', { type: 'number', min: 0, max: 82, step: 1, value: draft.games, placeholder: 'projection', 'aria-label': 'Games to expect, blank keeps the projection' });
+  const offset = h('input', { type: 'number', min: -30, max: 30, step: 0.5, value: draft.offset, 'aria-label': 'Points to add to the score' });
+  const note = h('input', { type: 'text', value: draft.note, maxlength: 300, placeholder: 'Why (optional)', 'aria-label': 'Why' });
+  const source = h('input', { type: 'text', value: draft.source, maxlength: 300, placeholder: 'Where from (optional)', 'aria-label': 'Where the idea came from' });
+  const save = () => {
+    const id = names.get(player.value.trim().toLowerCase());
+    const gamesValue = games.value.trim() === '' ? null : Number(games.value);
+    const offsetValue = offset.value.trim() === '' ? 0 : Number(offset.value);
+    let problem = '';
+    if (!id) problem = 'Pick a player from the list.';
+    else if (gamesValue !== null && !(Number.isFinite(gamesValue) && gamesValue >= 0 && gamesValue <= 82)) problem = 'Games run from 0 to 82.';
+    else if (!(Number.isFinite(offsetValue) && offsetValue >= -30 && offsetValue <= 30)) problem = 'The score offset runs from -30 to 30 points.';
+    else if (gamesValue === null && offsetValue === 0) problem = 'Give the games to expect, a score offset, or both.';
+    if (problem) {
+      error.textContent = problem;
+      error.hidden = false;
+      return;
+    }
+    const entry = { id: draft.id || `a${Date.now().toString(36)}`, player: id, games: gamesValue, offset: offsetValue, note: note.value.trim(), source: source.value.trim(), enabled: true };
+    const others = state.adjustments.filter((other) => other.player !== id && other.id !== entry.id);
+    state.adjustments = [...others, entry];
+    adjustDraft = null;
+    adjustmentsChanged();
+  };
+  return h(
+    'form',
+    { class: 'rule-form', onsubmit: (event) => { event.preventDefault(); save(); } },
+    h('div', { class: 'rule-row' }, player, 'games', games, 'score points', offset),
+    h('div', { class: 'rule-row' }, note, source),
+    error,
+    h('div', { class: 'rule-row' }, h('button', { type: 'submit', class: 'primary' }, 'Save adjustment'), h('button', { type: 'button', onclick: () => { adjustDraft = null; renderAdjustments(); } }, 'Cancel')),
+  );
+}
+
+function renderAdjustments() {
+  const gamesIgnored = !state.gamesAdjusted && state.adjustments.some((adjustment) => adjustment.enabled && adjustment.games !== null);
+  put($('adjustments'),
+    h('div', { class: 'rules-head' },
+      h('h2', {}, 'My adjustments'),
+      adjustDraft ? null : h('button', { type: 'button', onclick: () => { adjustDraft = { id: '', player: '', games: '', offset: 0, note: '', source: '', enabled: true }; renderAdjustments(); } }, 'Adjust a player'),
+      helpButton("Your own belief about one player, on top of Yahoo's projection: how many games to expect from him (counts while \"Count games missed\" is ticked) and points to add to or take off his score for a bigger or smaller role. Commentators' notes show on a player's card with a button that starts an adjustment from their suggestion; nothing changes until you save. The other teams are planned without your adjustments.", 'About my adjustments'),
+    ),
+    state.adjustments.length ? h('ul', { class: 'rule-list' }, state.adjustments.map(adjustmentChip)) : (adjustDraft ? null : h('p', { class: 'note' }, 'None. Click a player, read the notes on his card, and adjust him if you disagree with the projection.')),
+    gamesIgnored ? h('p', { class: 'facts' }, 'Expected games only count while "Count games missed" is ticked in the settings.') : null,
+    adjustDraft ? adjustmentForm() : null,
+  );
+}
+
+function notesBlock(playerId) {
+  const notes = notesByPlayer.get(playerId) || [];
+  if (notes.length === 0) return null;
+  return h(
+    'div',
+    { class: 'notes-block' },
+    notes.map((entry) => h(
+      'p',
+      { class: 'facts player-note' },
+      h('strong', {}, `${entry.kind}: `),
+      entry.note,
+      h('span', { class: 'source' }, ` (${entry.source})`),
+      entry.games !== undefined || entry.offset !== undefined
+        ? h('button', { type: 'button', class: 'gone', title: 'Start an adjustment from this note. Nothing changes until you save it.', onclick: () => openAdjust(playerId, { games: entry.games, offset: entry.offset, note: entry.note, source: entry.source }) }, 'Adjust from this')
+        : null,
+    )),
+  );
+}
+
 function renderPlayerCard(hero) {
   const row = poolRowById.get(cardId);
   const player = playerById.get(cardId);
@@ -1136,6 +1268,7 @@ function renderPlayerCard(hero) {
     odds !== null && odds !== undefined ? `${pct(odds)} chance he is still there${pickLabel ? ` at pick ${pickLabel}` : ''}.` : '',
     planned ? `In your plan at pick ${planned}.` : '',
     analysis.recommendation && analysis.recommendation.id === cardId ? 'The recommended pick.' : '',
+    row.adjusted ? `Adjusted by you: ${adjustmentText({ player: cardId, games: row.adjusted.games, offset: row.adjusted.offset }, nameOf).split(': ')[1]}.` : '',
   ].filter(Boolean).join(' ');
   const last = previousScore(row);
   hero.className = 'hero viewing';
@@ -1148,10 +1281,12 @@ function renderPlayerCard(hero) {
     ),
     categoryBars(row),
     facts ? h('p', { class: 'facts' }, facts) : null,
+    notesBlock(cardId),
     h(
       'div',
       { class: 'cta' },
       h('button', { type: 'button', class: 'primary', onclick: () => rowPicked(cardId) }, `${choosing ? 'Choose' : 'Draft'} ${player.name}`),
+      h('button', { type: 'button', onclick: () => openAdjust(cardId) }, row.adjusted ? 'Edit adjustment' : 'Adjust player'),
       h('button', { type: 'button', onclick: closeCard }, 'Back to the recommendation'),
     ),
   );
@@ -1540,6 +1675,8 @@ function renderPool() {
     const cells = [
       h('td', {}, row.rank),
       h('td', { class: 'left player' }, h('div', { class: 'player-line' }, draftButton(player, isRecommended), h('strong', {}, h('button', { type: 'button', class: 'name-link', 'data-grp': groupOf(player.id), 'aria-pressed': String(cardId === player.id), title: `Show the player card of ${player.name}`, onclick: () => showCard(player.id) }, player.name)), isRecommended ? h('span', { class: 'pick-tag' }, 'Pick') : null, h('div', { class: 'meta' }, detailOf(player.id)), h('div', { class: 'notes' }, [
+        ...(row.adjusted ? [badge('adj', 'info', 'You adjusted him: see My adjustments')] : []),
+        ...(notesByPlayer.has(player.id) ? [badge('note', 'info', 'Commentator notes are on his card')] : []),
         ...(row.blocked ? [badge('rule', 'info', 'One of your rules keeps him out of your next pick')] : []),
         ...(planned && !isRecommended ? [badge(`plan: ${planned}`, 'info', `The current plan takes him at pick ${planned}`)] : []),
         ...(unconfirmed ? [badge('Logged, not confirmed. Click to retry', 'injury', 'The server has not confirmed this pick yet')] : []),
@@ -2247,6 +2384,7 @@ async function init() {
     return;
   }
   for (const player of pool.players) playerById.set(player.id, player);
+  for (const note of pool.notes || []) notesByPlayer.set(note.player, [...(notesByPlayer.get(note.player) || []), note]);
   state.rehearsal = pool.rehearsal === true;
   if (state.rehearsal && !state.seed) state.seed = Math.floor(Math.random() * 1000000) + 1;
   let server = null;

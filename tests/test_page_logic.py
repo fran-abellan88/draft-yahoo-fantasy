@@ -539,3 +539,35 @@ def test_saved_rules_are_cleaned_before_they_are_sent() -> None:
 def test_a_rule_reads_as_a_sentence(rule: Dict[str, Any], text: str) -> None:
     names = {"a": "Alpha", "b": "Beta", "c": "Gamma"}
     assert _run(f"L.ruleText({json.dumps(rule)}, (id) => ({json.dumps(names)})[id])") == text
+
+
+def test_saved_adjustments_are_cleaned_before_they_are_sent() -> None:
+    raw = [
+        {"id": "ok", "player": "a", "games": 41, "offset": -2, "note": "x" * 400, "source": "video"},
+        {"id": "off", "player": "b", "games": None, "offset": 3, "enabled": False},
+        {"id": "dup", "player": "a", "games": 10},
+        {"id": "ghost", "player": "ghost", "games": 10},
+        {"id": "empty", "player": "c"},
+        {"id": "far", "player": "c", "games": 90},
+        {"id": "high", "player": "c", "offset": 31},
+        "text",
+    ]
+    clean = _run(f"L.sanitizeAdjustments({json.dumps(raw)}, new Set({json.dumps(RULE_IDS)}))")
+    assert clean == [
+        {"id": "ok", "player": "a", "games": 41, "offset": -2, "note": "x" * 300, "source": "video", "enabled": True},
+        {"id": "off", "player": "b", "games": None, "offset": 3, "note": "", "source": "", "enabled": False},
+    ]
+    assert _run(f"L.sanitizeAdjustments(null, new Set({json.dumps(RULE_IDS)}))") == []
+
+
+@pytest.mark.parametrize(
+    "adjustment,text",
+    [
+        ({"player": "a", "games": 45, "offset": 0}, "Alpha: 45 games"),
+        ({"player": "b", "games": None, "offset": -3}, "Beta: -3 points"),
+        ({"player": "c", "games": 60, "offset": 1.5}, "Gamma: 60 games, +1.5 points"),
+    ],
+)
+def test_an_adjustment_reads_as_a_short_line(adjustment: Dict[str, Any], text: str) -> None:
+    names = {"a": "Alpha", "b": "Beta", "c": "Gamma"}
+    assert _run(f"L.adjustmentText({json.dumps(adjustment)}, (id) => ({json.dumps(names)})[id])") == text
