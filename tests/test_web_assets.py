@@ -682,7 +682,7 @@ def test_the_main_table_lists_the_categories_in_the_order_of_every_other_table()
 
 
 def test_the_page_shows_why_yahoo_disagrees_and_offers_the_punt_through_the_settings_flow() -> None:
-    assert "function disagreementBlock" in JS and "function marketTieNote" in JS
+    assert "function disagreementBlock" in JS and "function riskTieNote" in JS
     punt = JS[JS.index("function puntCategory"): JS.index("function whyNotTheTopScore")]
     assert "settingChanged()" in punt and "toggleSettings()" in punt, "after the first pick the confirmation is in the settings panel"
     assert "puntCategory(category.key)" in JS

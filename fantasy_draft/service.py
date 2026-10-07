@@ -44,12 +44,13 @@ RIVAL_ROUNDS = 8  # how many rounds another team plans ahead; its later picks ar
 TIE_SCORE = 0.05  # roster-score gap below which two plans read as the same score (the page uses the same value)
 ALTERNATIVES_SHOWN = 4
 # On my turn, plans whose roster score is within this many points of the best one count as level, and the one whose first
-# player has the better ADP wins (a judgement: about half the median gap between a player's projected and last season's
-# score, not validated; see README). The ADP must be better by at least TIE_ADP_MARGIN picks, so a hair does not flip it.
+# player is least likely to last until my next pick wins (a judgement: about half the median gap between a player's
+# projected and last season's score, not validated; see README). His chance of lasting must be lower by at least
+# TIE_LAST_MARGIN, so a hair does not flip it.
 # The score method the page shows beside the chosen one, so the effect of the other choice is visible at once
 ALTERNATIVE_METHOD = {"capped": "uncapped", "uncapped": "capped", "zscore": "uncapped"}
 TIE_BAND = 1.5
-TIE_ADP_MARGIN = 2.0
+TIE_LAST_MARGIN = 0.05
 # "Yahoo disagrees" is shown when an available player ranks this many places better by XRank than the pick, and scores lower
 YAHOO_GAP = 15
 DISAGREE_MIN_POINTS = 0.5
@@ -65,21 +66,42 @@ class RequestError(ValueError):
 # The only place the allowed availability settings are written down: (default, lowest, highest). The page gets them
 # from /api/pool, so what it lets the user type and what the server accepts cannot drift apart.
 RULE_LIMITS: Dict[str, Tuple[float, float, float]] = {
-    "baseSd": (2.0, 0.1, 20.0),
-    "sdPerAdp": (0.2, 0.0, 1.0),
+    "baseSd": (2.1, 0.1, 20.0),
+    "sdPerAdp": (0.07, 0.0, 1.0),
     "threshold": (0.5, 0.05, 0.95),
     "slack": (3.0, 0.0, 60.0),
 }
+
+
+# Who the other teams follow when they pick, and the spread that fits each (the "place" in the spread is a place in that
+# ranking). In two Yahoo mock drafts the picks followed Yahoo's own rank (XRank) far more closely than ADP, and a spread of
+# 2.1 + 0.07 per place matched the odds of being taken at each pick; centred on ADP the same spread would not. ADP stays
+# available for leagues that draft by it.
+BASES = ("xrank", "adp")
+DEFAULT_BASIS = "xrank"
+BASIS_SPREADS: Dict[str, Dict[str, float]] = {
+    "xrank": {"baseSd": 2.1, "sdPerAdp": 0.07},
+    "adp": {"baseSd": 2.0, "sdPerAdp": 0.2},
+}
+
+
+def parse_basis(raw: Optional[Dict[str, Any]]) -> str:
+    """Which ranking the availability rule is centred on; rejects anything else."""
+    basis = (raw or {}).get("basis", DEFAULT_BASIS)
+    if basis not in BASES:
+        raise RequestError(f"basis must be one of {list(BASES)}")
+    return str(basis)
 
 
 def parse_rule(raw: Optional[Dict[str, Any]]) -> AvailabilityRule:
     """Build an availability rule from the request, rejecting nonsense values."""
     raw = raw or {}
     kind = raw.get("type", "probability")
+    spreads = BASIS_SPREADS[parse_basis(raw)]
     if kind == "probability":
         return NormalAdpModel(
-            base_sd=_bounded(raw, "baseSd", *RULE_LIMITS["baseSd"]),
-            sd_per_adp=_bounded(raw, "sdPerAdp", *RULE_LIMITS["sdPerAdp"]),
+            base_sd=_bounded(raw, "baseSd", spreads["baseSd"], RULE_LIMITS["baseSd"][1], RULE_LIMITS["baseSd"][2]),
+            sd_per_adp=_bounded(raw, "sdPerAdp", spreads["sdPerAdp"], RULE_LIMITS["sdPerAdp"][1], RULE_LIMITS["sdPerAdp"][2]),
             threshold=_bounded(raw, "threshold", *RULE_LIMITS["threshold"]),
         )
     if kind == "window":
@@ -113,6 +135,8 @@ class DraftService:
     keys: List[str] = field(init=False)
     bounds: Bounds = field(init=False)
     method_bounds: Dict[str, Bounds] = field(init=False)
+    _rank_twin: Optional["DraftService"] = field(init=False, default=None, repr=False)
+    _is_twin: bool = field(init=False, default=False, repr=False)
 
     def __post_init__(self) -> None:
         self.keys = categories_in(self.players.columns)
@@ -149,6 +173,7 @@ class DraftService:
             )
         return {
             "ruleLimits": {key: {"default": d, "min": low, "max": high} for key, (d, low, high) in RULE_LIMITS.items()},
+            "ruleDefaults": {basis: dict(spreads) for basis, spreads in BASIS_SPREADS.items()},
             "league": {
                 "teams": self.teams,
                 "slot": self.slot,
@@ -164,8 +189,27 @@ class DraftService:
             "players": players,
         }
 
+    def _for_basis(self, request: Dict[str, Any]) -> "DraftService":
+        """The service whose availability is centred on the ranking the request asks for.
+
+        This one is centred on ADP. For XRank a twin is built once over the same players with each one's XRank in the
+        ADP column, so every calculation that asks "when will he go" (the planner, the odds, the projection) works
+        unchanged. The twin never answers for the page's static data (pool_payload), which keeps showing real ADP.
+        """
+        if self._is_twin or parse_basis(request.get("rule")) == "adp":
+            return self
+        if self._rank_twin is None:
+            players = self.players.assign(adp_est=self.players["xrank"].astype(float), adp_estimated=False)
+            twin = DraftService(players, self.slot, self.rounds, self.teams, self.rehearsal)
+            twin._is_twin = True
+            self._rank_twin = twin
+        return self._rank_twin
+
     def analyze(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """Everything the page shows for one draft state and one choice of categories and availability rule."""
+        twin = self._for_basis(request)
+        if twin is not self:
+            return twin.analyze(request)
         keys, picks, rule, method, games_adjusted = self._parse_settings(request)
         rules = self._parse_rules(request)
         top_k = int(_bounded(request, "topK", DEFAULT_TOP_K, 1, MAX_TOP_K))
@@ -234,7 +278,7 @@ class DraftService:
         options = recommendation_result.options
         market: Optional[Dict[str, Any]] = None
         if best is not None and clock["isMine"] and not recommendation_result.assumed_gone:
-            chosen, options, market = self._market_tie(best, options)
+            chosen, options, market = self._risk_tie(best, options, later_pick, rule, state)
             if chosen is not best:
                 plans = [chosen] + [plan for plan in plans if plan.player_ids != chosen.player_ids]
                 best = chosen
@@ -369,6 +413,9 @@ class DraftService:
         A team whose search finds no plan takes the best-ADP player that fits (`fallbacks` counts them).
         Slow at the start of the draft (about 0.1 s per pick still to make), so the page asks for it apart from `analyze`.
         """
+        twin = self._for_basis(request)
+        if twin is not self:
+            return twin.project_league(request)
         keys, picks, rule, method, games_adjusted = self._parse_settings(request)
         rules = self._parse_rules(request)
         rosters = rosters_by_slot(picks, self.teams)
@@ -455,6 +502,7 @@ class DraftService:
         if self.rehearsal:
             raise RequestError("Pick predictions are only available in the real draft")
         keys, picks, rule, method, games_adjusted = self._parse_settings(request)
+        planner_service = self._for_basis(request)  # the planner's odds use the ranking the page chose; the ADP comparison stays on ADP
         # The picks compared are other teams' picks, so their rank is by all categories, not by my ticked ones.
         scores = composite_score(self.players, self.keys, self.method_bounds[method], games_adjusted, method).to_numpy(dtype=float)
         adp = self.players["adp_est"].to_numpy(dtype=float)
@@ -466,7 +514,7 @@ class DraftService:
             slot = slot_of_pick(number, self.teams)
             if pick.kind == "player" and pick.player_id is not None and slot != self.slot:
                 before = picks[: number - 1]
-                planner = self._planner_choice(slot, before, keys, rule, method, games_adjusted) if number <= horizon else None
+                planner = planner_service._planner_choice(slot, before, keys, rule, method, games_adjusted) if number <= horizon else None
                 crowd = next_for_clock(self.players, before, self.teams)
                 position = index[pick.player_id]
                 rows.append(
@@ -491,7 +539,7 @@ class DraftService:
             clock = {
                 "pick": number,
                 "slot": slot,
-                "planner": self._planner_choice(slot, picks, keys, rule, method, games_adjusted) if number <= horizon else None,
+                "planner": planner_service._planner_choice(slot, picks, keys, rule, method, games_adjusted) if number <= horizon else None,
                 "adp": next_for_clock(self.players, picks, self.teams),
             }
         return {"clock": clock, "picks": rows, "summary": self._prediction_summary(rows)}
@@ -856,30 +904,43 @@ class DraftService:
             return None
         recommendation: Dict[str, Any] = {"pick": next_mine, "id": best.player_ids[0]}
         if market is not None:
-            recommendation["marketTie"] = market
+            recommendation["riskTie"] = market
         return recommendation
 
-    def _market_tie(self, best: Plan, options: List[FirstPickOption]) -> Tuple[Plan, List[FirstPickOption], Optional[Dict[str, Any]]]:
-        """On my turn: among the best plan and the plans within TIE_BAND of its roster score, the first player with the best ADP.
+    def _risk_tie(
+        self, best: Plan, options: List[FirstPickOption], later_pick: Optional[int], rule: AvailabilityRule, state: DraftState
+    ) -> Tuple[Plan, List[FirstPickOption], Optional[Dict[str, Any]]]:
+        """On my turn: among the best plan and the plans within TIE_BAND of its roster score, the first player least likely to last.
+
+        When two plans are level, the one that takes first the player most likely to be gone by my next pick keeps the
+        most options: the other player is the one likely to still be there. "Last" is the availability rule's chance that
+        he is on the board at my next pick (`later_pick`); without a later pick nothing is left to keep open. The chance
+        must be lower by at least TIE_LAST_MARGIN, so a hair does not flip the order.
 
         Roster score is the sum of the scores of the players (the bonus for positions is not counted), so "level" means
         level in what the page calls Roster score. Returns the plan to recommend, the options with the plan it replaced
-        among them, and what to say; the plan unchanged and no note when the market has nothing to add.
+        among them, and what to say; the plan unchanged and no note when there is nothing to add.
         """
+        if later_pick is None:
+            return best, options, None
         adp = lambda player_id: float(self._by_id.loc[player_id, "adp_est"])  # noqa: E731
+        lasts = lambda player_id: float(  # noqa: E731
+            rule.probability(np.array([adp(player_id)]), later_pick, state.picks_made, state.unseen)[0]
+        )
         level = [option for option in options if best.total_score - option.plan.total_score <= TIE_BAND]
         if not level:
             return best, options, None
-        leader = min(level, key=lambda option: (adp(option.player_id), -option.plan.value))
-        if adp(best.player_ids[0]) - adp(leader.player_id) < TIE_ADP_MARGIN:
+        leader = min(level, key=lambda option: (lasts(option.player_id), -option.plan.value))
+        if lasts(best.player_ids[0]) - lasts(leader.player_id) < TIE_LAST_MARGIN:
             return best, options, None
         others = [FirstPickOption(best.player_ids[0], best)] + [option for option in options if option is not leader]
         others.sort(key=lambda option: (option.plan.value, option.plan.survival), reverse=True)
         note = {
             "over": best.player_ids[0],
             "gap": _num(abs(best.total_score - leader.plan.total_score), 1),
-            "adp": _num(adp(leader.player_id), 1),
-            "adpOver": _num(adp(best.player_ids[0]), 1),
+            "lasts": _num(lasts(leader.player_id), 2),
+            "lastsOver": _num(lasts(best.player_ids[0]), 2),
+            "pick": later_pick,
             "band": TIE_BAND,
         }
         return leader.plan, others, note

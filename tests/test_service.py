@@ -293,7 +293,8 @@ def test_the_answer_reports_the_main_and_the_busiest_option_search(service: Draf
 
 def test_the_pool_tells_the_page_the_allowed_availability_settings(service: DraftService) -> None:
     limits = service.pool_payload()["ruleLimits"]
-    assert limits["baseSd"] == {"default": 2.0, "min": 0.1, "max": 20.0}
+    assert limits["baseSd"] == {"default": 2.1, "min": 0.1, "max": 20.0}
+    assert service.pool_payload()["ruleDefaults"] == {"xrank": {"baseSd": 2.1, "sdPerAdp": 0.07}, "adp": {"baseSd": 2.0, "sdPerAdp": 0.2}}
     assert set(limits) == {"baseSd", "sdPerAdp", "threshold", "slack"}
     for key, limit in limits.items():  # the values the page may send are exactly the ones the server accepts
         assert parse_rule({"type": "window" if key == "slack" else "probability", key: limit["min"]})
@@ -445,7 +446,7 @@ def test_unseen_picks_count_towards_the_picks_made_for_ownership(service: DraftS
 
 def test_look_first_lists_better_scoring_players_the_odds_left_out_and_nobody_long_gone(service: DraftService) -> None:
     ids = _by_adp(service)
-    answer = _ask(service, ids[:20] + [UNSEEN] * 6, method="uncapped", gamesAdjusted=True)  # the page defaults
+    answer = _ask(service, ids[:20] + [UNSEEN] * 6, method="uncapped", gamesAdjusted=True, rule={"basis": "adp"})
     rows = {row["id"]: row for row in answer["pool"]}
     recommended = rows[answer["recommendation"]["id"]]
     look = answer["lookFirst"]
@@ -819,26 +820,59 @@ def _without(service: DraftService, excluded: set, count: int) -> List[str]:
 KD_KAWHI_GIANNIS = {"giannis-antetokounmpo", "kevin-durant", "kawhi-leonard"}
 
 
-def test_on_my_turn_level_plans_go_to_the_first_player_with_the_better_adp(service: DraftService) -> None:
-    answer = _ask(service, _without(service, KD_KAWHI_GIANNIS, 26), method="uncapped", gamesAdjusted=True)
+def test_on_my_turn_level_plans_go_to_the_player_least_likely_to_last(service: DraftService) -> None:
+    log = _without(service, KD_KAWHI_GIANNIS, 26)
+    answer = _ask(service, log, method="uncapped", gamesAdjusted=True)
     recommendation = answer["recommendation"]
     assert answer["clock"]["isMine"] and recommendation["pick"] == 27
-    assert recommendation["id"] == "kevin-durant" and recommendation["marketTie"]["over"] == "kawhi-leonard"
-    tie = recommendation["marketTie"]
-    assert tie["gap"] <= tie["band"] and tie["adp"] < tie["adpOver"] - 2
+    tie = recommendation["riskTie"]
+    assert recommendation["id"] == "kevin-durant" and tie["over"] == "lauri-markkanen", "Markkanen is the one likely to be there at 30"
+    assert tie["gap"] <= tie["band"] and tie["pick"] == 30
+    assert tie["lasts"] < tie["lastsOver"] - 0.05, "he is the likelier to be gone by my next pick"
     assert answer["plans"][0]["steps"][0]["id"] == "kevin-durant", "the plan the page shows starts with the recommended player"
-    assert "kawhi-leonard" in [alternative["id"] for alternative in answer["alternatives"]], "the player the market replaced is an option"
+    assert "lauri-markkanen" in [alternative["id"] for alternative in answer["alternatives"]], "the player it replaced is an option"
+    by_adp = _ask(service, log, method="uncapped", gamesAdjusted=True, rule={"basis": "adp"})["recommendation"]
+    assert by_adp["id"] == "kevin-durant" and by_adp["riskTie"]["over"] == "kawhi-leonard", "centred on ADP the player it replaces differs"
 
 
-def test_the_market_decides_nothing_while_i_am_waiting_or_outside_the_band(
+def test_the_risk_tie_decides_nothing_while_i_am_waiting_or_outside_the_band(
     service: DraftService, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     log = _without(service, KD_KAWHI_GIANNIS, 26)
     waiting = _ask(service, log[:24], method="uncapped", gamesAdjusted=True)
-    assert not waiting["clock"]["isMine"] and "marketTie" not in waiting["recommendation"]
-    monkeypatch.setattr("fantasy_draft.service.TIE_BAND", 0.5)  # Kawhi leads KD by 1.0 on roster score: no longer level
+    assert not waiting["clock"]["isMine"] and "riskTie" not in waiting["recommendation"]
+    monkeypatch.setattr("fantasy_draft.service.TIE_BAND", -1.0)  # no plan counts as level with the best
     narrow = _ask(service, log, method="uncapped", gamesAdjusted=True)["recommendation"]
-    assert narrow["id"] == "kawhi-leonard" and "marketTie" not in narrow
+    assert narrow["id"] != "kevin-durant" and "riskTie" not in narrow
+
+
+def test_with_no_later_pick_there_is_nothing_to_keep_open(service: DraftService) -> None:
+    first = service.players.sort_values("xrank")["player_id"].tolist()
+    log = [pid for pid in first if pid not in KD_KAWHI_GIANNIS][:110]  # my pick 111 is the last of the eight planned rounds
+    answer = _ask(service, log, method="uncapped", gamesAdjusted=True)
+    assert answer["clock"]["isMine"] and answer["laterPick"] is None
+    assert "riskTie" not in (answer["recommendation"] or {})
+
+
+def test_the_ranking_the_others_follow_changes_the_odds_but_not_the_pool_the_page_shows(service: DraftService) -> None:
+    log = _without(service, set(), 26)
+    by_rank = _ask(service, log, method="uncapped", gamesAdjusted=True)
+    by_adp = _ask(service, log, method="uncapped", gamesAdjusted=True, rule={"basis": "adp"})
+    explicit = _ask(service, log, method="uncapped", gamesAdjusted=True, rule={"basis": "xrank"})
+    assert explicit["pool"] == by_rank["pool"], "XRank is the default"
+    rank_odds = {row["id"]: row["later"] for row in by_rank["pool"] if row.get("later") is not None}
+    adp_odds = {row["id"]: row["later"] for row in by_adp["pool"] if row.get("later") is not None}
+    assert rank_odds and rank_odds != adp_odds
+    payload = service.pool_payload()
+    kawhi = next(player for player in payload["players"] if player["id"] == "kawhi-leonard")
+    assert kawhi["adp"] == 30.4 and kawhi["xrank"] == 37, "the table keeps showing Yahoo's real ADP"
+
+
+def test_an_unknown_basis_is_refused(service: DraftService) -> None:
+    with pytest.raises(RequestError, match="basis"):
+        _ask(service, [], rule={"basis": "vibes"})
+    assert parse_rule({"basis": "adp"}).sd_per_adp == 0.2 and parse_rule({"basis": "xrank"}).sd_per_adp == 0.07
+    assert parse_rule({"basis": "adp", "sdPerAdp": 0.3}).sd_per_adp == 0.3, "a value the user typed is kept"
 
 
 def test_the_category_parts_add_up_to_the_score_and_the_rest_is_the_games_anchor(service: DraftService) -> None:
