@@ -661,6 +661,14 @@ td.player { width: 99%; max-width: 0; }
 .rule-form input[type="number"] { width: 64px; }
 .rule-pick { display: inline-flex; align-items: center; gap: 2px; padding: 2px 4px 2px 8px; border-radius: 999px; background: var(--cool-mid); font-weight: 600; }
 .rule-pick button { border: 0; background: transparent; padding: 0 4px; color: var(--muted); }
+.rule-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.rule-note { margin: 0; padding: 0 10px 6px 13px; color: var(--muted); font-size: 13px; }
+.source { color: var(--muted); font-size: 12px; }
+.rule-edit { border: 0; border-left: 1px solid var(--line); border-radius: 0; background: transparent; padding: 0 10px; color: var(--muted); }
+.rule-form input[type="text"] { flex: 1 1 140px; min-width: 0; }
+.notes-block { margin-top: 6px; }
+.player-note { margin: 4px 0; }
+.player-note button { margin-left: 8px; }
 .rule-error { margin: 0; color: var(--danger); font-weight: 600; }
 
 /* A phone: the page scrolls like any page (the window-sized grid above squeezed the recommendation and drew the tab

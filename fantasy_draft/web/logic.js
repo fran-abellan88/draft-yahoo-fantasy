@@ -68,6 +68,40 @@ function ruleText(rule, nameOf) {
   return rule.kind === 'only' ? `At ${rulePicksText(rule)}: only ${names}` : `Not ${names} at ${rulePicksText(rule)}`;
 }
 
+// ---------- my adjustments ----------
+// An adjustment is {id, player, games: number or null, offset, note, source, enabled}: the games to expect from a player
+// (null keeps the projection) and the points to add to his score. The server checks them again; this keeps a damaged
+// saved list from being sent. One adjustment per player; anything it cannot make sense of is dropped.
+const MAX_ADJUSTMENTS = 150;
+const ADJUST_GAMES = [0, 82];
+const ADJUST_OFFSET = [-30, 30];
+const MAX_NOTE = 300;
+
+function sanitizeAdjustments(raw, knownIds) {
+  if (!Array.isArray(raw)) return [];
+  const within = (value, [low, high]) => typeof value === 'number' && Number.isFinite(value) && value >= low && value <= high;
+  const text = (value) => (typeof value === 'string' ? value.slice(0, MAX_NOTE) : '');
+  const seen = new Set();
+  const clean = [];
+  for (const entry of raw.slice(0, MAX_ADJUSTMENTS)) {
+    if (!entry || typeof entry !== 'object' || !knownIds.has(entry.player) || seen.has(entry.player)) continue;
+    const games = entry.games === null || entry.games === undefined ? null : entry.games;
+    const offset = entry.offset === undefined ? 0 : entry.offset;
+    if ((games !== null && !within(games, ADJUST_GAMES)) || !within(offset, ADJUST_OFFSET) || (games === null && offset === 0)) continue;
+    seen.add(entry.player);
+    clean.push({ id: String(entry.id || `a${clean.length + 1}`), player: entry.player, games, offset, note: text(entry.note), source: text(entry.source), enabled: entry.enabled !== false });
+  }
+  return clean;
+}
+
+// "Derik Queen: 45 games, -3 points"
+function adjustmentText(adjustment, nameOf) {
+  const parts = [];
+  if (adjustment.games !== null) parts.push(`${adjustment.games} games`);
+  if (adjustment.offset !== 0) parts.push(`${adjustment.offset > 0 ? '+' : '-'}${Math.abs(adjustment.offset)} points`);
+  return `${nameOf(adjustment.player)}: ${parts.join(', ')}`;
+}
+
 // ---------- the saved draft ----------
 // The pick log is a list of objects, {kind: 'player', id}. The first version of the page saved a bare list of player
 // ids under another storage key. Both are read here, so a draft saved by an older page is not lost.
@@ -405,5 +439,5 @@ function statLevel(score) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { sanitizeRules, ruleText, clampRuleValue, sanitizeRule, normalizePicks, pickSavedState, planBehind, markGone, sanitizeHistory, undoLast, unmarkGone, swapPicks, forgetPick, placeGone, choosePlayer, describePick, swapText, forgetText, placeText, chooseText, undoLabel, chooseSource, discardsUnconfirmed, settingChanges, scoreBarAnchors, scoreBarShare, scoreTrend, statLevel, PICK_KINDS };
+  module.exports = { sanitizeAdjustments, adjustmentText, sanitizeRules, ruleText, clampRuleValue, sanitizeRule, normalizePicks, pickSavedState, planBehind, markGone, sanitizeHistory, undoLast, unmarkGone, swapPicks, forgetPick, placeGone, choosePlayer, describePick, swapText, forgetText, placeText, chooseText, undoLabel, chooseSource, discardsUnconfirmed, settingChanges, scoreBarAnchors, scoreBarShare, scoreTrend, statLevel, PICK_KINDS };
 }

@@ -712,3 +712,18 @@ def test_the_table_shows_the_score_of_the_other_method_in_a_sortable_column_afte
     columns = JS[JS.index("const POOL_COLUMNS"): JS.index("function buildPoolHead")]
     assert columns.index("key: 'score'") < columns.index("key: 'altscore'") < columns.index("key: 'availability'")
     assert "key === 'altscore'" in JS and "analysis.altMethod" in JS and "row.altScore" in JS
+
+
+def test_adjustments_are_saved_sent_shown_and_started_from_the_notes_on_a_card() -> None:
+    saved_state = JS.split("function currentSavedState")[1].split("\n}")[0]
+    assert "adjustments: state.adjustments" in saved_state
+    request = JS[JS.index("async function refresh"): JS.index("let response = null")]
+    assert "adjustments: state.adjustments" in request
+    render = JS[JS.index("function render()"): JS.index("function renderClock")]
+    assert "renderAdjustments()" in render
+    assert "sanitizeAdjustments(saved.adjustments" in JS
+    card = JS[JS.index("function renderPlayerCard"): JS.index("function categoryBars")]
+    assert "notesBlock(cardId)" in card and "openAdjust(cardId)" in card
+    starts_form = "openAdjust(playerId, { games: entry.games" in JS
+    assert "Adjust from this" in JS and starts_form, "a suggestion only starts the form; saving is a click"
+    assert 'id="adjustments"' in (WEB / "index.html").read_text()

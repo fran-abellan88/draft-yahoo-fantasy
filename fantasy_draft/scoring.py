@@ -117,12 +117,14 @@ def composite_score(
     With `weights` (one per selected category) the composite is the weighted mean, so a category that matters more
     to the team counts more. Equal weights, or none, give the plain mean. A category the user did not select is not
     in `keys` and so can never be revived by a weight.
+
+    A `score_offset` column, if the table has one, is added last: the user's own points for a player (see adjustments.py).
     """
     composite = _composite(players, keys, bounds, method, weights)
-    if not games_adjusted:
-        return composite
-    anchor = _replacement_composite(players, keys, bounds, method, weights)
-    return anchor + (composite - anchor) * games_factor(players)
+    if games_adjusted:
+        anchor = _replacement_composite(players, keys, bounds, method, weights)
+        composite = anchor + (composite - anchor) * games_factor(players)
+    return composite + players["score_offset"] if "score_offset" in players.columns else composite
 
 
 def last_season_scores(

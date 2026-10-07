@@ -190,6 +190,15 @@ last-pick line and the snake strip (hover a slot).
   allows is gone) is dropped for that pick and marked "could not be met". The page says what the rules cost: the roster
   score of the best plan without them, and who it would start with. Players a "Never pick" rule keeps out of your next
   pick carry a "rule" tag in the table. Code: `rules.py`.
+- **My adjustments** (under My rules) are your own beliefs about single players, for what Yahoo's projection cannot know: a
+  player out for the start of the season, a smaller role, new teammates. Each one sets the **games to expect** (it counts
+  while "Count games missed" is ticked) and/or **points added to his score**, with a note and where the idea came from.
+  They change every score, the plan and the recommendation, are saved with the draft, and never touch the other teams, who
+  are planned as if the adjustments did not exist. `data/2026-27/player_notes.csv` is a reading list of what commentators
+  said about single players, each with the video and the time (42 notes from three videos so far). It changes nothing by itself:
+  a note shows on the player's card, a "note" tag in the table, and a button that starts an adjustment from the note's
+  suggestion (only a few notes carry one); nothing applies until you save it. Add rows to the file as you watch more.
+  Code: `adjustments.py`, `notes.py`.
 - **Position flexibility.** The planner ranks plans by their score plus 0.3 points for each position a new pick can
   fill beyond the first (`FLEXIBILITY_BONUS` in `optimizer.py`), so a PG/SG beats a PG of the same score. The 0.3 is a
   judgement, not a calibrated number: it can decide between close players (neighbouring scores differ by 0.1 at the

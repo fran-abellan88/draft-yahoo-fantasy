@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from fantasy_draft.adjustments import Adjustment, apply_adjustments, parse_adjustments
 from fantasy_draft.autopick import next_for_clock, project, startable
 from fantasy_draft.availability import AdpWindow, AvailabilityRule, NormalAdpModel
 from fantasy_draft.categories import CATEGORIES, categories_in
@@ -24,6 +25,7 @@ from fantasy_draft.flags import build_flags
 from fantasy_draft.lineup import ALL_MASK, POSITION_BIT, STARTING_SLOTS, assign_slots, position_mask
 from fantasy_draft.league import league_table, rosters_by_slot
 from fantasy_draft.needs import category_weights
+from fantasy_draft.notes import load_notes
 from fantasy_draft.optimizer import FLEXIBILITY_BONUS, FirstPickOption, Plan, Recommendation, fill_picks, plan_picks, team_profile
 from fantasy_draft.rules import PickRule, parse_rules, rule_states, restrict
 from fantasy_draft.scoring import (
@@ -38,6 +40,7 @@ from fantasy_draft.scoring import (
 )
 
 MAX_TOP_K = 50
+MAX_VARIANTS = 12  # services kept for recent combinations of ranking and adjustments
 DEFAULT_TOP_K = 10
 PLANS_SHOWN = 5
 RIVAL_ROUNDS = 8  # how many rounds another team plans ahead; its later picks are filled in (searching them all would be slow)
@@ -135,8 +138,10 @@ class DraftService:
     keys: List[str] = field(init=False)
     bounds: Bounds = field(init=False)
     method_bounds: Dict[str, Bounds] = field(init=False)
-    _rank_twin: Optional["DraftService"] = field(init=False, default=None, repr=False)
-    _is_twin: bool = field(init=False, default=False, repr=False)
+    _variants: Dict[Tuple[Any, ...], "DraftService"] = field(init=False, default_factory=dict, repr=False)
+    _is_variant: bool = field(init=False, default=False, repr=False)
+    _adjustments: Tuple[Adjustment, ...] = field(init=False, default=(), repr=False)
+    _rivals: Optional["DraftService"] = field(init=False, default=None, repr=False)
 
     def __post_init__(self) -> None:
         self.keys = categories_in(self.players.columns)
@@ -174,6 +179,7 @@ class DraftService:
         return {
             "ruleLimits": {key: {"default": d, "min": low, "max": high} for key, (d, low, high) in RULE_LIMITS.items()},
             "ruleDefaults": {basis: dict(spreads) for basis, spreads in BASIS_SPREADS.items()},
+            "notes": load_notes(self.players),
             "league": {
                 "teams": self.teams,
                 "slot": self.slot,
@@ -189,27 +195,49 @@ class DraftService:
             "players": players,
         }
 
-    def _for_basis(self, request: Dict[str, Any]) -> "DraftService":
-        """The service whose availability is centred on the ranking the request asks for.
+    def _for_request(self, request: Dict[str, Any]) -> "DraftService":
+        """The service for the ranking and the adjustments the request asks for.
 
-        This one is centred on ADP. For XRank a twin is built once over the same players with each one's XRank in the
-        ADP column, so every calculation that asks "when will he go" (the planner, the odds, the projection) works
-        unchanged. The twin never answers for the page's static data (pool_payload), which keeps showing real ADP.
+        This one is centred on ADP with no adjustments. For anything else a variant is built once over a copy of the
+        players (XRank in the ADP column, my expected games and score offsets applied), so every calculation that asks
+        "when will he go" or "how good is he" (the planner, the odds, the projection) works unchanged. A variant never
+        answers for the page's static data (pool_payload), which keeps showing real ADP and projected games.
+
+        Each variant also keeps `_rivals`, the same ranking without my adjustments: the other teams are planned without
+        them, since they are my beliefs and not theirs.
         """
-        if self._is_twin or parse_basis(request.get("rule")) == "adp":
+        if self._is_variant:
             return self
-        if self._rank_twin is None:
-            players = self.players.assign(adp_est=self.players["xrank"].astype(float), adp_estimated=False)
-            twin = DraftService(players, self.slot, self.rounds, self.teams, self.rehearsal)
-            twin._is_twin = True
-            self._rank_twin = twin
-        return self._rank_twin
+        basis = parse_basis(request.get("rule"))
+        try:
+            adjustments = tuple(parse_adjustments(request.get("adjustments"), set(self.players["player_id"])))
+        except ValueError as error:
+            raise RequestError(str(error)) from error
+        if basis == "adp" and not adjustments:
+            return self
+        return self._variant(basis, adjustments)
+
+    def _variant(self, basis: str, adjustments: Tuple[Adjustment, ...]) -> "DraftService":
+        key = (basis, adjustments)
+        if key in self._variants:
+            return self._variants[key]
+        players = self.players
+        if basis == "xrank":
+            players = players.assign(adp_est=players["xrank"].astype(float), adp_estimated=False)
+        variant = DraftService(apply_adjustments(players, adjustments), self.slot, self.rounds, self.teams, self.rehearsal)
+        variant._is_variant = True
+        variant._adjustments = adjustments
+        variant._rivals = variant if not adjustments else (self if basis == "adp" else self._variant(basis, ()))
+        self._variants[key] = variant
+        while len(self._variants) > MAX_VARIANTS:  # the oldest go first; a variant still in use keeps living through `_rivals`
+            self._variants.pop(next(iter(self._variants)))
+        return variant
 
     def analyze(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """Everything the page shows for one draft state and one choice of categories and availability rule."""
-        twin = self._for_basis(request)
-        if twin is not self:
-            return twin.analyze(request)
+        variant = self._for_request(request)
+        if variant is not self:
+            return variant.analyze(request)
         keys, picks, rule, method, games_adjusted = self._parse_settings(request)
         rules = self._parse_rules(request)
         top_k = int(_bounded(request, "topK", DEFAULT_TOP_K, 1, MAX_TOP_K))
@@ -266,6 +294,10 @@ class DraftService:
         named = set().union(*(rule_.players for rule_ in rules if rule_.kind == "avoid" and next_mine in rule_.picks))
         for row in pool:
             row["blocked"] = row["id"] in blocked and row["id"] in named
+        mine = {adjustment.player_id: adjustment for adjustment in self._adjustments}
+        for row in pool:
+            adjustment = mine.get(row["id"])
+            row["adjusted"] = None if adjustment is None else {"games": adjustment.games, "offset": adjustment.offset}
         alt_method = ALTERNATIVE_METHOD[method]
         alt_scores = composite_score(self.players, keys, self.method_bounds[alt_method], games_adjusted, alt_method, weights)
         alt_by_id = dict(zip(self.players["player_id"], alt_scores))
@@ -413,9 +445,9 @@ class DraftService:
         A team whose search finds no plan takes the best-ADP player that fits (`fallbacks` counts them).
         Slow at the start of the draft (about 0.1 s per pick still to make), so the page asks for it apart from `analyze`.
         """
-        twin = self._for_basis(request)
-        if twin is not self:
-            return twin.project_league(request)
+        variant = self._for_request(request)
+        if variant is not self:
+            return variant.project_league(request)
         keys, picks, rule, method, games_adjusted = self._parse_settings(request)
         rules = self._parse_rules(request)
         rosters = rosters_by_slot(picks, self.teams)
@@ -459,6 +491,8 @@ class DraftService:
         strategy); every other team plans for all of them. A team plans `rounds` rounds ahead (RIVAL_ROUNDS for the
         others); past that the pick is filled in by score, as in my own plan. My `rules` apply to my team only.
         """
+        if slot != self.slot and self._rivals is not None and self._rivals is not self:
+            return self._rivals._planner_choice(slot, picks, keys, rule, method, games_adjusted)  # without my adjustments
         team_keys = keys if slot == self.slot else self.keys
         team_rules = rules if slot == self.slot and rules else ()
         horizon = self.rounds if slot == self.slot else RIVAL_ROUNDS
@@ -502,7 +536,7 @@ class DraftService:
         if self.rehearsal:
             raise RequestError("Pick predictions are only available in the real draft")
         keys, picks, rule, method, games_adjusted = self._parse_settings(request)
-        planner_service = self._for_basis(request)  # the planner's odds use the ranking the page chose; the ADP comparison stays on ADP
+        planner_service = self._for_request({**request, "adjustments": None})  # the ranking the page chose, never my adjustments
         # The picks compared are other teams' picks, so their rank is by all categories, not by my ticked ones.
         scores = composite_score(self.players, self.keys, self.method_bounds[method], games_adjusted, method).to_numpy(dtype=float)
         adp = self.players["adp_est"].to_numpy(dtype=float)
