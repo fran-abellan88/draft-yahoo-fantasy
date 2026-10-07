@@ -17,10 +17,15 @@ function clampRuleValue(raw, limit) {
 }
 
 // A whole availability rule, from the inputs or from localStorage, as the server will accept it.
-function sanitizeRule(rule, limits) {
+// `defaults` is the server's {basis: {baseSd, sdPerAdp}}: a blank spread falls back to the one that fits the rule's basis.
+function sanitizeRule(rule, limits, defaults = null) {
   const source = rule && typeof rule === 'object' ? rule : {};
-  const clean = { type: source.type === 'window' ? 'window' : 'probability' };
-  for (const key of Object.keys(limits)) clean[key] = clampRuleValue(source[key], limits[key]);
+  const clean = { type: source.type === 'window' ? 'window' : 'probability', basis: source.basis === 'adp' ? 'adp' : 'xrank' };
+  const fitted = (defaults && defaults[clean.basis]) || {};
+  for (const key of Object.keys(limits)) {
+    const limit = fitted[key] === undefined ? limits[key] : { ...limits[key], default: fitted[key] };
+    clean[key] = clampRuleValue(source[key], limit);
+  }
   return clean;
 }
 
@@ -348,8 +353,9 @@ function settingChanges(current, proposed, labels) {
   if (current.method !== proposed.method) changes.push(proposed.method === 'capped' ? 'cap scores at the top 5%' : 'reward big numbers');
   if (current.gamesAdjusted !== proposed.gamesAdjusted) changes.push(proposed.gamesAdjusted ? 'count games missed' : 'ignore games missed');
   if (current.needs !== proposed.needs) changes.push(proposed.needs ? 'favour the categories you can still win' : 'weight every category equally');
-  const ruleNames = { baseSd: 'early-round spread', sdPerAdp: 'spread per ADP place', threshold: 'plan-on odds', slack: 'ADP window' };
-  if (current.rule.type !== proposed.rule.type) changes.push(proposed.rule.type === 'window' ? 'judge availability with the ADP window' : 'judge availability with odds from ADP');
+  const ruleNames = { baseSd: 'early-round spread', sdPerAdp: 'spread per place', threshold: 'plan-on odds', slack: 'window' };
+  if (current.rule.basis !== proposed.rule.basis) changes.push(proposed.rule.basis === 'adp' ? 'expect the other teams to draft by ADP' : "expect the other teams to draft by Yahoo's rank (XRank)");
+  if (current.rule.type !== proposed.rule.type) changes.push(proposed.rule.type === 'window' ? 'judge availability with a window' : 'judge availability with odds');
   for (const [key, label] of Object.entries(ruleNames)) {
     if (current.rule[key] !== proposed.rule[key]) changes.push(`set the ${label} to ${proposed.rule[key]}`);
   }

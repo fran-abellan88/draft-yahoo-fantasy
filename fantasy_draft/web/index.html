@@ -76,16 +76,19 @@
           <div class="choice-row"><label class="choice games"><input id="games-adjusted" type="checkbox"> Count games missed</label> <button type="button" class="help" aria-label="About counting games missed" aria-expanded="false" data-help="Scales each score by the share of a 70-game season the player is projected to play, so a player projected for 59 games counts as 84% and anyone projected for 70 or more counts in full.">?</button></div>
         </div>
         <div>
-          <h2>Who will still be there? <button type="button" class="help" aria-label="About the spreads" aria-expanded="false" data-help="Spreads are starting guesses. Real drafts will tell us better values.">?</button></h2>
-          <label class="choice"><input type="radio" name="rule" value="probability" checked> Odds from ADP</label>
-          <label class="choice"><input type="radio" name="rule" value="window"> ADP window</label>
+          <h2>Who will still be there? <button type="button" class="help" aria-label="About the spreads" aria-expanded="false" data-help="Who is left at your next pick is judged from where the other teams are expected to take each player. In two Yahoo mock drafts they followed Yahoo's own rank (XRank) closely: a player was usually taken within 2 to 10 picks of his XRank, and the default spread (2.1 plus 0.07 per place) matched how often. Choose ADP if your league drafts by it. Changing the ranking resets the spreads to the ones that fit it.">?</button></h2>
+          <label class="choice"><input type="radio" name="basis" value="xrank" checked> Others follow Yahoo's rank (XRank)</label>
+          <label class="choice"><input type="radio" name="basis" value="adp"> Others follow ADP</label>
+          <h3 class="subhead">Judged by</h3>
+          <label class="choice"><input type="radio" name="rule" value="probability" checked> Odds</label>
+          <label class="choice"><input type="radio" name="rule" value="window"> Window</label>
           <div id="rule-probability" class="fields">
-            <label>Early-round spread <input id="rule-base-sd" type="number" min="0.1" max="20" step="0.1" value="2"></label>
-            <label>Spread added per ADP place <input id="rule-sd-per-adp" type="number" min="0" max="1" step="0.05" value="0.2"></label>
+            <label>Early-round spread <input id="rule-base-sd" type="number" min="0.1" max="20" step="0.1" value="2.1"></label>
+            <label>Spread added per place in the ranking <input id="rule-sd-per-adp" type="number" min="0" max="1" step="0.01" value="0.07"></label>
             <label>Plan on a player when his odds are at least <input id="rule-threshold" type="number" min="0.05" max="0.95" step="0.05" value="0.5"></label>
           </div>
           <div id="rule-window" class="fields" hidden>
-            <label>Plan on a player whose ADP is no more than this many picks earlier <input id="rule-slack" type="number" min="0" max="60" step="1" value="3"></label>
+            <label>Plan on a player whose rank is no more than this many picks earlier <input id="rule-slack" type="number" min="0" max="60" step="1" value="3"></label>
           </div>
         </div>
       </div>

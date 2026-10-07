@@ -65,8 +65,14 @@ Your picks are kept in the browser, so reloading the page mid-draft loses nothin
 - **Count games missed** (on by default): the distance above a replacement-level player is scaled by projected games
   played out of 70 (a few missed games are the same as none, so 70 or more counts in full), so a player projected for 59 games counts as 84%. It changes the ranking and the plan, not the
   category bars. Every column of the table sorts, including XRank and projected GP.
-- **Who will still be there?** has two ways to judge availability. *Odds from ADP* treats a player's draft position as
-  a bell curve around his ADP that widens for later picks. *ADP window* is a plain cut-off. Both are starting guesses
+- **Who will still be there?** first asks which ranking the other teams follow: Yahoo's own rank (**XRank**, the default) or
+  **ADP**. In the two Yahoo mock drafts in `data/mock_drafts/` the other drafters took players almost in XRank order (a
+  correlation of 0.98 to 0.99 with the pick, against 0.92 to 0.93 for ADP, and a miss of about 6 picks against 16), while ADP
+  ran well behind the picks late in the draft. Centred on XRank, a spread of 2.1 plus 0.07 per place matched how often a
+  player was taken at each pick; centred on ADP the model expected players to go too early. Those were Yahoo mock lobbies,
+  not your league: pick ADP if your league drafts by it, and rerun `python tools/calibrate_availability.py` after each new
+  mock draft you add. Then there are two ways to judge availability. *Odds* treats a player's draft position as
+  a bell curve around his rank that widens for later picks. *Window* is a plain cut-off. Both are starting guesses
   that should be tuned on a draft with real managers. If the settings let almost everyone through, checking every plan
   would take too long, so the search stops at a fixed amount of work and the page says so: the plan is then the best one
   found, not proven the best. With the default settings the search always finishes.
@@ -165,11 +171,12 @@ last-pick line and the snake strip (hover a slot).
     and scores lower: it names the category that costs him most (Giannis against Kawhi: FT% alone costs about 20 points and
     his other categories win back most of it) and where he and the pick would rank with that category left out, with a
     **Punt FT%** button that unticks it through the settings flow (after the first pick it asks to apply first);
-  - on your turn, when the best plan and another plan are within **1.5** roster points, the one whose first player has the
-    better ADP (by at least 2 picks) is recommended, and the page says so ("Level with Kawhi Leonard ... Yahoo drafters
-    take Kevin Durant first"). While you are waiting nothing is re-ranked. The 1.5 is a judgement (about half the median gap
-    between a player's projected and last season's score), not validated; in 60 simulated picks of mine
-    it changed the recommendation in about one in eight (7 of 60), mostly in the middle rounds.
+  - on your turn, when the best plan and another plan are within **1.5** roster points, the one whose first player is the
+    least likely to last until your next pick is recommended (by at least 5 points of chance), and the page says so ("Level
+    with Lauri Markkanen ... Kevin Durant is the likelier to be gone by your pick 30"). The player more likely to still be
+    there can wait; taking him first would waste the pick. With no later pick nothing is re-ranked, and while you are
+    waiting nothing is either. The 1.5 is a judgement (about half the median gap between a player's projected and last
+    season's score), not validated.
 
   `python tools/snapshot.py` saves a draft-day snapshot (pool, XRank/ADP, scores under your settings, the plan) to
   `data/2026-27/snapshot_<date>.csv`, so after the season the score, XRank, ADP and the tie band can be compared with real

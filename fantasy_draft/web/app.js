@@ -32,7 +32,8 @@ const STAT_COLUMNS = [
   { key: 'to', label: 'TO', kind: 'number' },
 ];
 const STATUS_TITLES = { Q: 'Questionable', P: 'Probable', O: 'Out', GTD: 'Game-time decision', INJ: 'Injured', NA: 'Not active' };
-const DEFAULT_RULE = { type: 'probability', baseSd: 2, sdPerAdp: 0.2, threshold: 0.5, slack: 3 };
+// The spreads are for the default basis (the ranking the other teams follow: Yahoo's XRank); the server sends the ADP ones
+const DEFAULT_RULE = { type: 'probability', basis: 'xrank', baseSd: 2.1, sdPerAdp: 0.07, threshold: 0.5, slack: 3 };
 
 const state = {
   picks: [],
@@ -236,16 +237,21 @@ function restoreState(fromServer) {
   if (typeof saved.gamesAdjusted === 'boolean') state.gamesAdjusted = saved.gamesAdjusted;
   if (saved.method === 'capped' || saved.method === 'uncapped') state.method = saved.method;
   state.rules = sanitizeRules(saved.rules, new Set(playerById.keys()), pool.myPicks.length);
-  // A saved value outside the allowed range would be refused by the server on every request, so it is put back in range
-  if (saved.rule && typeof saved.rule === 'object') state.rule = sanitizeRule({ ...DEFAULT_RULE, ...saved.rule }, pool.ruleLimits);
+  // A saved value outside the allowed range would be refused by the server on every request, so it is put back in range.
+  // A rule saved before there was a basis was centred on ADP: its spreads do not fit the default basis, so they are dropped.
+  if (saved.rule && typeof saved.rule === 'object') {
+    const { baseSd, sdPerAdp, ...kept } = saved.rule;
+    const current = 'basis' in saved.rule ? saved.rule : kept;
+    state.rule = sanitizeRule({ ...DEFAULT_RULE, ...current }, pool.ruleLimits, pool.ruleDefaults);
+  }
 }
 
 // ---------- talking to the server ----------
 function ruleForRequest() {
   const rule = state.rule;
   return rule.type === 'window'
-    ? { type: 'window', slack: rule.slack }
-    : { type: 'probability', baseSd: rule.baseSd, sdPerAdp: rule.sdPerAdp, threshold: rule.threshold };
+    ? { type: 'window', basis: rule.basis, slack: rule.slack }
+    : { type: 'probability', basis: rule.basis, baseSd: rule.baseSd, sdPerAdp: rule.sdPerAdp, threshold: rule.threshold };
 }
 
 // A sticky message is about the saved draft, not about one request: a successful analysis must not clear it
@@ -859,10 +865,10 @@ function toggleSettings() {
 }
 
 // The market decided: the plans were level on roster score, so the first player Yahoo drafters take earlier is recommended
-function marketTieNote(recommendation) {
-  const tie = recommendation.marketTie;
+function riskTieNote(recommendation) {
+  const tie = recommendation.riskTie;
   if (!tie) return '';
-  return `Level with ${nameOf(tie.over)} (${oneDecimal(tie.gap)} apart, inside the ${tie.band} band). Yahoo drafters take ${nameOf(recommendation.id)} first (ADP ${oneDecimal(tie.adp)} against ${oneDecimal(tie.adpOver)}).`;
+  return `Level with ${nameOf(tie.over)} (${oneDecimal(tie.gap)} apart, inside the ${tie.band} band). ${nameOf(recommendation.id)} is the likelier to be gone by your pick ${tie.pick} (${pct(tie.lasts)} chance he lasts, against ${pct(tie.lastsOver)}), so he goes first.`;
 }
 
 // Yahoo ranks someone much higher than the pick: say why the model does not, and offer the what-if as a button
@@ -952,7 +958,7 @@ function renderHero() {
   const timing = mine ? '' : `After ${plural(clock.picksUntilMine, 'more pick')}.`;
   const lookFirst = doubt ? analysis.lookFirst : [];
   const reason = whyNotTheTopScore(recommendation, plan);
-  const tieNote = marketTieNote(recommendation);
+  const tieNote = riskTieNote(recommendation);
   const facts = [timing, odds].filter(Boolean).join(' ');
   put(hero,
     h(
@@ -1192,7 +1198,7 @@ function ring(share) {
 function meter(availability, isCurrent) {
   if (isCurrent) return h('div', { class: 'odds on-clock' }, 'On the clock');
   const low = availability < 0.5 ? ' low' : ''; // the same rule as the odds column of the table
-  return h('div', { class: `odds${low}`, title: 'Chance he is still available at this pick, from ADP' }, h('span', {}, pct(availability)), ring(availability));
+  return h('div', { class: `odds${low}`, title: 'Chance he is still available at this pick, judged from the ranking the other teams follow' }, h('span', {}, pct(availability)), ring(availability));
 }
 
 // Shown only when it says something: a cut-short search prices its alternatives approximately, and when every
@@ -2084,12 +2090,14 @@ function controlSettings() {
     rule: sanitizeRule(
       {
         type: document.querySelector('input[name="rule"]:checked').value,
+        basis: document.querySelector('input[name="basis"]:checked').value,
         baseSd: $('rule-base-sd').value,
         sdPerAdp: $('rule-sd-per-adp').value,
         threshold: $('rule-threshold').value,
         slack: $('rule-slack').value,
       },
       pool.ruleLimits,
+      pool.ruleDefaults,
     ),
   };
 }
@@ -2161,6 +2169,7 @@ function syncRuleInputs() {
     $(id).max = pool.ruleLimits[key].max;
   }
   document.querySelector(`input[name="rule"][value="${rule.type}"]`).checked = true;
+  document.querySelector(`input[name="basis"][value="${rule.basis}"]`).checked = true;
   $('rule-base-sd').value = rule.baseSd;
   $('rule-sd-per-adp').value = rule.sdPerAdp;
   $('rule-threshold').value = rule.threshold;
@@ -2215,6 +2224,15 @@ function wireControls() {
   $('needs').addEventListener('change', settingChanged);
   for (const input of document.querySelectorAll('input[name="rule"], #rule-base-sd, #rule-sd-per-adp, #rule-threshold, #rule-slack')) {
     input.addEventListener('change', settingChanged);
+  }
+  // Another ranking brings the spreads that fit it
+  for (const input of document.querySelectorAll('input[name="basis"]')) {
+    input.addEventListener('change', () => {
+      const fitted = pool.ruleDefaults[input.value];
+      $('rule-base-sd').value = fitted.baseSd;
+      $('rule-sd-per-adp').value = fitted.sdPerAdp;
+      settingChanged();
+    });
   }
   $('setting-apply').addEventListener('click', applySettings);
   $('setting-keep').addEventListener('click', keepSettings);
