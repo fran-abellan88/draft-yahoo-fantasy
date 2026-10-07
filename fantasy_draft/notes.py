@@ -6,7 +6,8 @@ it was said, so the page can show it on the player's card next to the numbers. I
 suggested number of games or score offset; the page offers it as a starting point for the user's own adjustment
 (see adjustments.py), who decides whether to apply it.
 
-Columns: player (name as in the pool), kind (injury, role, market or skill), note, source, games, offset.
+Columns: player (name as in the pool), kind (injury, role, market or skill), note, source, games, offset, and an optional
+exclude ("yes" when the commentators say not to draft him at all; the page offers to turn those into one "never pick" rule).
 """
 
 from pathlib import Path
@@ -37,5 +38,7 @@ def load_notes(players: pd.DataFrame, path: Path = NOTES_PATH) -> List[Dict[str,
         for key in ("games", "offset"):
             if str(row[key]).strip() != "":
                 note[key] = float(row[key])
+        if str(row.get("exclude", "")).strip().lower() == "yes":
+            note["exclude"] = True
         notes.append(note)
     return notes

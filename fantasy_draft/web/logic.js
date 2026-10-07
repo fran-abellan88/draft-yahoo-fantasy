@@ -439,5 +439,5 @@ function statLevel(score) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { sanitizeAdjustments, adjustmentText, sanitizeRules, ruleText, clampRuleValue, sanitizeRule, normalizePicks, pickSavedState, planBehind, markGone, sanitizeHistory, undoLast, unmarkGone, swapPicks, forgetPick, placeGone, choosePlayer, describePick, swapText, forgetText, placeText, chooseText, undoLabel, chooseSource, discardsUnconfirmed, settingChanges, scoreBarAnchors, scoreBarShare, scoreTrend, statLevel, PICK_KINDS };
+  module.exports = { joinNames, sanitizeAdjustments, adjustmentText, sanitizeRules, ruleText, clampRuleValue, sanitizeRule, normalizePicks, pickSavedState, planBehind, markGone, sanitizeHistory, undoLast, unmarkGone, swapPicks, forgetPick, placeGone, choosePlayer, describePick, swapText, forgetText, placeText, chooseText, undoLabel, chooseSource, discardsUnconfirmed, settingChanges, scoreBarAnchors, scoreBarShare, scoreTrend, statLevel, PICK_KINDS };
 }

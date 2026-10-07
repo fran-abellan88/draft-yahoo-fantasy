@@ -1111,6 +1111,27 @@ function ruleForm() {
   );
 }
 
+// Players the notes say not to draft at all (hurt on day one) and no rule keeps out yet: offered as one "never pick" rule
+function excludeSuggestions() {
+  const covered = new Set(state.rules.filter((rule) => rule.enabled && rule.kind === 'avoid' && rule.from === 1 && rule.to === null).flatMap((rule) => rule.players));
+  const ids = [...new Set((pool.notes || []).filter((note) => note.exclude).map((note) => note.player))];
+  return ids.filter((id) => poolRowById.has(id) && !covered.has(id));
+}
+
+function excludeLine() {
+  const ids = excludeSuggestions();
+  if (ids.length === 0 || ruleDraft) return null;
+  return h('p', { class: 'facts' }, `The notes say not to draft ${joinNames(ids.map(nameOf))}. `, h('button', {
+    type: 'button',
+    class: 'gone',
+    title: 'Adds one "never pick" rule for all of them, at every pick. Remove or edit the rule to change it.',
+    onclick: () => {
+      state.rules = [...state.rules, { id: `r${Date.now().toString(36)}`, kind: 'avoid', players: ids.slice(0, 20), from: 1, to: null, enabled: true }];
+      rulesChanged();
+    },
+  }, 'Exclude them'));
+}
+
 function renderRules() {
   const stateOf = new Map((analysis.rules || []).map((entry) => [entry.id, entry.state]));
   if (!$('rule-names')) {
@@ -1125,6 +1146,7 @@ function renderRules() {
     ),
     state.rules.length ? h('ul', { class: 'rule-list' }, state.rules.map((rule) => ruleChip(rule, stateOf))) : (ruleDraft ? null : h('p', { class: 'note' }, 'None. A rule can fix who you take at a pick, or keep a player out of your first picks.')),
     impact ? h('p', { class: 'facts' }, impact) : null,
+    excludeLine(),
     ruleDraft ? ruleForm() : null,
   );
 }

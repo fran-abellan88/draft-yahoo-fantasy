@@ -136,3 +136,18 @@ def test_a_note_for_a_player_not_in_the_pool_is_refused(tmp_path: Any) -> None:
     path.write_text("player,kind,note,source,games,offset\nNikola Jokic,gossip,out,somewhere,,\n")
     with pytest.raises(ValueError, match="kind must be"):
         load_notes(load_players(), path)
+
+
+def test_the_notes_mark_the_players_to_leave_alone_and_they_are_all_in_the_pool() -> None:
+    notes = load_notes(load_players())
+    flagged = sorted({note["player"] for note in notes if note.get("exclude")})
+    assert flagged == [
+        "brandon-ingram", "coby-white", "jimmy-butler-iii", "kon-knueppel", "kristaps-porzingis", "nic-claxton", "tobias-harris"
+    ]
+    assert all(note["kind"] == "injury" for note in notes if note.get("exclude"))
+
+
+def test_a_notes_file_without_the_exclude_column_still_loads(tmp_path: Any) -> None:
+    path = tmp_path / "notes.csv"
+    path.write_text("player,kind,note,source,games,offset\nNikola Jokic,injury,out,somewhere,,\n")
+    assert load_notes(load_players(), path) == [{"player": "nikola-jokic", "kind": "injury", "note": "out", "source": "somewhere"}]

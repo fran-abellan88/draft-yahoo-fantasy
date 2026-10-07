@@ -727,3 +727,10 @@ def test_adjustments_are_saved_sent_shown_and_started_from_the_notes_on_a_card()
     starts_form = "openAdjust(playerId, { games: entry.games" in JS
     assert "Adjust from this" in JS and starts_form, "a suggestion only starts the form; saving is a click"
     assert 'id="adjustments"' in (WEB / "index.html").read_text()
+
+
+def test_the_notes_can_become_one_never_pick_rule_for_the_players_they_say_to_skip() -> None:
+    rules = JS[JS.index("function excludeSuggestions"): JS.index("function renderRules")]
+    assert "note.exclude" in rules and "kind: 'avoid'" in rules and "from: 1, to: null" in rules
+    render_rules = JS[JS.index("function renderRules"):]
+    assert "excludeLine()" in render_rules.split("\nfunction ")[0]
