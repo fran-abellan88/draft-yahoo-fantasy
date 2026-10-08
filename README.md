@@ -66,11 +66,14 @@ Your picks are kept in the browser, so reloading the page mid-draft loses nothin
   played out of 70 (a few missed games are the same as none, so 70 or more counts in full), so a player projected for 59 games counts as 84%. It changes the ranking and the plan, not the
   category bars. Every column of the table sorts, including XRank and projected GP.
 - **Who will still be there?** first asks which ranking the other teams follow: Yahoo's own rank (**XRank**, the default) or
-  **ADP**. In the two Yahoo mock drafts in `data/mock_drafts/` the other drafters took players almost in XRank order (a
-  correlation of 0.98 to 0.99 with the pick, against 0.92 to 0.93 for ADP, and a miss of about 6 picks against 16), while ADP
-  ran well behind the picks late in the draft. Centred on XRank, a spread of 2.1 plus 0.07 per place matched how often a
-  player was taken at each pick; centred on ADP the model expected players to go too early. Those were Yahoo mock lobbies,
-  not your league: pick ADP if your league drafts by it, and rerun `python tools/calibrate_availability.py` after each new
+  **ADP**. In the three Yahoo mock drafts in `data/mock_drafts/` the other drafters took players almost in XRank order (a
+  correlation of 0.98 to 0.99 with the pick, against 0.92 to 0.93 for ADP, and a miss of 6 to 9 picks against 16), while ADP
+  ran well behind the picks late in the draft. About a third of the manager-drafts behaved exactly like Yahoo's autopick
+  (the best-ranked player left, every time), which scatters far less than people do. The managers who picked for themselves
+  still followed XRank, not ADP: when they skipped the top-ranked player, the pick was farther off in ADP order 63% of the
+  time. The default spread, **2.7 plus 0.08 per place**, is fitted on those managers only, since a league of friends will
+  all pick for themselves. Those were Yahoo mock lobbies, not your league: pick ADP if your league drafts by it, and rerun
+  `python tools/calibrate_availability.py` after each new
   mock draft you add. Then there are two ways to judge availability. *Odds* treats a player's draft position as
   a bell curve around his rank that widens for later picks. *Window* is a plain cut-off. Both are starting guesses
   that should be tuned on a draft with real managers. If the settings let almost everyone through, checking every plan

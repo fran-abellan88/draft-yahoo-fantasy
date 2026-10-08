@@ -293,8 +293,8 @@ def test_the_answer_reports_the_main_and_the_busiest_option_search(service: Draf
 
 def test_the_pool_tells_the_page_the_allowed_availability_settings(service: DraftService) -> None:
     limits = service.pool_payload()["ruleLimits"]
-    assert limits["baseSd"] == {"default": 2.1, "min": 0.1, "max": 20.0}
-    assert service.pool_payload()["ruleDefaults"] == {"xrank": {"baseSd": 2.1, "sdPerAdp": 0.07}, "adp": {"baseSd": 2.0, "sdPerAdp": 0.2}}
+    assert limits["baseSd"] == {"default": 2.7, "min": 0.1, "max": 20.0}
+    assert service.pool_payload()["ruleDefaults"] == {"xrank": {"baseSd": 2.7, "sdPerAdp": 0.08}, "adp": {"baseSd": 2.0, "sdPerAdp": 0.2}}
     assert set(limits) == {"baseSd", "sdPerAdp", "threshold", "slack"}
     for key, limit in limits.items():  # the values the page may send are exactly the ones the server accepts
         assert parse_rule({"type": "window" if key == "slack" else "probability", key: limit["min"]})
@@ -871,7 +871,7 @@ def test_the_ranking_the_others_follow_changes_the_odds_but_not_the_pool_the_pag
 def test_an_unknown_basis_is_refused(service: DraftService) -> None:
     with pytest.raises(RequestError, match="basis"):
         _ask(service, [], rule={"basis": "vibes"})
-    assert parse_rule({"basis": "adp"}).sd_per_adp == 0.2 and parse_rule({"basis": "xrank"}).sd_per_adp == 0.07
+    assert parse_rule({"basis": "adp"}).sd_per_adp == 0.2 and parse_rule({"basis": "xrank"}).sd_per_adp == 0.08
     assert parse_rule({"basis": "adp", "sdPerAdp": 0.3}).sd_per_adp == 0.3, "a value the user typed is kept"
 
 

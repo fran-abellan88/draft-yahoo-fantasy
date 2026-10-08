@@ -61,23 +61,23 @@ def test_undefined_and_non_finite_values_become_the_default() -> None:
 
 def test_a_rule_is_completed_clamped_and_stripped_of_unknown_keys() -> None:
     rule = _run(f"L.sanitizeRule({{type: 'window', baseSd: 99, slack: '12', extra: 1}}, {json.dumps(LIMITS)})")
-    assert rule == {"type": "window", "basis": "xrank", "baseSd": 20.0, "sdPerAdp": 0.07, "threshold": 0.5, "slack": 12.0}
+    assert rule == {"type": "window", "basis": "xrank", "baseSd": 20.0, "sdPerAdp": 0.08, "threshold": 0.5, "slack": 12.0}
 
 
 def test_a_blank_spread_falls_back_to_the_one_that_fits_the_rules_ranking() -> None:
-    defaults = json.dumps({"xrank": {"baseSd": 2.1, "sdPerAdp": 0.07}, "adp": {"baseSd": 2.0, "sdPerAdp": 0.2}})
+    defaults = json.dumps({"xrank": {"baseSd": 2.7, "sdPerAdp": 0.08}, "adp": {"baseSd": 2.0, "sdPerAdp": 0.2}})
     adp = _run(f"L.sanitizeRule({{basis: 'adp'}}, {json.dumps(LIMITS)}, {defaults})")
     rank = _run(f"L.sanitizeRule({{basis: 'xrank', baseSd: ''}}, {json.dumps(LIMITS)}, {defaults})")
     odd = _run(f"L.sanitizeRule({{basis: 'nonsense'}}, {json.dumps(LIMITS)}, {defaults})")
     assert (adp["basis"], adp["baseSd"], adp["sdPerAdp"]) == ("adp", 2.0, 0.2)
-    assert (rank["basis"], rank["baseSd"], rank["sdPerAdp"]) == ("xrank", 2.1, 0.07)
+    assert (rank["basis"], rank["baseSd"], rank["sdPerAdp"]) == ("xrank", 2.7, 0.08)
     assert odd["basis"] == "xrank"
 
 
 @pytest.mark.parametrize("garbage", ["null", "undefined", "'text'", "42", "[]", "{type: 'bogus'}"])
 def test_a_rule_that_is_not_a_rule_becomes_the_default_probability_rule(garbage: str) -> None:
     rule = _run(f"L.sanitizeRule({garbage}, {json.dumps(LIMITS)})")
-    assert rule == {"type": "probability", "basis": "xrank", "baseSd": 2.1, "sdPerAdp": 0.07, "threshold": 0.5, "slack": 3.0}
+    assert rule == {"type": "probability", "basis": "xrank", "baseSd": 2.7, "sdPerAdp": 0.08, "threshold": 0.5, "slack": 3.0}
 
 
 def test_whatever_the_page_sanitises_the_server_accepts() -> None:

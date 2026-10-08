@@ -33,7 +33,7 @@ const STAT_COLUMNS = [
 ];
 const STATUS_TITLES = { Q: 'Questionable', P: 'Probable', O: 'Out', GTD: 'Game-time decision', INJ: 'Injured', NA: 'Not active' };
 // The spreads are for the default basis (the ranking the other teams follow: Yahoo's XRank); the server sends the ADP ones
-const DEFAULT_RULE = { type: 'probability', basis: 'xrank', baseSd: 2.1, sdPerAdp: 0.07, threshold: 0.5, slack: 3 };
+const DEFAULT_RULE = { type: 'probability', basis: 'xrank', baseSd: 2.7, sdPerAdp: 0.08, threshold: 0.5, slack: 3 };
 
 const state = {
   picks: [],
@@ -243,7 +243,9 @@ function restoreState(fromServer) {
   // A rule saved before there was a basis was centred on ADP: its spreads do not fit the default basis, so they are dropped.
   if (saved.rule && typeof saved.rule === 'object') {
     const { baseSd, sdPerAdp, ...kept } = saved.rule;
-    const current = 'basis' in saved.rule ? saved.rule : kept;
+    // The spreads that were the XRank default before they were fitted on human managers are put back to the default
+    const oldDefault = saved.rule.basis === 'xrank' && baseSd === 2.1 && sdPerAdp === 0.07;
+    const current = 'basis' in saved.rule && !oldDefault ? saved.rule : kept;
     state.rule = sanitizeRule({ ...DEFAULT_RULE, ...current }, pool.ruleLimits, pool.ruleDefaults);
   }
 }

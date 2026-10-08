@@ -69,21 +69,22 @@ class RequestError(ValueError):
 # The only place the allowed availability settings are written down: (default, lowest, highest). The page gets them
 # from /api/pool, so what it lets the user type and what the server accepts cannot drift apart.
 RULE_LIMITS: Dict[str, Tuple[float, float, float]] = {
-    "baseSd": (2.1, 0.1, 20.0),
-    "sdPerAdp": (0.07, 0.0, 1.0),
+    "baseSd": (2.7, 0.1, 20.0),
+    "sdPerAdp": (0.08, 0.0, 1.0),
     "threshold": (0.5, 0.05, 0.95),
     "slack": (3.0, 0.0, 60.0),
 }
 
 
 # Who the other teams follow when they pick, and the spread that fits each (the "place" in the spread is a place in that
-# ranking). In two Yahoo mock drafts the picks followed Yahoo's own rank (XRank) far more closely than ADP, and a spread of
-# 2.1 + 0.07 per place matched the odds of being taken at each pick; centred on ADP the same spread would not. ADP stays
-# available for leagues that draft by it.
+# ranking). In three Yahoo mock drafts the picks followed Yahoo's own rank (XRank) far more closely than ADP, humans as
+# well as autopickers. The XRank spread is fitted on the human managers only (about a third of the manager-drafts behaved
+# like autopick, which scatters far less): 2.7 + 0.08 per place. In a league of friends who all pick for themselves that is
+# the right one. ADP stays available for leagues that draft by it.
 BASES = ("xrank", "adp")
 DEFAULT_BASIS = "xrank"
 BASIS_SPREADS: Dict[str, Dict[str, float]] = {
-    "xrank": {"baseSd": 2.1, "sdPerAdp": 0.07},
+    "xrank": {"baseSd": 2.7, "sdPerAdp": 0.08},
     "adp": {"baseSd": 2.0, "sdPerAdp": 0.2},
 }
 
