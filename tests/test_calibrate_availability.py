@@ -3,6 +3,7 @@
 import sys
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from fantasy_draft.data import load_players
@@ -41,3 +42,13 @@ def test_several_drafts_are_judged_one_by_one_and_the_ranking_can_be_chosen(caps
         tool.main()
         out = capsys.readouterr().out
         assert out.count("picks matched") == 2 and f"Pick minus {center}" in out
+
+
+def test_a_manager_who_always_takes_the_best_ranked_player_left_counts_as_autopick() -> None:
+    players = load_players()
+    order = players.sort_values("xrank")["player_id"].tolist()
+    board = pd.DataFrame(
+        {"pick": [1, 2, 3, 4], "manager": ["auto", "human", "auto", "human"], "player_id": [order[0], order[5], order[1], order[7]]}
+    )
+    share = tool.autopick_share(board, players)
+    assert share["auto"] == 1.0 and share["human"] == 0.0

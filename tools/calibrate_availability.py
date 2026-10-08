@@ -64,6 +64,24 @@ def load_board(path: Path, players: pd.DataFrame) -> Tuple[pd.DataFrame, List[st
     return pd.DataFrame(rows), missing
 
 
+AUTO_SHARE = 0.6  # a manager who took the best-ranked player left at least this often is counted as autopick
+
+
+def autopick_share(board: pd.DataFrame, players: pd.DataFrame) -> pd.Series:
+    """For each manager, the share of his picks that were exactly the best-ranked (by XRank) player still available.
+
+    Yahoo's autopick takes that player every time, so a manager near 1 abandoned the room or switched on autopick.
+    """
+    order = players.sort_values("xrank")["player_id"].tolist()
+    gone: set = set()
+    exact = []
+    for _, row in board.sort_values("pick").iterrows():
+        best = next(player for player in order if player not in gone)
+        exact.append(best == row["player_id"])
+        gone.add(row["player_id"])
+    return board.assign(exact=exact).groupby("manager")["exact"].mean()
+
+
 def hazards(board: pd.DataFrame, players: pd.DataFrame, model: NormalAdpModel, last_pick: int) -> pd.DataFrame:
     """For every pick and every player still there before it: the model's chance he is taken now, and whether he was."""
     adp_all = dict(zip(players["player_id"], players["adp_est"]))
@@ -134,6 +152,17 @@ def main() -> None:
     print(f"\nPick minus {args.center} (positive: went later than that): mean {residual.mean():+.2f}, spread (sd) {residual.std():.2f}")
     board = board.assign(residual=residual, band=pd.cut(board["adp"], [0, 14, 28, 56, 84, 126, 200]))
     print(board.groupby("band", observed=True)["residual"].agg(["count", "mean", "std"]).round(2).to_string())
+
+    humans = []
+    for each in boards:
+        share = autopick_share(each, players)
+        humans.append(each[each["manager"].map(share) < AUTO_SHARE])
+    total = sum(len(each["manager"].unique()) for each in boards)
+    autos = total - sum(len(each["manager"].unique()) for each in humans)
+    print(f"\n{autos} of {total} manager-drafts behaved like autopick; the table below is the other managers' picks only")
+    human = pd.concat(humans)
+    human = human.assign(residual=human["pick"] - human["adp"], band=pd.cut(human["adp"], [0, 14, 28, 56, 84, 126, 200]))
+    print(human.groupby("band", observed=True)["residual"].agg(["count", "mean", "std"]).round(2).to_string())
 
     spreads = BASIS_SPREADS[args.center]
     model = NormalAdpModel(base_sd=spreads["baseSd"], sd_per_adp=spreads["sdPerAdp"])
