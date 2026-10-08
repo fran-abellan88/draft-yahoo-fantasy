@@ -31,3 +31,13 @@ def test_the_report_runs(capsys: pytest.CaptureFixture) -> None:
     tool.main()
     out = capsys.readouterr().out
     assert "Best-fitting spread" in out and "182 picks matched" in out
+
+
+def test_several_drafts_are_judged_one_by_one_and_the_ranking_can_be_chosen(capsys: pytest.CaptureFixture) -> None:
+    boards = sorted(BOARD.parent.glob("*.txt"))
+    assert len(boards) >= 2
+    for center in ("xrank", "adp"):
+        sys.argv = ["calibrate_availability.py", "--center", center, *map(str, boards[:2])]
+        tool.main()
+        out = capsys.readouterr().out
+        assert out.count("picks matched") == 2 and f"Pick minus {center}" in out

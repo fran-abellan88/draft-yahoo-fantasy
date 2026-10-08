@@ -3,6 +3,7 @@ Check the "will he still be there" model against real drafts, from the text of a
 
     python tools/calibrate_availability.py                       # every file in data/mock_drafts/
     python tools/calibrate_availability.py data/mock_drafts/x.txt
+    python tools/calibrate_availability.py --center adp          # judge ADP instead of Yahoo's rank (the default)
 
 Each file is the board as Yahoo's draft results page lists it: "Round N" headings, then lines like
 "(3) Robb - Dončić, Luka (LAL - PG,SG)". Players are matched to the pool by name. Reports how far each pick fell from the
@@ -24,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from fantasy_draft.availability import NormalAdpModel, _survival  # noqa: E402
 from fantasy_draft.data import load_players  # noqa: E402
 from fantasy_draft.names import normalize_name  # noqa: E402
+from fantasy_draft.service import BASIS_SPREADS  # noqa: E402
 
 LINE = re.compile(r"^\((\d+)\)\s+(.+?)\s+-\s+(.+?)\s+\(([A-Z]{2,3}) - ([A-Z,]+)\)\s*$")
 TEAMS = 14
@@ -78,24 +80,29 @@ def hazards(board: pd.DataFrame, players: pd.DataFrame, model: NormalAdpModel, l
     return pd.DataFrame(out)
 
 
-def fit_spread(board: pd.DataFrame, players: pd.DataFrame, last_pick: int) -> Tuple[float, float]:
-    """Spread parameters (base, per ADP place) that make the drafts most likely, treating each player's position as Normal(ADP, sd).
+def fit_spread(boards: List[pd.DataFrame], players: pd.DataFrame, last_pick: int) -> Tuple[float, float]:
+    """Spread (base, per place in the ranking) that makes all the drafts most likely, each position Normal(centre, sd).
 
-    Players in the pool with an ADP inside the drafted range who were not taken are censored (they went after the last pick).
+    Each draft counts on its own. Players in the pool whose centre is inside the drafted range but who were not taken are
+    censored in that draft (they went after the last pick).
     """
-    taken = dict(zip(board["player_id"], board["pick"]))
-    adp = players["adp_est"].to_numpy(dtype=float)
-    pos = np.array([taken.get(pid, np.nan) for pid in players["player_id"]], dtype=float)
-    drafted = ~np.isnan(pos)
-    censored = ~drafted & (adp < last_pick)
+    centre = players["adp_est"].to_numpy(dtype=float)
+    drafts = []
+    for board in boards:
+        taken = dict(zip(board["player_id"], board["pick"]))
+        pos = np.array([taken.get(pid, np.nan) for pid in players["player_id"]], dtype=float)
+        drafted = ~np.isnan(pos)
+        drafts.append((pos[drafted], centre[drafted], centre[~drafted & (centre < last_pick)]))
 
     def loss(params: np.ndarray) -> float:
         base, per = params
-        sd = np.maximum(base + per * adp, 0.3)
-        z = (pos[drafted] - adp[drafted]) / sd[drafted]
-        nll = np.sum(np.log(sd[drafted]) + 0.5 * z**2)
-        tail = np.maximum(_survival(last_pick + 0.5, adp[censored], sd[censored]), 1e-9)
-        return float(nll - np.sum(np.log(tail)))
+        total = 0.0
+        for position, mid, left_over in drafts:
+            sd = np.maximum(base + per * mid, 0.3)
+            total += float(np.sum(np.log(sd) + 0.5 * ((position - mid) / sd) ** 2))
+            tail = np.maximum(_survival(last_pick + 0.5, left_over, np.maximum(base + per * left_over, 0.3)), 1e-9)
+            total -= float(np.sum(np.log(tail)))
+        return total
 
     # A grid is enough for two parameters and keeps the tool to numpy and pandas
     best = min(((loss(np.array([base, per])), base, per) for base in np.arange(0.5, 8.01, 0.25) for per in np.arange(0.0, 0.61, 0.02)))
@@ -105,11 +112,16 @@ def fit_spread(board: pd.DataFrame, players: pd.DataFrame, last_pick: int) -> Tu
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("files", nargs="*", type=Path, help="draft board text files (default: everything in data/mock_drafts/)")
+    parser.add_argument(
+        "--center", choices=("xrank", "adp"), default="xrank", help="the ranking the picks are judged against (default: %(default)s)"
+    )
     args = parser.parse_args()
     files = args.files or sorted(MOCK_DIR.glob("*.txt"))
     if not files:
         sys.exit("No draft files found.")
     players = load_players()
+    if args.center == "xrank":  # the same trick the dashboard uses: the rank stands in for ADP
+        players = players.assign(adp_est=players["xrank"].astype(float))
     boards = []
     for path in files:
         board, missing = load_board(path, players)
@@ -119,19 +131,20 @@ def main() -> None:
     last = int(board["pick"].max())
 
     residual = board["pick"] - board["adp"]
-    print(f"\nPick minus ADP (positive: went later than ADP): mean {residual.mean():+.2f}, spread (sd) {residual.std():.2f}")
+    print(f"\nPick minus {args.center} (positive: went later than that): mean {residual.mean():+.2f}, spread (sd) {residual.std():.2f}")
     board = board.assign(residual=residual, band=pd.cut(board["adp"], [0, 14, 28, 56, 84, 126, 200]))
     print(board.groupby("band", observed=True)["residual"].agg(["count", "mean", "std"]).round(2).to_string())
 
-    model = NormalAdpModel()
-    frame = hazards(board, players, model, last)
+    spreads = BASIS_SPREADS[args.center]
+    model = NormalAdpModel(base_sd=spreads["baseSd"], sd_per_adp=spreads["sdPerAdp"])
+    frame = pd.concat([hazards(each, players, model, last) for each in boards])
     frame["bin"] = pd.cut(frame["predicted"], [0, 0.02, 0.05, 0.1, 0.2, 0.4, 0.7, 1.0], include_lowest=True)
-    print(f"\nChance of being taken at this pick, given still there: model ({model.base_sd} + {model.sd_per_adp} per ADP) vs actual")
+    print(f"\nChance of being taken at this pick, given still there: model ({model.base_sd} + {model.sd_per_adp} per place) vs actual")
     grouped = frame.groupby("bin", observed=True)
     table = grouped.agg(cases=("taken", "size"), predicted=("predicted", "mean"), actual=("taken", "mean"))
     print(table.round(3).to_string())
-    base, per = fit_spread(board, players, last)
-    print(f"\nBest-fitting spread: {base:.2f} + {per:.2f} per ADP place (current {model.base_sd} + {model.sd_per_adp})")
+    base, per = fit_spread(boards, players, last)
+    print(f"\nBest-fitting spread: {base:.2f} + {per:.2f} per place (current {model.base_sd} + {model.sd_per_adp})")
     fitted = [base + per * adp for adp in (10, 40, 100)]
     current = [model.base_sd + model.sd_per_adp * adp for adp in (10, 40, 100)]
     show = lambda values: " / ".join(f"{x:.1f}" for x in values)  # noqa: E731
