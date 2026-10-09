@@ -742,3 +742,8 @@ def test_a_player_already_picked_opens_his_card_from_the_roster_and_the_log() ->
     card = JS[JS.index("function renderPlayerCard"): JS.index("function categoryBars")]
     assert "const taken = !poolRowById.has(cardId)" in card and "taken ? null : h('button'" in card, "no Draft button for a picked player"
     assert "Picked at #" in card
+
+
+def test_the_settings_summary_says_when_the_categories_are_being_favoured() -> None:
+    summary = JS[JS.index("function renderSettingsSummary"): JS.index("function renderTopBar")]
+    assert "state.needs ? ', favouring the categories I can win' : ''" in summary

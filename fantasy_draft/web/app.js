@@ -766,7 +766,8 @@ function renderLastPick() {
 function renderSettingsSummary() {
   const method = state.method === 'uncapped' ? 'uncapped' : 'capped';
   const games = state.gamesAdjusted ? 'games counted' : 'games not counted';
-  $('settings-summary').textContent = `${state.categories.length} ${state.categories.length === 1 ? 'category' : 'categories'}, ${method}, ${games}`;
+  const needs = state.needs ? ', favouring the categories I can win' : '';
+  $('settings-summary').textContent = `${state.categories.length} ${state.categories.length === 1 ? 'category' : 'categories'}, ${method}, ${games}${needs}`;
 }
 
 function renderTopBar() {
