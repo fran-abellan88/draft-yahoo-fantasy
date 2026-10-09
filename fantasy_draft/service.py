@@ -295,8 +295,9 @@ class DraftService:
         named = set().union(*(rule_.players for rule_ in rules if rule_.kind == "avoid" and next_mine in rule_.picks))
         for row in pool:
             row["blocked"] = row["id"] in blocked and row["id"] in named
+        taken_pool = self._pool_rows(scores, last_season, category, flags, drafted, None, taken=True)
         mine = {adjustment.player_id: adjustment for adjustment in self._adjustments}
-        for row in pool:
+        for row in pool + taken_pool:
             adjustment = mine.get(row["id"])
             row["adjusted"] = None if adjustment is None else {"games": adjustment.games, "offset": adjustment.offset}
         alt_method = ALTERNATIVE_METHOD[method]
@@ -324,6 +325,7 @@ class DraftService:
         return {
             "clock": clock,
             "pool": pool,
+            "takenPool": taken_pool,
             "altMethod": alt_method,
             "plans": [self._plan_payload(plan, rule, state, fills[id(plan)]) for plan in plans[:PLANS_SHOWN]],
             "alternatives": self._alternatives(options, best, rule, state),
@@ -720,17 +722,22 @@ class DraftService:
         flags: pd.DataFrame,
         drafted: set,
         availability: Optional[Any],
+        taken: bool = False,
     ) -> List[Dict[str, Any]]:
+        """One row per player left (best score first), or with `taken` one per player already drafted (no rank, no odds).
+
+        The taken rows exist so the page can show a player's card again after he is picked.
+        """
         order = scores[~self.players["player_id"].isin(drafted)].rank(ascending=False, method="first")
         rows: List[Dict[str, Any]] = []
         for index, row in self.players.iterrows():
-            if row["player_id"] in drafted:
+            if (row["player_id"] in drafted) != taken:
                 continue
             flag = flags.loc[index]
             rows.append(
                 {
                     "id": row["player_id"],
-                    "rank": int(order[index]),
+                    "rank": None if taken else int(order[index]),
                     "score": _num(scores[index], 1),
                     "categoryScores": {key: _num(value, 0) for key, value in category.loc[index].items()},
                     "availability": None if availability is None else _num(availability[index], 3),
@@ -744,7 +751,7 @@ class DraftService:
                     },
                 }
             )
-        rows.sort(key=lambda item: item["rank"])
+        rows.sort(key=(lambda item: -item["score"]) if taken else (lambda item: item["rank"]))
         return rows
 
     def _fill_plan(

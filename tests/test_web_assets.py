@@ -654,7 +654,7 @@ def test_a_click_on_a_players_name_opens_his_card_and_only_the_draft_button_draf
 
 def test_the_player_card_closes_when_it_should_and_not_before() -> None:
     assert "function renderPlayerCard(" in JS and "categoryBars(row)" in JS[JS.index("function renderPlayerCard("):]
-    assert "if (cardId !== null && !poolRowById.has(cardId)) cardId = null;" in JS  # drafted: gone from the pool
+    assert "if (cardId !== null && !cardRow(cardId)) cardId = null;" in JS  # only a player with no row at all closes the card
     assert "if (analysis.clock.isMine && !lastIsMine) cardId = null;" in JS  # my turn: the recommendation comes back
     assert "closeCard();" in JS[JS.index("if (event.key === 'Escape')"):][:80]
 
@@ -734,3 +734,11 @@ def test_the_notes_can_become_one_never_pick_rule_for_the_players_they_say_to_sk
     assert "note.exclude" in rules and "kind: 'avoid'" in rules and "from: 1, to: null" in rules
     render_rules = JS[JS.index("function renderRules"):]
     assert "excludeLine()" in render_rules.split("\nfunction ")[0]
+
+
+def test_a_player_already_picked_opens_his_card_from_the_roster_and_the_log() -> None:
+    assert "takenRowById" in JS and "const cardRow = (id) =>" in JS
+    assert "function nameLink" in JS and JS.count("nameLink(") >= 5, "the roster and the log use the link"
+    card = JS[JS.index("function renderPlayerCard"): JS.index("function categoryBars")]
+    assert "const taken = !poolRowById.has(cardId)" in card and "taken ? null : h('button'" in card, "no Draft button for a picked player"
+    assert "Picked at #" in card

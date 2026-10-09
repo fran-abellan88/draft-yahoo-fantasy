@@ -944,3 +944,15 @@ def test_a_player_projected_for_70_games_or_more_counts_a_full_season(service: D
     gp = service.players["gp"]
     assert (factor[gp >= 70] == 1.0).all() and (factor[gp < 70] == gp[gp < 70] / 70).all()
     assert (gp >= 70).sum() > 50 and (gp < 70).sum() > 50
+
+
+def test_players_already_picked_come_back_as_rows_so_their_card_can_be_shown_again(service: DraftService) -> None:
+    ids = _ids_by_xrank(service)[:5]
+    answer = _ask(service, ids)
+    taken = {row["id"]: row for row in answer["takenPool"]}
+    assert set(taken) == set(ids) and not {row["id"] for row in answer["pool"]} & set(ids)
+    jokic = taken[ids[0]]
+    assert jokic["rank"] is None and jokic["availability"] is None
+    assert jokic["score"] is not None and set(jokic["categoryScores"]) == set(ALL) and "flags" in jokic
+    assert [row["score"] for row in answer["takenPool"]] == sorted((row["score"] for row in answer["takenPool"]), reverse=True)
+    assert _ask(service, [])["takenPool"] == []

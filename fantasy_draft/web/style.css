@@ -512,6 +512,7 @@ td.dim { opacity: 0.45; }
 .draft-btn.rec { background: var(--mine); border-color: var(--mine); color: var(--on-mine); }
 .name-link { display: block; max-width: 100%; padding: 0; border: 0; border-radius: 4px; background: none; font: inherit; font-weight: inherit; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .name-link:hover:not(:disabled) { border: 0; text-decoration: underline; }
+.name-link.inline { display: inline; max-width: none; font-weight: 700; }
 #pool tr.card-row td { background: var(--selected); }
 #pool tr.card-row td:nth-child(1), #pool tr.card-row td:nth-child(2) { background: var(--selected); }
 #pool tr.recommended.card-row td, #pool tr.recommended.card-row td:nth-child(1), #pool tr.recommended.card-row td:nth-child(2) { background: linear-gradient(var(--mine-soft), var(--mine-soft)), var(--selected); }

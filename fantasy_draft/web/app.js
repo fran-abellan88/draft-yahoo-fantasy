@@ -55,6 +55,8 @@ const playerById = new Map();
 let pool = null;
 let analysis = null;
 let poolRowById = new Map();
+let takenRowById = new Map(); // players already drafted: enough to show their card again
+const cardRow = (id) => poolRowById.get(id) || takenRowById.get(id);
 let latestRequest = 0;
 let resetArmed = false;
 let debounceTimer = null;
@@ -359,6 +361,7 @@ async function refresh() {
   refreshFailed = false;
   analysis = data;
   poolRowById = new Map(data.pool.map((row) => [row.id, row]));
+  takenRowById = new Map((data.takenPool || []).map((row) => [row.id, row]));
   render();
   fetchPlannerLeague(requestId, body);
   fetchPredictions(requestId, body);
@@ -932,7 +935,7 @@ function renderHero() {
     put(hero, h('h2', {}, 'Draft complete'), h('p', { class: 'name' }, 'Good luck this season.'));
     return;
   }
-  if (cardId !== null && !poolRowById.has(cardId)) cardId = null; // he was drafted
+  if (cardId !== null && !cardRow(cardId)) cardId = null;
   if (cardId !== null) {
     renderPlayerCard(hero);
     return;
@@ -1283,12 +1286,15 @@ function notesBlock(playerId) {
 }
 
 function renderPlayerCard(hero) {
-  const row = poolRowById.get(cardId);
+  const row = cardRow(cardId);
+  const taken = !poolRowById.has(cardId);
+  const pickedAt = taken ? analysis.log.find((entry) => entry.id === cardId) : null;
   const player = playerById.get(cardId);
   const planned = plannedPicks.get(cardId);
-  const odds = oddsAtColumn(row);
+  const odds = taken ? null : oddsAtColumn(row);
   const pickLabel = columnPick();
   const facts = [
+    pickedAt ? `Picked at #${pickedAt.pick} by ${pickedAt.mine ? 'you' : pickedAt.team}.` : taken ? 'Already picked.' : '',
     odds !== null && odds !== undefined ? `${pct(odds)} chance he is still there${pickLabel ? ` at pick ${pickLabel}` : ''}.` : '',
     planned ? `In your plan at pick ${planned}.` : '',
     analysis.recommendation && analysis.recommendation.id === cardId ? 'The recommended pick.' : '',
@@ -1309,7 +1315,7 @@ function renderPlayerCard(hero) {
     h(
       'div',
       { class: 'cta' },
-      h('button', { type: 'button', class: 'primary', onclick: () => rowPicked(cardId) }, `${choosing ? 'Choose' : 'Draft'} ${player.name}`),
+      taken ? null : h('button', { type: 'button', class: 'primary', onclick: () => rowPicked(cardId) }, `${choosing ? 'Choose' : 'Draft'} ${player.name}`),
       h('button', { type: 'button', onclick: () => openAdjust(cardId) }, row.adjusted ? 'Edit adjustment' : 'Adjust player'),
       h('button', { type: 'button', onclick: closeCard }, 'Back to the recommendation'),
     ),
@@ -1658,6 +1664,12 @@ function showCard(id) {
   cardId = cardId === id ? null : id;
   renderHero();
   renderPool();
+  if (cardId !== null) $('hero').scrollIntoView({ block: 'nearest' }); // from the roster or the log the card may be off screen
+}
+
+// A player's name as a button that opens his card, for the roster and the log (players already picked have no table row)
+function nameLink(id) {
+  return h('button', { type: 'button', class: 'name-link inline', 'data-grp': groupOf(id), title: `Show the player card of ${nameOf(id)}`, onclick: () => showCard(id) }, nameOf(id));
 }
 
 function closeCard() {
@@ -1823,7 +1835,7 @@ function buildRosterTools() {
 // One roster: the ten starting slots, the three bench places, and what is not known. `entries` and `lineup` are as the server sends them
 // for my team and for the others. A projected player has a dashed tile and says so in its note.
 function rosterRows(entries, lineup, unseen, mine) {
-  const who = (entry) => (entry.kind === 'outside' ? 'Not in the list' : entry.kind === 'gone' ? [nameNode(entry.id), ' (assumed)'] : nameNode(entry.id));
+  const who = (entry) => (entry.kind === 'outside' ? 'Not in the list' : entry.kind === 'gone' ? [nameLink(entry.id), ' (assumed)'] : nameLink(entry.id));
   const detail = (entry) => (entry.kind === 'outside' ? 'Any position, replacement-level value' : detailOf(entry.id));
   const note = (entry) => [`${entry.projected ? 'Projected · ' : ''}#${entry.pick} · `, detail(entry)].flat();
   const slotRows = lineup.slots.map((slot) => {
@@ -2071,8 +2083,8 @@ function unmark(index) {
 
 // The same label for a log row, with the player's name coloured by his group
 function logLabelNode(entry) {
-  if (entry.kind === 'gone') return [nameNode(entry.id), ' (gone, pick assumed)'];
-  return entry.kind === 'player' ? nameNode(entry.id) : logLabel(entry);
+  if (entry.kind === 'gone') return [nameLink(entry.id), ' (gone, pick assumed)'];
+  return entry.kind === 'player' ? nameLink(entry.id) : logLabel(entry);
 }
 
 function logLabel(entry) {
