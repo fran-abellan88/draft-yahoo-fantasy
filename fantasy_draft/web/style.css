@@ -16,6 +16,7 @@
   --tag-planner: #09636a; /* log tags: fills with ink text, the word is the code */
   --tag-adp: #a82f69;
   --flag: #7d4300;
+  --note: #8a2a86; /* our own notes on a player (videos, research, custom) */
   --flag-soft: #f0dcb8;
   --danger: #a81f14;
   --danger-soft: #f0d3ce;
@@ -52,6 +53,7 @@
     --tag-planner: #bf5af2;
     --tag-adp: #ff375f;
     --flag: #ff9f0a;
+    --note: #e48cf0;
     --flag-soft: rgba(255, 159, 10, 0.18);
     --danger: #ff6b61;
     --danger-soft: rgba(255, 69, 58, 0.2);
@@ -85,6 +87,7 @@
   --tag-planner: #bf5af2;
   --tag-adp: #ff375f;
   --flag: #ff9f0a;
+  --note: #e48cf0;
   --flag-soft: rgba(255, 159, 10, 0.18);
   --danger: #ff6b61;
   --danger-soft: rgba(255, 69, 58, 0.2);
@@ -667,8 +670,9 @@ td.player { width: 99%; max-width: 0; }
 .source { color: var(--muted); font-size: 12px; }
 .rule-edit { border: 0; border-left: 1px solid var(--line); border-radius: 0; background: transparent; padding: 0 10px; color: var(--muted); }
 .rule-form input[type="text"] { flex: 1 1 140px; min-width: 0; }
-.notes-block { margin-top: 6px; }
-.player-note { margin: 4px 0; }
+.notes-block { margin-top: 6px; padding-left: 10px; border-left: 3px solid var(--note); }
+.player-note { margin: 4px 0; color: var(--note); }
+.player-note .source { color: var(--note); opacity: 0.8; }
 .player-note button { margin-left: 8px; }
 .rule-error { margin: 0; color: var(--danger); font-weight: 600; }
 
