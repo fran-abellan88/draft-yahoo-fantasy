@@ -1680,6 +1680,32 @@ function closeCard() {
   renderPool();
 }
 
+// Where my next picks fall in the table. Sorted by ADP or XRank (the order the other teams follow), the players above a line
+// are the ones expected gone before that pick: the pick number minus the picks already made. The label goes on the first
+// player below the line, so a filter that hides him moves it to the next one shown. Returns player id to label.
+function pickLinesFor(rows) {
+  const { key, direction } = state.sort;
+  const lines = new Map();
+  if ((key !== 'adp' && key !== 'xrank') || direction !== 1) return lines;
+  const ahead = new Map(
+    [...analysis.pool].sort((a, b) => sortValue(a, playerById.get(a.id), key) - sortValue(b, playerById.get(b.id), key) || a.rank - b.rank).map((row, index) => [row.id, index]),
+  );
+  const made = state.picks.length;
+  const gaps = new Map(); // players expected gone before the pick -> my overall picks that fall there
+  for (const number of pool.myPicks) {
+    if (number <= made) continue;
+    const gone = number - 1 - made;
+    gaps.set(gone, [...(gaps.get(gone) || []), number]);
+  }
+  for (const [gone, numbers] of gaps) {
+    const first = rows.find(({ player }) => ahead.get(player.id) >= gone);
+    if (!first) continue;
+    const text = `My pick ${numbers.join(' and ')}: ${gone === 0 ? 'next' : `${plural(gone, 'player')} before it`}`;
+    lines.set(first.player.id, lines.has(first.player.id) ? `${lines.get(first.player.id)}; ${text}` : text);
+  }
+  return lines;
+}
+
 function renderPool() {
   updateScoreRange();
   updateYahooGap();
@@ -1702,6 +1728,7 @@ function renderPool() {
     return (left < right ? -1 : 1) * direction;
   });
   visibleIds = rows.map(({ player }) => player.id);
+  const pickLines = pickLinesFor(rows);
 
   const body = rows.map(({ row, player }) => {
     const logged = pickedIds().has(player.id); // still in the table because the server has not answered yet
@@ -1709,9 +1736,10 @@ function renderPool() {
     const pending = busyShown && logged && !unconfirmed;
     const planned = plannedPicks.get(player.id);
     const isRecommended = analysis.recommendation && analysis.recommendation.id === player.id;
+    const line = pickLines.get(player.id);
     const cells = [
       h('td', {}, row.place),
-      h('td', { class: 'left player' }, h('div', { class: 'player-line' }, draftButton(player, isRecommended), h('strong', {}, h('button', { type: 'button', class: 'name-link', 'data-grp': groupOf(player.id), 'aria-pressed': String(cardId === player.id), title: `Show the player card of ${player.name}`, onclick: () => showCard(player.id) }, player.name)), isRecommended ? h('span', { class: 'pick-tag' }, 'Pick') : null, h('div', { class: 'meta' }, detailOf(player.id)), h('div', { class: 'notes' }, [
+      h('td', { class: 'left player' }, line ? h('div', { class: 'pick-line-label' }, line) : null, h('div', { class: 'player-line' }, draftButton(player, isRecommended), h('strong', {}, h('button', { type: 'button', class: 'name-link', 'data-grp': groupOf(player.id), 'aria-pressed': String(cardId === player.id), title: `Show the player card of ${player.name}`, onclick: () => showCard(player.id) }, player.name)), isRecommended ? h('span', { class: 'pick-tag' }, 'Pick') : null, h('div', { class: 'meta' }, detailOf(player.id)), h('div', { class: 'notes' }, [
         ...(row.adjusted ? [badge('adj', 'info', 'You adjusted him: see My adjustments')] : []),
         ...(notesByPlayer.has(player.id) ? [badge('note', 'info', 'Commentator notes are on his card')] : []),
         ...(row.blocked ? [badge('rule', 'info', 'One of your rules keeps him out of your next pick')] : []),
@@ -1734,7 +1762,7 @@ function renderPool() {
       'tr',
       {
         tabindex: '0',
-        class: [unconfirmed || pending ? 'unconfirmed' : '', isRecommended ? 'recommended' : '', cardId === player.id ? 'card-row' : ''].filter(Boolean).join(' '),
+        class: [line ? 'pick-line' : '', unconfirmed || pending ? 'unconfirmed' : '', isRecommended ? 'recommended' : '', cardId === player.id ? 'card-row' : ''].filter(Boolean).join(' '),
         'data-id': player.id,
         onkeydown: (event) => {
           if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) {

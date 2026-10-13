@@ -747,3 +747,10 @@ def test_a_player_already_picked_opens_his_card_from_the_roster_and_the_log() ->
 def test_the_settings_summary_says_when_the_categories_are_being_favoured() -> None:
     summary = JS[JS.index("function renderSettingsSummary"): JS.index("function renderTopBar")]
     assert "state.needs ? ', favouring the categories I can win' : ''" in summary
+
+
+def test_the_table_marks_where_my_next_picks_fall_when_sorted_by_the_order_others_follow() -> None:
+    script = (WEB / "app.js").read_text()
+    assert "function pickLinesFor(rows)" in script
+    assert "(key !== 'adp' && key !== 'xrank') || direction !== 1" in script
+    assert "pick-line" in (WEB / "style.css").read_text()
