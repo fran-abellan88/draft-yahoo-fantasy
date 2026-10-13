@@ -142,7 +142,8 @@ def test_the_notes_mark_the_players_to_leave_alone_and_they_are_all_in_the_pool(
     notes = load_notes(load_players())
     flagged = sorted({note["player"] for note in notes if note.get("exclude")})
     assert flagged == [
-        "brandon-ingram", "coby-white", "jimmy-butler-iii", "kon-knueppel", "kristaps-porzingis", "nic-claxton", "tobias-harris"
+        "brandon-ingram", "coby-white", "jimmy-butler-iii", "joel-embiid", "kon-knueppel", "kristaps-porzingis", "nic-claxton",
+        "tobias-harris",
     ]
     assert all(note["kind"] == "injury" for note in notes if note.get("exclude"))
 
