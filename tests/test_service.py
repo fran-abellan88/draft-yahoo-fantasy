@@ -956,3 +956,10 @@ def test_players_already_picked_come_back_as_rows_so_their_card_can_be_shown_aga
     assert jokic["score"] is not None and set(jokic["categoryScores"]) == set(ALL) and "flags" in jokic
     assert [row["score"] for row in answer["takenPool"]] == sorted((row["score"] for row in answer["takenPool"]), reverse=True)
     assert _ask(service, [])["takenPool"] == []
+
+
+def test_the_place_by_score_does_not_change_when_players_are_drafted(service: DraftService) -> None:
+    before = {row["id"]: row["place"] for row in _ask(service, [])["pool"]}
+    picks = _ids_by_xrank(service)[:3]
+    after = {row["id"]: row["place"] for row in _ask(service, picks)["pool"]}
+    assert after and all(before[player_id] == place for player_id, place in after.items())

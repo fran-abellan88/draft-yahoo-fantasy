@@ -729,6 +729,7 @@ class DraftService:
         The taken rows exist so the page can show a player's card again after he is picked.
         """
         order = scores[~self.players["player_id"].isin(drafted)].rank(ascending=False, method="first")
+        place = scores.rank(ascending=False, method="first")  # among everyone, so it stays put when players are drafted
         rows: List[Dict[str, Any]] = []
         for index, row in self.players.iterrows():
             if (row["player_id"] in drafted) != taken:
@@ -738,6 +739,7 @@ class DraftService:
                 {
                     "id": row["player_id"],
                     "rank": None if taken else int(order[index]),
+                    "place": int(place[index]),
                     "score": _num(scores[index], 1),
                     "categoryScores": {key: _num(value, 0) for key, value in category.loc[index].items()},
                     "availability": None if availability is None else _num(availability[index], 3),

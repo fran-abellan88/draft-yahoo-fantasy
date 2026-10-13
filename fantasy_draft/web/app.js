@@ -49,7 +49,7 @@ const state = {
   rules: [], // my own restrictions on who I pick where (see logic.js); they survive Reset, which only clears picks
   search: '',
   position: 'ALL',
-  sort: { key: 'adp', direction: 1 }, // ADP order; the # column is the rank by score
+  sort: { key: 'adp', direction: 1 }, // ADP order; the # column is the place by score among all players
 };
 const playerById = new Map();
 let pool = null;
@@ -1443,7 +1443,7 @@ function renderPlan() {
 
 // --- pool table ---
 const POOL_COLUMNS = [
-  { key: 'rank', label: '#', left: false, defaultDirection: 1, title: 'Rank by score among the players left' },
+  { key: 'rank', label: '#', left: false, defaultDirection: 1, title: 'Place by score among all the players; it does not change when someone is drafted' },
   { key: 'name', label: 'Player', left: true, defaultDirection: 1 },
   { key: 'score', label: 'Score', left: false, defaultDirection: -1 },
   { key: 'altscore', label: 'Capped', left: false, defaultDirection: -1, title: 'The same score with the other method, so both are in view' },
@@ -1495,7 +1495,7 @@ function updateYahooGap() {
 const placesLabel = (value) => (value > 0 ? `+${value}` : value < 0 ? `\u2212${-value}` : '0');
 
 function sortValue(row, player, key) {
-  if (key === 'rank') return row.rank;
+  if (key === 'rank') return row.place;
   if (key === 'name') return player.name;
   if (key === 'score') return row.score;
   if (key === 'altscore') return row.altScore;
@@ -1710,7 +1710,7 @@ function renderPool() {
     const planned = plannedPicks.get(player.id);
     const isRecommended = analysis.recommendation && analysis.recommendation.id === player.id;
     const cells = [
-      h('td', {}, row.rank),
+      h('td', {}, row.place),
       h('td', { class: 'left player' }, h('div', { class: 'player-line' }, draftButton(player, isRecommended), h('strong', {}, h('button', { type: 'button', class: 'name-link', 'data-grp': groupOf(player.id), 'aria-pressed': String(cardId === player.id), title: `Show the player card of ${player.name}`, onclick: () => showCard(player.id) }, player.name)), isRecommended ? h('span', { class: 'pick-tag' }, 'Pick') : null, h('div', { class: 'meta' }, detailOf(player.id)), h('div', { class: 'notes' }, [
         ...(row.adjusted ? [badge('adj', 'info', 'You adjusted him: see My adjustments')] : []),
         ...(notesByPlayer.has(player.id) ? [badge('note', 'info', 'Commentator notes are on his card')] : []),
