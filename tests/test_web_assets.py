@@ -646,7 +646,7 @@ def test_a_click_on_a_players_name_opens_his_card_and_only_the_draft_button_draf
     row = JS[JS.index("return h(\n      'tr',\n      {\n        tabindex: '0',"): JS.index("cells,\n    );", JS.index("tabindex: '0'"))]
     assert "onclick" not in row, "the row itself must not draft"
     assert "showCard(player.id)" in row and "event.target === event.currentTarget" in row  # Enter on the row shows the card
-    assert "class: 'name-link'" in JS and "onclick: () => showCard(player.id)" in JS
+    assert "class: `name-link${" in JS and "onclick: () => showCard(player.id)" in JS
     assert "function draftButton(" in JS and "onclick: () => rowPicked(player.id)" in JS
     assert "choosing ? 'Choose' : 'Draft'" in JS  # while choosing a player for an earlier pick the button says so
     assert "press Choose beside a player" in JS
@@ -754,3 +754,10 @@ def test_the_table_marks_where_my_next_picks_fall_when_sorted_by_the_order_other
     assert "function pickLinesFor(rows)" in script
     assert "(key !== 'adp' && key !== 'xrank') || direction !== 1" in script
     assert "pick-line" in (WEB / "style.css").read_text()
+
+
+def test_the_table_strikes_the_players_my_rules_keep_out() -> None:
+    script = (WEB / "app.js").read_text()
+    assert "ruleMarks(state.rules" in script
+    assert "struck" in script
+    assert ".name-link.struck" in (WEB / "style.css").read_text()

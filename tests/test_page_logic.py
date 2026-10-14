@@ -571,3 +571,36 @@ def test_saved_adjustments_are_cleaned_before_they_are_sent() -> None:
 def test_an_adjustment_reads_as_a_short_line(adjustment: Dict[str, Any], text: str) -> None:
     names = {"a": "Alpha", "b": "Beta", "c": "Gamma"}
     assert _run(f"L.adjustmentText({json.dumps(adjustment)}, (id) => ({json.dumps(names)})[id])") == text
+
+
+def _avoid(players: List[str], start: int, end: Any, enabled: bool = True, kind: str = "avoid") -> Dict[str, Any]:
+    return {"kind": kind, "players": players, "from": start, "to": end, "enabled": enabled}
+
+
+@pytest.mark.parametrize(
+    "rules,made,expected",
+    [
+        # Out of every pick I have left: struck through.
+        ([_avoid(["a"], 1, None)], 0, {"a": {"out": True, "text": "Excluded"}}),
+        # Out of the next pick only: struck, with the picks it covers.
+        ([_avoid(["a"], 1, 3)], 0, {"a": {"out": True, "text": "Not at my picks 1 to 3"}}),
+        # The part already past is dropped from the text.
+        ([_avoid(["a"], 1, 3)], 1, {"a": {"out": True, "text": "Not at my picks 2 to 3"}}),
+        ([_avoid(["a"], 1, 3)], 2, {"a": {"out": True, "text": "Not at my pick 3"}}),
+        # A rule for later picks only is not struck.
+        ([_avoid(["a"], 4, 5)], 0, {"a": {"out": False, "text": "Not at my picks 4 to 5"}}),
+        ([_avoid(["a"], 4, None)], 1, {"a": {"out": False, "text": "Not at my pick 4 on"}}),
+        # Done, switched off, or an "only" rule: no mark.
+        ([_avoid(["a"], 1, 3)], 3, {}),
+        ([_avoid(["a"], 1, None, enabled=False)], 0, {}),
+        ([_avoid(["a"], 1, 1, kind="only")], 0, {}),
+        # Two rules on one player: the one that is out wins.
+        (
+            [_avoid(["a", "b"], 5, 6), _avoid(["a"], 1, 2)],
+            0,
+            {"a": {"out": True, "text": "Not at my picks 1 to 2"}, "b": {"out": False, "text": "Not at my picks 5 to 6"}},
+        ),
+    ],
+)
+def test_rules_mark_the_players_they_keep_out_in_the_table(rules: List[Dict[str, Any]], made: int, expected: Dict[str, Any]) -> None:
+    assert _run(f"L.ruleMarks({json.dumps(rules)}, {made}, 8)") == expected

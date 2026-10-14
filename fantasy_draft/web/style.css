@@ -272,6 +272,7 @@ td.player .meta { color: var(--muted); font-size: 13px; }
 
 .badge { display: inline-block; margin: 1px 4px 1px 0; padding: 1px 7px; border-radius: 999px; font-size: 12px; background: var(--flag-soft); color: var(--flag); }
 .badge.injury { background: var(--danger-soft); color: var(--danger); font-weight: 650; }
+.badge.rule-out { background: var(--paper); color: var(--danger); font-weight: 650; }
 .badge.info { background: var(--paper); color: var(--muted); }
 
 /* Right rail */
@@ -514,6 +515,8 @@ td.dim { opacity: 0.45; }
 .draft-btn { flex: none; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 650; }
 .draft-btn.rec { background: var(--mine); border-color: var(--mine); color: var(--on-mine); }
 .name-link { display: block; max-width: 100%; padding: 0; border: 0; border-radius: 4px; background: none; font: inherit; font-weight: inherit; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.name-link.struck { text-decoration: line-through; text-decoration-thickness: 2px; text-decoration-color: var(--danger); color: var(--muted); }
+.rule-excluded .score-cell, .rule-excluded .alt-score { opacity: 0.6; }
 .name-link:hover:not(:disabled) { border: 0; text-decoration: underline; }
 .name-link.inline { display: inline; max-width: none; font-weight: 700; }
 #pool tr.card-row td { background: var(--selected); }

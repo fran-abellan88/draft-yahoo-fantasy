@@ -68,6 +68,33 @@ function ruleText(rule, nameOf) {
   return rule.kind === 'only' ? `At ${rulePicksText(rule)}: only ${names}` : `Not ${names} at ${rulePicksText(rule)}`;
 }
 
+// How the rules that keep a player out show in the table. `madeMine` is how many of my picks are done and `total` how many
+// I have; a rule counts my picks from 1. Only the part of a rule still ahead matters: a rule whose picks are all past marks
+// nobody. A player a rule keeps out of my next pick is `out` (struck through); one kept out only of a later pick just gets
+// the text. "Only" rules mark nobody: they would strike nearly everyone. Returns player id to {out, text}.
+function ruleMarks(rules, madeMine, total) {
+  const marks = {};
+  for (const rule of rules) {
+    if (!rule.enabled || rule.kind !== 'avoid') continue;
+    const last = rule.to === null ? total : Math.min(rule.to, total);
+    const first = Math.max(rule.from, madeMine + 1);
+    if (first > last) continue;
+    const out = first === madeMine + 1;
+    const text = out && last >= total ? 'Excluded' : `Not at ${rulePicksText({ from: first, to: last >= total ? null : last })}`;
+    for (const id of rule.players) {
+      const mark = marks[id] || { out: false, text: '' };
+      if (out && !mark.out) {
+        mark.out = true;
+        mark.text = text;
+      } else if (out === mark.out && !mark.text.split('; ').includes(text)) {
+        mark.text = mark.text ? `${mark.text}; ${text}` : text;
+      }
+      marks[id] = mark;
+    }
+  }
+  return marks;
+}
+
 // ---------- my adjustments ----------
 // An adjustment is {id, player, games: number or null, offset, note, source, enabled}: the games to expect from a player
 // (null keeps the projection) and the points to add to his score. The server checks them again; this keeps a damaged
@@ -439,5 +466,5 @@ function statLevel(score) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { joinNames, sanitizeAdjustments, adjustmentText, sanitizeRules, ruleText, clampRuleValue, sanitizeRule, normalizePicks, pickSavedState, planBehind, markGone, sanitizeHistory, undoLast, unmarkGone, swapPicks, forgetPick, placeGone, choosePlayer, describePick, swapText, forgetText, placeText, chooseText, undoLabel, chooseSource, discardsUnconfirmed, settingChanges, scoreBarAnchors, scoreBarShare, scoreTrend, statLevel, PICK_KINDS };
+  module.exports = { joinNames, sanitizeAdjustments, adjustmentText, sanitizeRules, ruleText, ruleMarks, clampRuleValue, sanitizeRule, normalizePicks, pickSavedState, planBehind, markGone, sanitizeHistory, undoLast, unmarkGone, swapPicks, forgetPick, placeGone, choosePlayer, describePick, swapText, forgetText, placeText, chooseText, undoLabel, chooseSource, discardsUnconfirmed, settingChanges, scoreBarAnchors, scoreBarShare, scoreTrend, statLevel, PICK_KINDS };
 }

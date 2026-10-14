@@ -1729,6 +1729,7 @@ function renderPool() {
   });
   visibleIds = rows.map(({ player }) => player.id);
   const pickLines = pickLinesFor(rows);
+  const ruleMark = ruleMarks(state.rules, pool.myPicks.filter((number) => number <= state.picks.length).length, pool.myPicks.length);
 
   const body = rows.map(({ row, player }) => {
     const logged = pickedIds().has(player.id); // still in the table because the server has not answered yet
@@ -1737,12 +1738,14 @@ function renderPool() {
     const planned = plannedPicks.get(player.id);
     const isRecommended = analysis.recommendation && analysis.recommendation.id === player.id;
     const line = pickLines.get(player.id);
+    const excluded = ruleMark[player.id];
     const cells = [
       h('td', {}, row.place),
-      h('td', { class: 'left player' }, line ? h('div', { class: 'pick-line-label' }, line) : null, h('div', { class: 'player-line' }, draftButton(player, isRecommended), h('strong', {}, h('button', { type: 'button', class: 'name-link', 'data-grp': groupOf(player.id), 'aria-pressed': String(cardId === player.id), title: `Show the player card of ${player.name}`, onclick: () => showCard(player.id) }, player.name)), isRecommended ? h('span', { class: 'pick-tag' }, 'Pick') : null, h('div', { class: 'meta' }, detailOf(player.id)), h('div', { class: 'notes' }, [
+      h('td', { class: 'left player' }, line ? h('div', { class: 'pick-line-label' }, line) : null, h('div', { class: 'player-line' }, draftButton(player, isRecommended), h('strong', {}, h('button', { type: 'button', class: `name-link${excluded && excluded.out ? ' struck' : ''}`, 'data-grp': groupOf(player.id), 'aria-pressed': String(cardId === player.id), title: `Show the player card of ${player.name}`, onclick: () => showCard(player.id) }, player.name)), isRecommended ? h('span', { class: 'pick-tag' }, 'Pick') : null, h('div', { class: 'meta' }, detailOf(player.id)), h('div', { class: 'notes' }, [
         ...(row.adjusted ? [badge('adj', 'info', 'You adjusted him: see My adjustments')] : []),
         ...(notesByPlayer.has(player.id) ? [badge('note', 'info', 'Commentator notes are on his card')] : []),
-        ...(row.blocked ? [badge('rule', 'info', 'One of your rules keeps him out of your next pick')] : []),
+        ...(excluded ? [badge(excluded.text, 'rule-out', `Your rules: ${excluded.text.charAt(0).toLowerCase()}${excluded.text.slice(1)}`)] : []),
+        ...(row.blocked && !(excluded && excluded.out) ? [badge('rule', 'info', 'One of your rules keeps him out of your next pick')] : []),
         ...(planned && !isRecommended ? [badge(`plan: ${planned}`, 'info', `The current plan takes him at pick ${planned}`)] : []),
         ...(unconfirmed ? [badge('Logged, not confirmed. Click to retry', 'injury', 'The server has not confirmed this pick yet')] : []),
         ...(pending ? [badge('Logging the pick', 'info', 'Waiting for the server to confirm this pick')] : []),
@@ -1762,7 +1765,7 @@ function renderPool() {
       'tr',
       {
         tabindex: '0',
-        class: [line ? 'pick-line' : '', unconfirmed || pending ? 'unconfirmed' : '', isRecommended ? 'recommended' : '', cardId === player.id ? 'card-row' : ''].filter(Boolean).join(' '),
+        class: [line ? 'pick-line' : '', excluded && excluded.out ? 'rule-excluded' : '', unconfirmed || pending ? 'unconfirmed' : '', isRecommended ? 'recommended' : '', cardId === player.id ? 'card-row' : ''].filter(Boolean).join(' '),
         'data-id': player.id,
         onkeydown: (event) => {
           if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) {
