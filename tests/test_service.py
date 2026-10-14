@@ -817,38 +817,38 @@ def _without(service: DraftService, excluded: set, count: int) -> List[str]:
     return [pid for pid in service.players.sort_values("xrank")["player_id"] if pid not in excluded][:count]
 
 
-KD_KAWHI_GIANNIS = {"giannis-antetokounmpo", "kevin-durant", "kawhi-leonard"}
+LEFT_ON_THE_BOARD = {"scottie-barnes"}  # the player kept out of a log of the first 26 by XRank, so he is on the board at pick 27
 
 
 def test_on_my_turn_level_plans_go_to_the_player_least_likely_to_last(service: DraftService) -> None:
-    log = _without(service, KD_KAWHI_GIANNIS, 26)
+    log = _without(service, LEFT_ON_THE_BOARD, 26)
     answer = _ask(service, log, method="uncapped", gamesAdjusted=True)
     recommendation = answer["recommendation"]
     assert answer["clock"]["isMine"] and recommendation["pick"] == 27
     tie = recommendation["riskTie"]
-    assert recommendation["id"] == "kevin-durant" and tie["over"] == "lauri-markkanen", "Markkanen is the one likely to be there at 30"
+    assert recommendation["id"] == "scottie-barnes" and tie["over"] == "chet-holmgren", "Holmgren is the one likely to be there at 30"
     assert tie["gap"] <= tie["band"] and tie["pick"] == 30
     assert tie["lasts"] < tie["lastsOver"] - 0.05, "he is the likelier to be gone by my next pick"
-    assert answer["plans"][0]["steps"][0]["id"] == "kevin-durant", "the plan the page shows starts with the recommended player"
-    assert "lauri-markkanen" in [alternative["id"] for alternative in answer["alternatives"]], "the player it replaced is an option"
+    assert answer["plans"][0]["steps"][0]["id"] == "scottie-barnes", "the plan the page shows starts with the recommended player"
+    assert "chet-holmgren" in [alternative["id"] for alternative in answer["alternatives"]], "the player it replaced is an option"
     by_adp = _ask(service, log, method="uncapped", gamesAdjusted=True, rule={"basis": "adp"})["recommendation"]
-    assert by_adp["id"] == "kevin-durant" and by_adp["riskTie"]["over"] == "kawhi-leonard", "centred on ADP the player it replaces differs"
+    assert by_adp["id"] == "scottie-barnes" and by_adp["riskTie"]["lasts"] != tie["lasts"], "centred on ADP the odds differ"
 
 
 def test_the_risk_tie_decides_nothing_while_i_am_waiting_or_outside_the_band(
     service: DraftService, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    log = _without(service, KD_KAWHI_GIANNIS, 26)
+    log = _without(service, LEFT_ON_THE_BOARD, 26)
     waiting = _ask(service, log[:24], method="uncapped", gamesAdjusted=True)
     assert not waiting["clock"]["isMine"] and "riskTie" not in waiting["recommendation"]
     monkeypatch.setattr("fantasy_draft.service.TIE_BAND", -1.0)  # no plan counts as level with the best
     narrow = _ask(service, log, method="uncapped", gamesAdjusted=True)["recommendation"]
-    assert narrow["id"] != "kevin-durant" and "riskTie" not in narrow
+    assert narrow["id"] != "scottie-barnes" and "riskTie" not in narrow
 
 
 def test_with_no_later_pick_there_is_nothing_to_keep_open(service: DraftService) -> None:
     first = service.players.sort_values("xrank")["player_id"].tolist()
-    log = [pid for pid in first if pid not in KD_KAWHI_GIANNIS][:110]  # my pick 111 is the last of the eight planned rounds
+    log = [pid for pid in first if pid not in LEFT_ON_THE_BOARD][:110]  # my pick 111 is the last of the eight planned rounds
     answer = _ask(service, log, method="uncapped", gamesAdjusted=True)
     assert answer["clock"]["isMine"] and answer["laterPick"] is None
     assert "riskTie" not in (answer["recommendation"] or {})
@@ -865,7 +865,7 @@ def test_the_ranking_the_others_follow_changes_the_odds_but_not_the_pool_the_pag
     assert rank_odds and rank_odds != adp_odds
     payload = service.pool_payload()
     kawhi = next(player for player in payload["players"] if player["id"] == "kawhi-leonard")
-    assert kawhi["adp"] == 30.4 and kawhi["xrank"] == 37, "the table keeps showing Yahoo's real ADP"
+    assert kawhi["adp"] == 34.2 and kawhi["xrank"] == 36, "the table keeps showing Yahoo's real ADP"
 
 
 def test_an_unknown_basis_is_refused(service: DraftService) -> None:
@@ -899,11 +899,11 @@ def _disagreement(service: DraftService, pick_id: str) -> Any:
     )
 
 
-def test_yahoo_disagrees_says_why_giannis_scores_lower_than_kawhi_and_what_punting_would_do(service: DraftService) -> None:
-    found = _disagreement(service, "kawhi-leonard")
+def test_yahoo_disagrees_says_why_giannis_scores_lower_than_the_pick_and_what_punting_would_do(service: DraftService) -> None:
+    found = _disagreement(service, "jalen-williams")
     assert found["id"] == "giannis-antetokounmpo" and found["yahooRank"] == 6 and found["pickYahooRank"] == 37
     assert found["category"]["key"] == "ft_pct" and found["category"]["delta"] < -found["scoreGap"], "FT% costs more than the whole gap"
-    assert found["punt"] == {"rank": 4, "pickRank": 27}
+    assert found["punt"] == {"rank": 4, "pickRank": 32}
     assert _disagreement(service, "kevin-durant") is None, "eight places apart is not a disagreement"
 
 

@@ -65,7 +65,7 @@ def test_flags_on_the_real_pool_are_a_usable_minority() -> None:
     keys = categories_in(players.columns)
     assert len(keys) == 9
     flags = build_flags(players, keys, compute_bounds(players[players["xrank"] <= REFERENCE_POOL], keys))
-    assert flags["flag_ly_missing"].sum() == 16, "8 in the first 150 and 8 deeper"
+    assert flags["flag_ly_missing"].sum() == 18, "10 in the first 150 and 8 deeper"
     named = players.assign(**flags.to_dict("series")).set_index("player")
     assert named.loc["Joel Embiid", "flag_low_projected_gp"]
     assert named.loc["Walker Kessler", "flag_ly_small_sample"]

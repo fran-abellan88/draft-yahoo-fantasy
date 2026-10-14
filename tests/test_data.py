@@ -44,8 +44,8 @@ def test_last_season_is_joined_from_totals_and_blank_when_missing(players: pd.Da
     assert jokic["fga_ly"] == pytest.approx(1132 / 65)
     haliburton = players[players["player"] == "Tyrese Haliburton"].iloc[0]
     assert haliburton[[f"{stat}_ly" for stat in COUNTING_STATS]].isna().all()
-    assert players["pts_ly"].isna().sum() == 16
-    assert players[players["xrank"] <= REFERENCE_POOL]["pts_ly"].isna().sum() == 8
+    assert players["pts_ly"].isna().sum() == 18
+    assert players[players["xrank"] <= REFERENCE_POOL]["pts_ly"].isna().sum() == 10
 
 
 def test_positions_are_parsed(players: pd.DataFrame) -> None:

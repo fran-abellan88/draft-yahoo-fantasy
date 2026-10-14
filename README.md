@@ -278,7 +278,7 @@ pick cannot beat its best remaining candidate and the same star cannot fill two 
 
 | File | Source | Used for |
 |---|---|---|
-| `data/2026-27/projections.csv` | draft-room screenshots, read by hand | XRank, Rank, ADP for the first 245 players (only the draft room has them). A missing ADP below the 150th is estimated: after every player who has one |
+| `data/2026-27/projections.csv` | draft-room screenshots, read by hand | XRank, Rank, ADP for the first 245 players (only the draft room has them; the 2026-10-14 snapshots end at XRank 230, so 231 to 245 come from Yahoo's pre-season rank, with no Rank and no ADP). A missing ADP below the 150th is estimated: after every player who has one |
 | `data/2026-27/yahoo_projections.csv` | Yahoo player list | projected season totals with attempts |
 | `data/2025-26/yahoo_totals.csv` | Yahoo player list | last season's totals with attempts and minutes |
 | `data/2025-26/averages.csv`, `yahoo_averages.csv` | screenshots, Yahoo | cross-check only |

@@ -36,3 +36,6 @@ saved_draft.previous-v*.json
 saved_mock_draft.json
 saved_mock_draft.unreadable.json
 saved_mock_draft.previous-v*.json
+
+# Original full-size screenshots (large); the cropped table JPEGs next to them are kept
+snapshots/*/originals_png/
